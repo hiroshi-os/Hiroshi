@@ -11,6 +11,7 @@ pub struct Agent {
     pub hand_off: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct AgentRouter {
     pub agents: HashMap<String, Agent>,
     pub active_agent: String,
@@ -119,6 +120,40 @@ impl AgentRouter {
             }
         }
         None
+    }
+}
+
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Debug)]
+pub struct SessionRouter {
+    agents_file: std::path::PathBuf,
+    sessions: Arc<Mutex<HashMap<String, AgentRouter>>>,
+}
+
+impl SessionRouter {
+    pub fn new(agents_file: std::path::PathBuf) -> Self {
+        Self {
+            agents_file,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn get_or_create(&self, session_id: &str) -> Result<AgentRouter, String> {
+        let mut map = self.sessions.lock().map_err(|e| e.to_string())?;
+        if let Some(router) = map.get(session_id) {
+            Ok(router.clone())
+        } else {
+            let router = AgentRouter::load_from_file(&self.agents_file)?;
+            map.insert(session_id.to_string(), router.clone());
+            Ok(router)
+        }
+    }
+
+    pub fn update(&self, session_id: &str, router: AgentRouter) -> Result<(), String> {
+        let mut map = self.sessions.lock().map_err(|e| e.to_string())?;
+        map.insert(session_id.to_string(), router);
+        Ok(())
     }
 }
 

@@ -15,6 +15,24 @@ pub struct MemoryEngine {
     conn: Mutex<Connection>,
 }
 
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot_product = 0.0;
+    let mut norm_a = 0.0;
+    let mut norm_b = 0.0;
+    for i in 0..a.len() {
+        dot_product += a[i] * b[i];
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+    dot_product / (norm_a.sqrt() * norm_b.sqrt())
+}
+
 impl MemoryEngine {
     pub fn new(db_path: &Path) -> Result<Self, String> {
         let conn = Connection::open(db_path)
@@ -31,7 +49,7 @@ impl MemoryEngine {
             [],
         ).map_err(|e| format!("Failed to create history table: {}", e))?;
         
-        // FTS5 Virtual Table for semantic search
+        // FTS5 Virtual Table for semantic keyword search
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
                 role,
@@ -40,10 +58,20 @@ impl MemoryEngine {
             [],
         ).map_err(|e| format!("Failed to create history_fts virtual table: {}", e))?;
         
+        // Vector RAG table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS history_vectors (
+                message_id INTEGER PRIMARY KEY,
+                vector BLOB NOT NULL,
+                FOREIGN KEY(message_id) REFERENCES history(id) ON DELETE CASCADE
+             )",
+            [],
+        ).map_err(|e| format!("Failed to create history_vectors table: {}", e))?;
+        
         Ok(Self { conn: Mutex::new(conn) })
     }
 
-    pub fn add_message(&self, role: &str, content: &str) -> Result<(), String> {
+    pub fn add_message(&self, role: &str, content: &str) -> Result<i64, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
         
         conn.execute(
@@ -51,11 +79,29 @@ impl MemoryEngine {
             params![role, content],
         ).map_err(|e| format!("Failed to insert chat history: {}", e))?;
         
+        let id = conn.last_insert_rowid();
+
         conn.execute(
             "INSERT INTO history_fts (role, content) VALUES (?1, ?2)",
             params![role, content],
         ).map_err(|e| format!("Failed to index in FTS5: {}", e))?;
         
+        Ok(id)
+    }
+
+    pub async fn add_message_with_vector(&self, role: &str, content: &str, provider: &OllamaProvider) -> Result<(), String> {
+        let id = self.add_message(role, content)?;
+        
+        // Generate embeddings asynchronously
+        if let Ok(vector) = provider.get_embeddings(content).await {
+            if let Ok(blob) = serde_json::to_vec(&vector) {
+                let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO history_vectors (message_id, vector) VALUES (?1, ?2)",
+                    params![id, blob],
+                );
+            }
+        }
         Ok(())
     }
 
@@ -116,6 +162,51 @@ impl MemoryEngine {
                 results.push(msg);
             }
         }
+        Ok(results)
+    }
+
+    pub fn search_vector_rag(&self, query_vector: &[f32], limit: usize) -> Result<Vec<ChatMessage>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT v.vector, h.role, h.content FROM history_vectors v JOIN history h ON v.message_id = h.id"
+        ).map_err(|e| format!("Failed to prepare vector search query: {}", e))?;
+
+        struct VectorRow {
+            vector_blob: Vec<u8>,
+            role: String,
+            content: String,
+        }
+
+        let rows = stmt.query_map([], |row| {
+            Ok(VectorRow {
+                vector_blob: row.get(0)?,
+                role: row.get(1)?,
+                content: row.get(2)?,
+            })
+        }).map_err(|e| format!("Failed to execute vector search: {}", e))?;
+
+        let mut scored_matches = Vec::new();
+        for row in rows {
+            if let Ok(r) = row {
+                if let Ok(vec) = serde_json::from_slice::<Vec<f32>>(&r.vector_blob) {
+                    let score = cosine_similarity(query_vector, &vec);
+                    scored_matches.push((score, ChatMessage {
+                        role: r.role,
+                        content: r.content,
+                    }));
+                }
+            }
+        }
+
+        // Sort by similarity descending
+        scored_matches.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        
+        let results: Vec<ChatMessage> = scored_matches.into_iter()
+            .take(limit)
+            .map(|(_, msg)| msg)
+            .collect();
+
         Ok(results)
     }
 
@@ -208,6 +299,23 @@ impl MemoryEngine {
             .map_err(|e| format!("Failed to clear history: {}", e))?;
         conn.execute("DELETE FROM history_fts", [])
             .map_err(|e| format!("Failed to clear history index: {}", e))?;
+        conn.execute("DELETE FROM history_vectors", [])
+            .map_err(|e| format!("Failed to clear history vectors: {}", e))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cosine_similarity() {
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![1.0, 0.0, 0.0];
+        let c = vec![0.0, 1.0, 0.0];
+        
+        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-5);
+        assert!((cosine_similarity(&a, &c) - 0.0).abs() < 1e-5);
     }
 }

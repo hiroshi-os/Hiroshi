@@ -1,7 +1,11 @@
 use crate::config::TelegramConfig;
 use crate::db::MemoryEngine;
 use crate::provider::OllamaProvider;
-use crate::agents::AgentRouter;
+use crate::agents::SessionRouter;
+use crate::sandbox::WorkspaceSandbox;
+use crate::sandbox_cmd::SafeCommandRunner;
+use crate::skills::SkillsRegistry;
+
 use std::sync::Arc;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
@@ -51,11 +55,95 @@ struct EditMessageRequest {
     parse_mode: Option<String>,
 }
 
+enum ToolCall {
+    ReadFile { path: String },
+    WriteFile { path: String, content: String },
+    CallTool { name: String, json_args: String },
+}
+
+fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
+    let mut calls = Vec::new();
+    
+    // Parse <read_file>path</read_file>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<read_file>") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</read_file>") {
+            let path = content[abs_start + 11..abs_start + end].trim().to_string();
+            calls.push(ToolCall::ReadFile { path });
+            last_idx = abs_start + end + 12;
+        } else {
+            break;
+        }
+    }
+
+    // Parse <write_file path="path">content</write_file>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<write_file") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</write_file>") {
+            let header_end = content[abs_start..].find(">").unwrap_or(0);
+            let header = &content[abs_start..abs_start + header_end];
+            let path = if let Some(p_start) = header.find("path=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let file_content = content[abs_start + header_end + 1..abs_start + end].to_string();
+            if !path.is_empty() {
+                calls.push(ToolCall::WriteFile { path, content: file_content });
+            }
+            last_idx = abs_start + end + 13;
+        } else {
+            break;
+        }
+    }
+
+    // Parse <call_tool name="name">json_arguments</call_tool>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<call_tool") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</call_tool>") {
+            let header_end = content[abs_start..].find(">").unwrap_or(0);
+            let header = &content[abs_start..abs_start + header_end];
+            let name = if let Some(p_start) = header.find("name=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let args = content[abs_start + header_end + 1..abs_start + end].trim().to_string();
+            if !name.is_empty() {
+                calls.push(ToolCall::CallTool { name, json_args: args });
+            }
+            last_idx = abs_start + end + 12;
+        } else {
+            break;
+        }
+    }
+
+    calls
+}
+
 pub struct TelegramGateway {
     config: TelegramConfig,
     db: Arc<MemoryEngine>,
     provider: Arc<OllamaProvider>,
-    agents_path: std::path::PathBuf,
+    session_router: Arc<SessionRouter>,
+    skills_registry: Arc<SkillsRegistry>,
+    command_runner: Arc<SafeCommandRunner>,
+    workspace_path: std::path::PathBuf,
     client: reqwest::Client,
 }
 
@@ -64,13 +152,19 @@ impl TelegramGateway {
         config: TelegramConfig,
         db: Arc<MemoryEngine>,
         provider: Arc<OllamaProvider>,
-        agents_path: std::path::PathBuf,
+        session_router: Arc<SessionRouter>,
+        skills_registry: Arc<SkillsRegistry>,
+        command_runner: Arc<SafeCommandRunner>,
+        workspace_path: std::path::PathBuf,
     ) -> Self {
         Self {
             config,
             db,
             provider,
-            agents_path,
+            session_router,
+            skills_registry,
+            command_runner,
+            workspace_path,
             client: reqwest::Client::new(),
         }
     }
@@ -80,6 +174,8 @@ impl TelegramGateway {
             println!("[Telegram] Gateway is disabled in config.");
             return;
         }
+
+        let workspace_path = self.workspace_path.clone();
 
         tokio::spawn(async move {
             println!("[Telegram] Gateway listening service started.");
@@ -99,7 +195,6 @@ impl TelegramGateway {
                                         if let Some(msg) = update.message {
                                             let from_id = msg.from.map(|f| f.id).unwrap_or(0);
                                             
-                                            // Security ACL check
                                             if !self.config.allowed_user_ids.contains(&from_id) {
                                                 println!("[Telegram Security] Blocked unauthorized message from user: {}", from_id);
                                                 continue;
@@ -108,7 +203,10 @@ impl TelegramGateway {
                                             if let Some(text) = msg.text {
                                                 let db_clone = self.db.clone();
                                                 let provider_clone = self.provider.clone();
-                                                let agents_path_clone = self.agents_path.clone();
+                                                let session_router_clone = self.session_router.clone();
+                                                let skills_registry_clone = self.skills_registry.clone();
+                                                let command_runner_clone = self.command_runner.clone();
+                                                let sandbox_clone = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
                                                 let token_clone = token.clone();
                                                 let client_clone = self.client.clone();
                                                 let chat_id = msg.chat.id;
@@ -119,7 +217,10 @@ impl TelegramGateway {
                                                         text,
                                                         db_clone,
                                                         provider_clone,
-                                                        agents_path_clone,
+                                                        session_router_clone,
+                                                        skills_registry_clone,
+                                                        command_runner_clone,
+                                                        sandbox_clone,
                                                         &token_clone,
                                                         &client_clone,
                                                     ).await {
@@ -148,18 +249,23 @@ async fn handle_telegram_message(
     text: String,
     db: Arc<MemoryEngine>,
     provider: Arc<OllamaProvider>,
-    agents_path: std::path::PathBuf,
+    session_router: Arc<SessionRouter>,
+    skills_registry: Arc<SkillsRegistry>,
+    command_runner: Arc<SafeCommandRunner>,
+    sandbox: Arc<WorkspaceSandbox>,
     token: &str,
     client: &reqwest::Client,
 ) -> Result<(), String> {
-    // 1. Parse Agent Router state
-    let mut router = AgentRouter::load_from_file(&agents_path)?;
+    let session_id = format!("telegram_{}", chat_id);
+    let mut router = session_router.get_or_create(&session_id)?;
+    let _ = db.add_message_with_vector("user", &text, &provider).await;
 
-    // 2. Save User Message
-    db.add_message("user", &text)?;
-
-    // 3. FTS5 RAG Matcher search
-    let rag_matches = db.search_rag_history(&text, 3)?;
+    let query_vector = provider.get_embeddings(&text).await.unwrap_or_default();
+    let rag_matches = if !query_vector.is_empty() {
+        db.search_vector_rag(&query_vector, 3)?
+    } else {
+        db.search_rag_history(&text, 3)?
+    };
     let mut rag_context = String::new();
     if !rag_matches.is_empty() {
         rag_context.push_str("\n--- Relevant historical memory context ---\n");
@@ -169,7 +275,6 @@ async fn handle_telegram_message(
         rag_context.push_str("------------------------------------------\n");
     }
 
-    // 4. Send typing placeholder to Telegram
     let send_url = format!("https://api.telegram.org/bot{}/sendMessage", token);
     let placeholder_payload = SendMessageRequest {
         chat_id,
@@ -189,7 +294,6 @@ async fn handle_telegram_message(
         .ok_or_else(|| "Failed to send initial message".to_string())?
         .message_id;
 
-    // 5. Query Ollama and route stream edits
     let edit_url = format!("https://api.telegram.org/bot{}/editMessageText", token);
     
     let mut loop_turn = 0;
@@ -201,14 +305,28 @@ async fn handle_telegram_message(
         let active_agent = router.get_active_agent()
             .ok_or_else(|| "No active agent found".to_string())?;
 
+        let mut dynamic_skills_str = String::new();
+        if !skills_registry.skills.is_empty() {
+            dynamic_skills_str.push_str("\nYou can also execute the following dynamic skills by outputting XML tags format:\n");
+            for skill in &skills_registry.skills {
+                dynamic_skills_str.push_str(&format!(
+                    "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
+                    skill.name,
+                    if skill.schema.is_empty() { "JSON_ARGS" } else { &skill.schema },
+                    skill.description
+                ));
+            }
+        }
+
         let system_prompt = format!(
-            "{}\nHand-off Rule: {}\nAllowed Tools: {:?}\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n\n{}",
+            "{}\nHand-off Rule: {}\nAllowed Tools: {:?}\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
             active_agent.prompt,
             active_agent.hand_off,
             active_agent.allowed_tools,
+            dynamic_skills_str,
             rag_context
         );
-        let history = db.get_context(16384)?; // Context window char limit approx
+        let history = db.get_context(16384)?;
 
         let mut stream = provider.chat_stream(&system_prompt, history).await?;
         let mut full_response = String::new();
@@ -218,7 +336,6 @@ async fn handle_telegram_message(
             if let Ok(text) = chunk_res {
                 full_response.push_str(&text);
                 
-                // Throttle telegram edits to respect rate limits (edit at most once per 1.5 seconds)
                 if last_edit_time.elapsed() > Duration::from_millis(1500) && !full_response.trim().is_empty() {
                     let edit_payload = EditMessageRequest {
                         chat_id,
@@ -236,10 +353,8 @@ async fn handle_telegram_message(
             break;
         }
 
-        // Save assistant response
-        db.add_message("assistant", &full_response)?;
+        let _ = db.add_message_with_vector("assistant", &full_response, &provider).await;
 
-        // Final message sync
         let edit_payload = EditMessageRequest {
             chat_id,
             message_id,
@@ -248,14 +363,94 @@ async fn handle_telegram_message(
         };
         let _ = client.post(&edit_url).json(&edit_payload).send().await;
 
-        // Detect if hand-off is triggered
         if let Some(next_agent) = router.detect_handoff(&full_response) {
             router.switch_agent(&next_agent);
-            // Run loop again with new agent prompt!
+            let _ = session_router.update(&session_id, router.clone());
             continue;
         }
-        break;
+
+        let tool_calls = parse_tool_calls(&full_response);
+        if tool_calls.is_empty() {
+            break;
+        }
+
+        for tool in tool_calls {
+            match tool {
+                ToolCall::ReadFile { path } => {
+                    if !active_agent.allowed_tools.contains(&"ReadFile".to_string()) {
+                        let err_msg = "Permission Denied: Active agent does not have permission to use ReadFile.";
+                        db.add_message("user", err_msg)?;
+                        continue;
+                    }
+                    match sandbox.read_file(&path) {
+                        Ok(content) => {
+                            let result_msg = format!("File content of '{}':\n{}", path, content);
+                            db.add_message("user", &result_msg)?;
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Failed to read file '{}': {}", path, e);
+                            db.add_message("user", &err_msg)?;
+                        }
+                    }
+                }
+                ToolCall::WriteFile { path, content } => {
+                    if !active_agent.allowed_tools.contains(&"WriteFile".to_string()) {
+                        let err_msg = "Permission Denied: Active agent does not have permission to use WriteFile.";
+                        db.add_message("user", err_msg)?;
+                        continue;
+                    }
+                    match sandbox.write_file(&path, &content) {
+                        Ok(_) => {
+                            let result_msg = format!("Successfully wrote file '{}'", path);
+                            db.add_message("user", &result_msg)?;
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Failed to write file '{}': {}", path, e);
+                            db.add_message("user", &err_msg)?;
+                        }
+                    }
+                }
+                ToolCall::CallTool { name, json_args } => {
+                    if !active_agent.allowed_tools.contains(&name) {
+                        let err_msg = format!("Permission Denied: Active agent does not have permission to use dynamic skill/binary '{}'.", name);
+                        db.add_message("user", &err_msg)?;
+                        continue;
+                    }
+
+                    // Resolving actual workspace path
+                    let actual_workspace = sandbox.sanitize_path(".").unwrap_or(std::path::PathBuf::from("."));
+
+                    if let Some(skill) = skills_registry.get_skill(&name) {
+                        match skill.run_ipc(&json_args, &actual_workspace).await {
+                            Ok(stdout) => {
+                                let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
+                                db.add_message("user", &result_msg)?;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Skill '{}' execution failed: {}", name, e);
+                                db.add_message("user", &err_msg)?;
+                            }
+                        }
+                    } else {
+                        // Check if whitelisted command (we assume commands are run via system allowed binaries)
+                        // Note: allowed_binaries can run directly
+                        let cmd_line = format!("{} {}", name, json_args.trim_matches('"'));
+                        match command_runner.run_command(&cmd_line).await {
+                            Ok(stdout) => {
+                                let result_msg = format!("Command '{}' execution output:\n{}", name, stdout);
+                                db.add_message("user", &result_msg)?;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Command '{}' execution failed: {}", name, e);
+                                db.add_message("user", &err_msg)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
+    let _ = session_router.update(&session_id, router);
     Ok(())
 }

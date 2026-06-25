@@ -8,18 +8,35 @@ pub struct EngineConfig {
     pub log_level: String,
 }
 
+fn default_embedding_model() -> String {
+    "nomic-embed-text".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OllamaConfig {
     pub host: String,
     pub model: String,
     pub temperature: f32,
     pub context_window: usize,
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
+}
+
+fn default_allowed_binaries() -> Vec<String> {
+    vec![
+        "cargo".to_string(),
+        "git".to_string(),
+        "rustfmt".to_string(),
+        "python".to_string(),
+    ]
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecurityConfig {
     pub sandbox_path: String,
     pub allow_shell_commands: bool,
+    #[serde(default = "default_allowed_binaries")]
+    pub allowed_binaries: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -90,10 +107,12 @@ impl Default for AppConfig {
                 model: "qwen2.5-coder:1.5b".to_string(),
                 temperature: 0.2,
                 context_window: 4096,
+                embedding_model: default_embedding_model(),
             },
             security: SecurityConfig {
                 sandbox_path: "~/.hiroshi/workspace".to_string(),
                 allow_shell_commands: false,
+                allowed_binaries: default_allowed_binaries(),
             },
             telegram: TelegramConfig::default(),
             cron: CronConfig::default(),
@@ -117,7 +136,7 @@ pub fn resolve_home_path(path: &str) -> PathBuf {
     }
 }
 
-pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathBuf), String> {
+pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf), String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     let hiroshi_dir = home.join(".hiroshi");
     
@@ -133,6 +152,13 @@ pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathB
         fs::create_dir_all(&memory_dir)
             .map_err(|e| format!("Failed to create ~/.hiroshi/memory: {}", e))?;
     }
+
+    // Create skills dir
+    let skills_dir = hiroshi_dir.join("skills");
+    if !skills_dir.exists() {
+        fs::create_dir_all(&skills_dir)
+            .map_err(|e| format!("Failed to create ~/.hiroshi/skills: {}", e))?;
+    }
     
     // Check config.toml
     let config_path = hiroshi_dir.join("config.toml");
@@ -144,8 +170,10 @@ pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathB
             
         let has_telegram = content.contains("[telegram]");
         let has_cron = content.contains("[cron]") || content.contains("[[cron.tasks]]");
+        let has_allowed_binaries = content.contains("allowed_binaries");
+        let has_embedding_model = content.contains("embedding_model");
         
-        (parsed, !has_telegram || !has_cron)
+        (parsed, !has_telegram || !has_cron || !has_allowed_binaries || !has_embedding_model)
     } else {
         (AppConfig::default(), true)
     };
@@ -186,5 +214,5 @@ pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathB
             .map_err(|e| format!("Failed to create workspace directory: {}", e))?;
     }
     
-    Ok((config, db_path, workspace_path, agents_path, memory_dir))
+    Ok((config, db_path, workspace_path, agents_path, memory_dir, skills_dir))
 }

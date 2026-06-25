@@ -5,14 +5,18 @@ mod sandbox;
 mod agents;
 mod cron;
 mod telegram;
+mod sandbox_cmd;
+mod skills;
 
 use config::init_hiroshi_dir;
 use db::MemoryEngine;
 use provider::OllamaProvider;
 use sandbox::WorkspaceSandbox;
-use agents::AgentRouter;
+use agents::SessionRouter;
 use cron::CronScheduler;
 use telegram::TelegramGateway;
+use sandbox_cmd::SafeCommandRunner;
+use skills::SkillsRegistry;
 
 use futures_util::StreamExt;
 use std::io::{self, Write};
@@ -22,6 +26,7 @@ use std::time::Instant;
 enum ToolCall {
     ReadFile { path: String },
     WriteFile { path: String, content: String },
+    CallTool { name: String, json_args: String },
 }
 
 fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
@@ -68,14 +73,42 @@ fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
         }
     }
 
+    // Parse <call_tool name="name">json_arguments</call_tool>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<call_tool") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</call_tool>") {
+            let header_end = content[abs_start..].find(">").unwrap_or(0);
+            let header = &content[abs_start..abs_start + header_end];
+            let name = if let Some(p_start) = header.find("name=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let args = content[abs_start + header_end + 1..abs_start + end].trim().to_string();
+            if !name.is_empty() {
+                calls.push(ToolCall::CallTool { name, json_args: args });
+            }
+            last_idx = abs_start + end + 12;
+        } else {
+            break;
+        }
+    }
+
     calls
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Initializing Hiroshi Daemon (Phase 2)...");
+    println!("Initializing Hiroshi Daemon (Phase 3)...");
     
-    let (config, db_path, workspace_path, agents_path, memory_dir) = match init_hiroshi_dir() {
+    let (config, db_path, workspace_path, agents_path, memory_dir, skills_dir) = match init_hiroshi_dir() {
         Ok(paths) => paths,
         Err(e) => {
             eprintln!("Initialization failure: {}", e);
@@ -91,15 +124,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Workspace:    {}", workspace_path.to_string_lossy());
     println!("Database:     {}", db_path.to_string_lossy());
     println!("Agents File:  {}", agents_path.to_string_lossy());
+    println!("Skills Dir:   {}", skills_dir.to_string_lossy());
     println!("--------------------------------------------------");
     println!("Type /help to see available commands or type /exit to quit.\n");
 
     let db = Arc::new(MemoryEngine::new(&db_path)?);
-    let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path));
+    let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
     let provider = Arc::new(OllamaProvider::new(&config));
+    
+    // Dynamic Skills Registry
+    let skills_registry = Arc::new(SkillsRegistry::scan_dir(&skills_dir)?);
+    println!("Discovered {} dynamic skill(s) in registry.", skills_registry.skills.len());
 
-    // Initialize Agent Router
-    let mut router = AgentRouter::load_from_file(&agents_path)?;
+    // Safe Command Runner
+    let command_runner = Arc::new(SafeCommandRunner::new(
+        config.security.allowed_binaries.clone(),
+        workspace_path.clone(),
+    ));
+
+    // Initialize Session Router
+    let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
 
     // Spawn Background Scheduler
     let scheduler = CronScheduler::new(
@@ -116,24 +160,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.telegram.clone(),
         db.clone(),
         provider.clone(),
-        agents_path.clone(),
+        session_router.clone(),
+        skills_registry.clone(),
+        command_runner.clone(),
+        workspace_path.clone(),
     );
     tg_gateway.start();
 
     // Approximate character-to-token ratio (1 token = 4 chars)
     let context_chars_limit = config.ollama.context_window * 4;
 
+    // Channel for Async Stdin Multiplexing
+    let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
+    tokio::task::spawn_blocking(move || {
+        use std::io::BufRead;
+        let stdin = io::stdin();
+        let mut reader = stdin.lock();
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if stdin_tx.blocking_send(line).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let session_id = "terminal";
+
     loop {
+        let mut router = session_router.get_or_create(session_id)?;
         let active_name = &router.active_agent;
         print!("Hiroshi [{}] > ", active_name);
         io::stdout().flush()?;
 
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input)? == 0 {
-            break; // EOF
-        }
+        let input_line = tokio::select! {
+            line = stdin_rx.recv() => {
+                match line {
+                    Some(l) => l,
+                    None => break,
+                }
+            }
+        };
 
-        let input = input.trim();
+        let input = input_line.trim();
         if input.is_empty() {
             continue;
         }
@@ -156,8 +230,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  /write <path> <content> - Write file inside workspace");
                     println!("  /agent <name>           - Switch active agent");
                     println!("  /agents                 - List all registered agents");
+                    println!("  /skills                 - List discovered polyglot skills");
                     println!("  /clear                  - Clear conversation history");
                     println!("  /exit                   - Quit Hiroshi");
+                }
+                "/skills" => {
+                    println!("Discovered Skills:");
+                    if skills_registry.skills.is_empty() {
+                        println!("  No dynamic skills found.");
+                    } else {
+                        for skill in &skills_registry.skills {
+                            println!("  - {}: description: '{}', path: '{}'", skill.name, skill.description, skill.executable_path.to_string_lossy());
+                        }
+                    }
                 }
                 "/agents" => {
                     println!("Registered Agents in AGENTS.md:");
@@ -170,6 +255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Usage: /agent <agent_name>");
                     } else if router.switch_agent(parts[1]) {
                         println!("Switched active agent to: {}", parts[1]);
+                        let _ = session_router.update(session_id, router.clone());
                     } else {
                         println!("Agent '{}' not found in AGENTS.md", parts[1]);
                     }
@@ -202,10 +288,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Save User Message
-        db.add_message("user", input)?;
+        let _ = db.add_message_with_vector("user", input, &provider).await;
 
         // Query RAG match context
-        let rag_matches = db.search_rag_history(input, 3)?;
+        let query_vector = provider.get_embeddings(input).await.unwrap_or_default();
+        let rag_matches = if !query_vector.is_empty() {
+            db.search_vector_rag(&query_vector, 3)?
+        } else {
+            db.search_rag_history(input, 3)?
+        };
         let mut rag_context = String::new();
         if !rag_matches.is_empty() {
             rag_context.push_str("\n--- Relevant historical memory context ---\n");
@@ -224,11 +315,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let active_agent = router.get_active_agent()
                 .ok_or_else(|| "No active agent found".to_string())?;
 
+            // Generate dynamic skills descriptors list
+            let mut dynamic_skills_str = String::new();
+            if !skills_registry.skills.is_empty() {
+                dynamic_skills_str.push_str("\nYou can also execute the following dynamic skills by outputting XML tags format:\n");
+                for skill in &skills_registry.skills {
+                    dynamic_skills_str.push_str(&format!(
+                        "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
+                        skill.name,
+                        if skill.schema.is_empty() { "JSON_ARGS" } else { &skill.schema },
+                        skill.description
+                    ));
+                }
+            }
+
             let system_prompt = format!(
-                "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n\n{}",
+                "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a built-in file tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
                 active_agent.prompt,
                 active_agent.hand_off,
                 active_agent.allowed_tools,
+                dynamic_skills_str,
                 rag_context
             );
 
@@ -275,13 +381,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Save Assistant Message
-            db.add_message("assistant", &full_response)?;
+            let _ = db.add_message_with_vector("assistant", &full_response, &provider).await;
 
             // Check if hand-off to another agent is triggered
             if let Some(next_agent) = router.detect_handoff(&full_response) {
                 println!("\n[Handoff Route] Switching from {} to {}", router.active_agent, next_agent);
                 router.switch_agent(&next_agent);
-                // Continue the loop turn to let the next agent run
+                let _ = session_router.update(session_id, router.clone());
                 continue;
             }
 
@@ -335,9 +441,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
+                    ToolCall::CallTool { name, json_args } => {
+                        println!("\n>> Running Tool: call_tool({}, {})", name, json_args);
+                        if !active_agent.allowed_tools.contains(&name) {
+                            let err_msg = format!("Permission Denied: Active agent does not have permission to use dynamic skill/binary '{}'.", name);
+                            println!(">> {}", err_msg);
+                            db.add_message("user", &err_msg)?;
+                            continue;
+                        }
+
+                        if let Some(skill) = skills_registry.get_skill(&name) {
+                            match skill.run_ipc(&json_args, &workspace_path).await {
+                                Ok(stdout) => {
+                                    let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
+                                    db.add_message("user", &result_msg)?;
+                                    println!(">> Skill executed successfully.");
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Skill '{}' execution failed: {}", name, e);
+                                    db.add_message("user", &err_msg)?;
+                                    println!(">> Skill failed: {}", e);
+                                }
+                            }
+                        } else if config.security.allowed_binaries.contains(&name) {
+                            let cmd_line = format!("{} {}", name, json_args.trim_matches('"'));
+                            match command_runner.run_command(&cmd_line).await {
+                                Ok(stdout) => {
+                                    let result_msg = format!("Command '{}' execution output:\n{}", name, stdout);
+                                    db.add_message("user", &result_msg)?;
+                                    println!(">> Command executed successfully.");
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Command '{}' execution failed: {}", name, e);
+                                    db.add_message("user", &err_msg)?;
+                                    println!(">> Command failed: {}", e);
+                                }
+                            }
+                        } else {
+                            let err_msg = format!("Execution Error: Tool/Skill '{}' is neither registered as a dynamic skill nor whitelisted as an allowed system binary.", name);
+                            db.add_message("user", &err_msg)?;
+                            println!(">> {}", err_msg);
+                        }
+                    }
                 }
             }
         }
+        let _ = session_router.update(session_id, router.clone());
     }
 
     Ok(())

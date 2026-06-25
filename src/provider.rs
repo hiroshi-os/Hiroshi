@@ -38,12 +38,24 @@ pub struct ChunkMessage {
     pub content: String,
 }
 
+#[derive(Serialize)]
+struct OllamaEmbeddingRequest {
+    model: String,
+    prompt: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaEmbeddingResponse {
+    embedding: Vec<f32>,
+}
+
 pub struct OllamaProvider {
     client: reqwest::Client,
     host: String,
     model: String,
     temperature: f32,
     context_window: usize,
+    embedding_model: String,
 }
 
 impl OllamaProvider {
@@ -54,7 +66,34 @@ impl OllamaProvider {
             model: config.ollama.model.clone(),
             temperature: config.ollama.temperature,
             context_window: config.ollama.context_window,
+            embedding_model: config.ollama.embedding_model.clone(),
         }
+    }
+
+    pub async fn get_embeddings(&self, prompt: &str) -> Result<Vec<f32>, String> {
+        let request_body = OllamaEmbeddingRequest {
+            model: self.embedding_model.clone(),
+            prompt: prompt.to_string(),
+        };
+
+        let url = format!("{}/api/embeddings", self.host);
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to Ollama embeddings API at '{}': {}", url, e))?;
+
+        if !response.status().is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(format!("Ollama embeddings API returned error: {}", err_text));
+        }
+
+        let body = response.json::<OllamaEmbeddingResponse>().await
+            .map_err(|e| format!("Failed to parse embeddings JSON: {}", e))?;
+
+        Ok(body.embedding)
     }
 
     pub async fn chat_stream(
