@@ -201,7 +201,13 @@ async fn handle_telegram_message(
         let active_agent = router.get_active_agent()
             .ok_or_else(|| "No active agent found".to_string())?;
 
-        let system_prompt = format!("{}\n{}", active_agent.prompt, rag_context);
+        let system_prompt = format!(
+            "{}\nHand-off Rule: {}\nAllowed Tools: {:?}\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n\n{}",
+            active_agent.prompt,
+            active_agent.hand_off,
+            active_agent.allowed_tools,
+            rag_context
+        );
         let history = db.get_context(16384)?; // Context window char limit approx
 
         let mut stream = provider.chat_stream(&system_prompt, history).await?;

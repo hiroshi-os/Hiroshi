@@ -225,8 +225,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or_else(|| "No active agent found".to_string())?;
 
             let system_prompt = format!(
-                "{}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\n{}",
+                "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n\n{}",
                 active_agent.prompt,
+                active_agent.hand_off,
                 active_agent.allowed_tools,
                 rag_context
             );
