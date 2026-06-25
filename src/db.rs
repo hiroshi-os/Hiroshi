@@ -1,0 +1,213 @@
+use rusqlite::{params, Connection};
+use std::fs;
+use std::path::Path;
+use std::sync::Mutex;
+use chrono::Local;
+use crate::provider::OllamaProvider;
+
+#[derive(Debug, Clone)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+pub struct MemoryEngine {
+    conn: Mutex<Connection>,
+}
+
+impl MemoryEngine {
+    pub fn new(db_path: &Path) -> Result<Self, String> {
+        let conn = Connection::open(db_path)
+            .map_err(|e| format!("Failed to open SQLite database: {}", e))?;
+            
+        // Standard chat history
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL
+             )",
+            [],
+        ).map_err(|e| format!("Failed to create history table: {}", e))?;
+        
+        // FTS5 Virtual Table for semantic search
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
+                role,
+                content
+             )",
+            [],
+        ).map_err(|e| format!("Failed to create history_fts virtual table: {}", e))?;
+        
+        Ok(Self { conn: Mutex::new(conn) })
+    }
+
+    pub fn add_message(&self, role: &str, content: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        
+        conn.execute(
+            "INSERT INTO history (role, content) VALUES (?1, ?2)",
+            params![role, content],
+        ).map_err(|e| format!("Failed to insert chat history: {}", e))?;
+        
+        conn.execute(
+            "INSERT INTO history_fts (role, content) VALUES (?1, ?2)",
+            params![role, content],
+        ).map_err(|e| format!("Failed to index in FTS5: {}", e))?;
+        
+        Ok(())
+    }
+
+    pub fn get_context(&self, context_limit_chars: usize) -> Result<Vec<ChatMessage>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        
+        let mut stmt = conn.prepare(
+            "SELECT role, content FROM history ORDER BY id DESC"
+        ).map_err(|e| format!("Failed to prepare history query: {}", e))?;
+        
+        let rows = stmt.query_map([], |row| {
+            Ok(ChatMessage {
+                role: row.get(0)?,
+                content: row.get(1)?,
+            })
+        }).map_err(|e| format!("Failed to execute history query: {}", e))?;
+        
+        let mut messages = Vec::new();
+        let mut total_chars = 0;
+        
+        for row in rows {
+            if let Ok(msg) = row {
+                let msg_len = msg.content.len();
+                if total_chars + msg_len > context_limit_chars {
+                    break;
+                }
+                total_chars += msg_len;
+                messages.push(msg);
+            }
+        }
+        
+        messages.reverse();
+        Ok(messages)
+    }
+
+    pub fn search_rag_history(&self, query: &str, limit: usize) -> Result<Vec<ChatMessage>, String> {
+        let clean_query = query.replace('"', "").replace('\'', "").replace('*', "");
+        if clean_query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT role, content FROM history_fts WHERE content MATCH ?1 LIMIT ?2"
+        ).map_err(|e| format!("Failed to prepare RAG search query: {}", e))?;
+
+        let rows = stmt.query_map(params![clean_query, limit], |row| {
+            Ok(ChatMessage {
+                role: row.get(0)?,
+                content: row.get(1)?,
+            })
+        }).map_err(|e| format!("Failed to execute RAG search: {}", e))?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            if let Ok(msg) = row {
+                results.push(msg);
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn export_daily_log(&self, memory_dir: &Path) -> Result<(), String> {
+        let date_str = Local::now().format("%Y-%m-%d").to_string();
+        let log_file_path = memory_dir.join(format!("{}.md", date_str));
+
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT timestamp, role, content FROM history WHERE date(timestamp) = date('now') ORDER BY id ASC"
+        ).map_err(|e| format!("Failed to prepare daily query: {}", e))?;
+
+        let rows = stmt.query_map([], |row| {
+            let timestamp: String = row.get(0)?;
+            let role: String = row.get(1)?;
+            let content: String = row.get(2)?;
+            Ok(format!("### [{}] {}\n{}\n", timestamp, role, content))
+        }).map_err(|e| format!("Failed to execute daily query: {}", e))?;
+
+        let mut log_content = format!("# Hiroshi Log - {}\n\n", date_str);
+        for row in rows {
+            if let Ok(line) = row {
+                log_content.push_str(&line);
+                log_content.push('\n');
+            }
+        }
+
+        fs::write(&log_file_path, log_content)
+            .map_err(|e| format!("Failed to export daily markdown thread: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn compact_memory(&self, memory_dir: &Path, provider: &OllamaProvider) -> Result<(), String> {
+        let history = self.get_context(8000)?;
+        if history.is_empty() {
+            return Ok(());
+        }
+
+        let mut history_text = String::new();
+        for msg in &history {
+            history_text.push_str(&format!("{}: {}\n", msg.role, msg.content));
+        }
+
+        let prompt = format!(
+            "Analyze this interaction history and summarize the key architectural rules, configurations, code styles, and guidelines discovered or agreed upon. Keep it concise:\n\n{}",
+            history_text
+        );
+
+        let system_prompt = "You are Hiroshi Memory Compactor. Extract and write bullet-point summaries of project details, configurations, and decisions.";
+
+        let mut stream = provider.chat_stream(system_prompt, vec![ChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        }]).await?;
+
+        use futures_util::StreamExt;
+        let mut summary = String::new();
+        while let Some(chunk_res) = stream.next().await {
+            if let Ok(text) = chunk_res {
+                summary.push_str(&text);
+            }
+        }
+
+        if summary.trim().is_empty() {
+            return Ok(());
+        }
+
+        let memory_file_path = memory_dir.join("MEMORY.md");
+        let date_str = Local::now().format("%Y-%m-%d").to_string();
+        
+        let mut existing_content = if memory_file_path.exists() {
+            fs::read_to_string(&memory_file_path).unwrap_or_default()
+        } else {
+            "# Hiroshi Master Memory\n\n".to_string()
+        };
+
+        existing_content.push_str(&format!("\n## Updated on {}\n{}\n", date_str, summary));
+
+        fs::write(&memory_file_path, existing_content)
+            .map_err(|e| format!("Failed to write master memory file: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn clear_history(&self) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        conn.execute("DELETE FROM history", [])
+            .map_err(|e| format!("Failed to clear history: {}", e))?;
+        conn.execute("DELETE FROM history_fts", [])
+            .map_err(|e| format!("Failed to clear history index: {}", e))?;
+        Ok(())
+    }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "Hiroshi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5.0"
+futures-util = "0.3"
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["codec"] }
+tempfile = "3.10"
+chrono = "0.4"
