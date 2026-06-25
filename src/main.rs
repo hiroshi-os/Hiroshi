@@ -7,6 +7,9 @@ mod cron;
 mod telegram;
 mod sandbox_cmd;
 mod skills;
+mod onboard;
+mod mcp;
+mod web;
 
 use config::init_hiroshi_dir;
 use db::MemoryEngine;
@@ -108,7 +111,7 @@ use tracing_subscriber::{fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (config, db_path, workspace_path, agents_path, memory_dir, skills_dir) = match init_hiroshi_dir() {
+    let (config, db_path, workspace_path, agents_path, memory_dir, skills_dir) = match init_hiroshi_dir().await {
         Ok(paths) => paths,
         Err(e) => {
             eprintln!("Initialization failure: {}", e);
@@ -171,6 +174,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workspace_path.clone(),
     ));
 
+    // Initialize MCP Registry & Clients
+    let mcp_registry = Arc::new(mcp::McpRegistry::new(&config.mcp_servers));
+    mcp_registry.initialize_all().await;
+
     // Initialize Session Router
     let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
     let shutdown_token = tokio_util::sync::CancellationToken::new();
@@ -192,10 +199,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         provider.clone(),
         session_router.clone(),
         skills_registry.clone(),
+        mcp_registry.clone(),
         command_runner.clone(),
         workspace_path.clone(),
     );
     tg_gateway.start(shutdown_token.clone());
+
+    // Spawn local Web UI dashboard server (Port 8080)
+    let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
+    let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+    let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
+    let web_addr = "127.0.0.1:8080".parse().unwrap();
+    web::start_web_server(web_addr, web_input_tx, ws_tx.clone(), active_agent_name.clone());
 
     // Approximate character-to-token ratio (1 token = 4 chars)
     let context_chars_limit = config.ollama.context_window * 4;
@@ -224,12 +239,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         let mut router = session_router.get_or_create(session_id)?;
+        {
+            let mut guard = active_agent_name.lock().unwrap();
+            *guard = router.active_agent.clone();
+        }
+        
         let active_name = &router.active_agent;
         print!("Hiroshi [{}] > ", active_name);
         io::stdout().flush()?;
 
         let input_line = tokio::select! {
             line = stdin_rx.recv() => {
+                match line {
+                    Some(l) => l,
+                    None => break,
+                }
+            }
+            line = web_input_rx.recv() => {
                 match line {
                     Some(l) => l,
                     None => break,
@@ -370,6 +396,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            let mcp_tools = mcp_registry.get_all_tools().await;
+            if !mcp_tools.is_empty() {
+                dynamic_skills_str.push_str("\nYou can also execute the following Model Context Protocol (MCP) tools by outputting XML tags format:\n");
+                for tool in &mcp_tools {
+                    if let Some(obj) = tool.as_object() {
+                        let t_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let desc = obj.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                        let input_schema = obj.get("inputSchema");
+                        let schema_str = input_schema
+                            .map(|schema| serde_json::to_string(schema).unwrap_or_else(|_| "JSON_ARGS".to_string()))
+                            .unwrap_or_else(|| "JSON_ARGS".to_string());
+                        dynamic_skills_str.push_str(&format!(
+                            "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
+                            t_name,
+                            schema_str,
+                            desc
+                        ));
+                    }
+                }
+            }
+
             let system_prompt = format!(
                 "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a built-in file tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
                 active_agent.prompt,
@@ -402,6 +449,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 print!("{}", text);
                                 io::stdout().flush()?;
                                 full_response.push_str(&text);
+
+                                // Broadcast token chunk to WebSocket clients
+                                let ws_msg = serde_json::json!({
+                                    "type": "chat_chunk",
+                                    "role": "assistant",
+                                    "content": text
+                                });
+                                if let Ok(msg_str) = serde_json::to_string(&ws_msg) {
+                                    let _ = ws_tx.send(msg_str);
+                                }
                             }
                             Err(e) => {
                                 eprintln!("\nStream Error: {}", e);
@@ -429,6 +486,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("\n[Handoff Route] Switching from {} to {}", router.active_agent, next_agent);
                 router.switch_agent(&next_agent);
                 let _ = session_router.update(session_id, router.clone());
+                {
+                    let mut guard = active_agent_name.lock().unwrap();
+                    *guard = router.active_agent.clone();
+                }
                 continue;
             }
 
@@ -505,6 +566,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let err_msg = format!("Skill '{}' execution failed: {}", name, e);
                                     db.add_message("user", &err_msg)?;
                                     println!(">> Skill failed: {}", e);
+                                }
+                            }
+                        } else if mcp_registry.clients.keys().any(|k| name.starts_with(&(k.to_owned() + "__"))) {
+                            let start_mcp = Instant::now();
+                            let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                            match mcp_registry.execute_tool(&name, args_val).await {
+                                Ok(output) => {
+                                    tracing::info!("MCP tool execution '{}' took {:?}", name, start_mcp.elapsed());
+                                    let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
+                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
+                                    println!(">> MCP Tool executed successfully.");
+                                }
+                                Err(e) => {
+                                    tracing::error!("MCP tool execution '{}' failed after {:?}", name, start_mcp.elapsed());
+                                    let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
+                                    db.add_message("user", &err_msg)?;
+                                    println!(">> MCP Tool failed: {}", e);
                                 }
                             }
                         } else if config.security.allowed_binaries.contains(&name) {

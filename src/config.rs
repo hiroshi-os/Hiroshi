@@ -85,6 +85,12 @@ impl Default for CronConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct McpServerConfig {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub engine: EngineConfig,
     pub ollama: OllamaConfig,
@@ -93,6 +99,8 @@ pub struct AppConfig {
     pub telegram: TelegramConfig,
     #[serde(default)]
     pub cron: CronConfig,
+    #[serde(default)]
+    pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
 }
 
 impl Default for AppConfig {
@@ -116,6 +124,7 @@ impl Default for AppConfig {
             },
             telegram: TelegramConfig::default(),
             cron: CronConfig::default(),
+            mcp_servers: std::collections::HashMap::new(),
         }
     }
 }
@@ -136,7 +145,7 @@ pub fn resolve_home_path(path: &str) -> PathBuf {
     }
 }
 
-pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf), String> {
+pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf), String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     let hiroshi_dir = home.join(".hiroshi");
     
@@ -172,10 +181,12 @@ pub fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf, PathB
         let has_cron = content.contains("[cron]") || content.contains("[[cron.tasks]]");
         let has_allowed_binaries = content.contains("allowed_binaries");
         let has_embedding_model = content.contains("embedding_model");
+        let has_mcp = content.contains("mcp_servers");
         
-        (parsed, !has_telegram || !has_cron || !has_allowed_binaries || !has_embedding_model)
+        (parsed, !has_telegram || !has_cron || !has_allowed_binaries || !has_embedding_model || !has_mcp)
     } else {
-        (AppConfig::default(), true)
+        let parsed = crate::onboard::run_onboarding_wizard(&config_path).await?;
+        (parsed, false)
     };
     
     if needs_rewrite {

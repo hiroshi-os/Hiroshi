@@ -5,6 +5,7 @@ use crate::agents::SessionRouter;
 use crate::sandbox::WorkspaceSandbox;
 use crate::sandbox_cmd::SafeCommandRunner;
 use crate::skills::SkillsRegistry;
+use crate::mcp::McpRegistry;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -142,6 +143,7 @@ pub struct TelegramGateway {
     provider: Arc<OllamaProvider>,
     session_router: Arc<SessionRouter>,
     skills_registry: Arc<SkillsRegistry>,
+    mcp_registry: Arc<McpRegistry>,
     command_runner: Arc<SafeCommandRunner>,
     workspace_path: std::path::PathBuf,
     client: reqwest::Client,
@@ -154,6 +156,7 @@ impl TelegramGateway {
         provider: Arc<OllamaProvider>,
         session_router: Arc<SessionRouter>,
         skills_registry: Arc<SkillsRegistry>,
+        mcp_registry: Arc<McpRegistry>,
         command_runner: Arc<SafeCommandRunner>,
         workspace_path: std::path::PathBuf,
     ) -> Self {
@@ -163,6 +166,7 @@ impl TelegramGateway {
             provider,
             session_router,
             skills_registry,
+            mcp_registry,
             command_runner,
             workspace_path,
             client: reqwest::Client::new(),
@@ -215,6 +219,7 @@ impl TelegramGateway {
                                                 let provider_clone = self.provider.clone();
                                                 let session_router_clone = self.session_router.clone();
                                                 let skills_registry_clone = self.skills_registry.clone();
+                                                let mcp_registry_clone = self.mcp_registry.clone();
                                                 let command_runner_clone = self.command_runner.clone();
                                                 let sandbox_clone = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
                                                 let token_clone = token.clone();
@@ -229,6 +234,7 @@ impl TelegramGateway {
                                                         provider_clone,
                                                         session_router_clone,
                                                         skills_registry_clone,
+                                                        mcp_registry_clone,
                                                         command_runner_clone,
                                                         sandbox_clone,
                                                         &token_clone,
@@ -261,6 +267,7 @@ async fn handle_telegram_message(
     provider: Arc<OllamaProvider>,
     session_router: Arc<SessionRouter>,
     skills_registry: Arc<SkillsRegistry>,
+    mcp_registry: Arc<McpRegistry>,
     command_runner: Arc<SafeCommandRunner>,
     sandbox: Arc<WorkspaceSandbox>,
     token: &str,
@@ -325,6 +332,27 @@ async fn handle_telegram_message(
                     if skill.schema.is_empty() { "JSON_ARGS" } else { &skill.schema },
                     skill.description
                 ));
+            }
+        }
+
+        let mcp_tools = mcp_registry.get_all_tools().await;
+        if !mcp_tools.is_empty() {
+            dynamic_skills_str.push_str("\nYou can also execute the following Model Context Protocol (MCP) tools by outputting XML tags format:\n");
+            for tool in &mcp_tools {
+                if let Some(obj) = tool.as_object() {
+                    let t_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                    let desc = obj.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                    let input_schema = obj.get("inputSchema");
+                    let schema_str = input_schema
+                        .map(|schema| serde_json::to_string(schema).unwrap_or_else(|_| "JSON_ARGS".to_string()))
+                        .unwrap_or_else(|| "JSON_ARGS".to_string());
+                    dynamic_skills_str.push_str(&format!(
+                        "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
+                        t_name,
+                        schema_str,
+                        desc
+                    ));
+                }
             }
         }
 
@@ -438,6 +466,18 @@ async fn handle_telegram_message(
                             }
                             Err(e) => {
                                 let err_msg = format!("Skill '{}' execution failed: {}", name, e);
+                                db.add_message("user", &err_msg)?;
+                            }
+                        }
+                    } else if mcp_registry.clients.keys().any(|k| name.starts_with(&(k.to_owned() + "__"))) {
+                        let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                        match mcp_registry.execute_tool(&name, args_val).await {
+                            Ok(output) => {
+                                let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
+                                db.add_message("user", &result_msg)?;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
                                 db.add_message("user", &err_msg)?;
                             }
                         }
