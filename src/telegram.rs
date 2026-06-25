@@ -169,23 +169,33 @@ impl TelegramGateway {
         }
     }
 
-    pub fn start(self) {
+    pub fn start(self, shutdown_token: tokio_util::sync::CancellationToken) {
         if !self.config.enabled {
-            println!("[Telegram] Gateway is disabled in config.");
+            tracing::info!("Telegram Gateway is disabled in config.");
             return;
         }
 
         let workspace_path = self.workspace_path.clone();
 
         tokio::spawn(async move {
-            println!("[Telegram] Gateway listening service started.");
+            tracing::info!("Telegram Gateway listening service started.");
             let mut offset = 0;
             let token = &self.config.token;
             let url_get_updates = format!("https://api.telegram.org/bot{}/getUpdates", token);
 
             loop {
                 let poll_url = format!("{}?offset={}&timeout=30", url_get_updates, offset);
-                match self.client.get(&poll_url).send().await {
+                let send_req = self.client.get(&poll_url).send();
+                
+                let resp = tokio::select! {
+                    _ = shutdown_token.cancelled() => {
+                        tracing::info!("Telegram Gateway shutting down poll loop...");
+                        break;
+                    }
+                    r = send_req => r,
+                };
+
+                match resp {
                     Ok(resp) => {
                         if let Ok(tg_resp) = resp.json::<TelegramResponse<Vec<TelegramUpdate>>>().await {
                             if tg_resp.ok {
@@ -196,7 +206,7 @@ impl TelegramGateway {
                                             let from_id = msg.from.map(|f| f.id).unwrap_or(0);
                                             
                                             if !self.config.allowed_user_ids.contains(&from_id) {
-                                                println!("[Telegram Security] Blocked unauthorized message from user: {}", from_id);
+                                                tracing::warn!("Telegram Security: Blocked unauthorized message from user: {}", from_id);
                                                 continue;
                                             }
 

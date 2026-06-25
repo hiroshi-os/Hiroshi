@@ -104,10 +104,10 @@ fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
     calls
 }
 
+use tracing_subscriber::{fmt, prelude::*};
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Initializing Hiroshi Daemon (Phase 3)...");
-    
     let (config, db_path, workspace_path, agents_path, memory_dir, skills_dir) = match init_hiroshi_dir() {
         Ok(paths) => paths,
         Err(e) => {
@@ -116,17 +116,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    println!("--------------------------------------------------");
-    println!("System Name:  {}", config.engine.system_name);
-    println!("Log Level:    {}", config.engine.log_level);
-    println!("Ollama Host:  {}", config.ollama.host);
-    println!("Model Name:   {}", config.ollama.model);
-    println!("Workspace:    {}", workspace_path.to_string_lossy());
-    println!("Database:     {}", db_path.to_string_lossy());
-    println!("Agents File:  {}", agents_path.to_string_lossy());
-    println!("Skills Dir:   {}", skills_dir.to_string_lossy());
-    println!("--------------------------------------------------");
-    println!("Type /help to see available commands or type /exit to quit.\n");
+    // Initialize structured logging
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    let log_file_path = home.join(".hiroshi").join("hiroshi.log");
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(&log_file_path)?;
+
+    let file_layer = fmt::layer()
+        .with_writer(log_file)
+        .with_ansi(false);
+
+    let stdout_layer = fmt::layer()
+        .with_writer(std::io::stdout);
+
+    let directive = match config.engine.log_level.to_lowercase().as_str() {
+        "debug" => tracing::Level::DEBUG,
+        "warn" => tracing::Level::WARN,
+        "error" => tracing::Level::ERROR,
+        _ => tracing::Level::INFO,
+    };
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env().add_directive(directive.into()))
+        .with(stdout_layer)
+        .with(file_layer)
+        .init();
+
+    tracing::info!("--------------------------------------------------");
+    tracing::info!("System Name:  {}", config.engine.system_name);
+    tracing::info!("Log Level:    {}", config.engine.log_level);
+    tracing::info!("Ollama Host:  {}", config.ollama.host);
+    tracing::info!("Model Name:   {}", config.ollama.model);
+    tracing::info!("Workspace:    {}", workspace_path.to_string_lossy());
+    tracing::info!("Database:     {}", db_path.to_string_lossy());
+    tracing::info!("Agents File:  {}", agents_path.to_string_lossy());
+    tracing::info!("Skills Dir:   {}", skills_dir.to_string_lossy());
+    tracing::info!("--------------------------------------------------");
+    tracing::info!("Type /help to see available commands or type /exit to quit.\n");
 
     let db = Arc::new(MemoryEngine::new(&db_path)?);
     let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
@@ -134,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Dynamic Skills Registry
     let skills_registry = Arc::new(SkillsRegistry::scan_dir(&skills_dir)?);
-    println!("Discovered {} dynamic skill(s) in registry.", skills_registry.skills.len());
+    tracing::info!("Discovered {} dynamic skill(s) in registry.", skills_registry.skills.len());
 
     // Safe Command Runner
     let command_runner = Arc::new(SafeCommandRunner::new(
@@ -144,6 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize Session Router
     let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
+    let shutdown_token = tokio_util::sync::CancellationToken::new();
 
     // Spawn Background Scheduler
     let scheduler = CronScheduler::new(
@@ -153,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sandbox.clone(),
         memory_dir.clone(),
     );
-    scheduler.start();
+    scheduler.start(shutdown_token.clone());
 
     // Spawn Telegram Long-polling gateway
     let tg_gateway = TelegramGateway::new(
@@ -165,7 +195,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command_runner.clone(),
         workspace_path.clone(),
     );
-    tg_gateway.start();
+    tg_gateway.start(shutdown_token.clone());
 
     // Approximate character-to-token ratio (1 token = 4 chars)
     let context_chars_limit = config.ollama.context_window * 4;
@@ -205,6 +235,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     None => break,
                 }
             }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("Ctrl+C signal received. Starting graceful shutdown cascade...");
+                shutdown_token.cancel();
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                break;
+            }
         };
 
         let input = input_line.trim();
@@ -217,12 +253,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let parts: Vec<&str> = input.splitn(3, ' ').collect();
             match parts[0] {
                 "/exit" | "/quit" => {
-                    println!("Goodbye!");
+                    tracing::info!("Exit command received.");
                     break;
                 }
                 "/clear" => {
                     db.clear_history()?;
-                    println!("Conversation history cleared.");
+                    tracing::info!("Conversation history cleared.");
                 }
                 "/help" => {
                     println!("Available commands:");
@@ -288,15 +324,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Save User Message
+        let start_embed = Instant::now();
         let _ = db.add_message_with_vector("user", input, &provider).await;
 
         // Query RAG match context
         let query_vector = provider.get_embeddings(input).await.unwrap_or_default();
+        tracing::info!("Local embedding generation took {:?}", start_embed.elapsed());
+
+        let start_db = Instant::now();
         let rag_matches = if !query_vector.is_empty() {
             db.search_vector_rag(&query_vector, 3)?
         } else {
             db.search_rag_history(input, 3)?
         };
+        tracing::info!("Vector database retrieval took {:?}", start_db.elapsed());
         let mut rag_context = String::new();
         if !rag_matches.is_empty() {
             rag_context.push_str("\n--- Relevant historical memory context ---\n");
@@ -451,13 +492,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if let Some(skill) = skills_registry.get_skill(&name) {
+                            let start_tool = Instant::now();
                             match skill.run_ipc(&json_args, &workspace_path).await {
                                 Ok(stdout) => {
+                                    tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_tool.elapsed());
                                     let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
-                                    db.add_message("user", &result_msg)?;
+                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
                                     println!(">> Skill executed successfully.");
                                 }
                                 Err(e) => {
+                                    tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_tool.elapsed());
                                     let err_msg = format!("Skill '{}' execution failed: {}", name, e);
                                     db.add_message("user", &err_msg)?;
                                     println!(">> Skill failed: {}", e);
@@ -465,13 +509,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         } else if config.security.allowed_binaries.contains(&name) {
                             let cmd_line = format!("{} {}", name, json_args.trim_matches('"'));
+                            let start_cmd = Instant::now();
                             match command_runner.run_command(&cmd_line).await {
                                 Ok(stdout) => {
+                                    tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_cmd.elapsed());
                                     let result_msg = format!("Command '{}' execution output:\n{}", name, stdout);
-                                    db.add_message("user", &result_msg)?;
+                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
                                     println!(">> Command executed successfully.");
                                 }
                                 Err(e) => {
+                                    tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_cmd.elapsed());
                                     let err_msg = format!("Command '{}' execution failed: {}", name, e);
                                     db.add_message("user", &err_msg)?;
                                     println!(">> Command failed: {}", e);
@@ -489,5 +536,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = session_router.update(session_id, router.clone());
     }
 
+    // Graceful Shutdown Cascade
+    tracing::info!("Halted new terminal messages.");
+    tracing::info!("Flushing database buffers...");
+    drop(db);
+    tracing::info!("Shutdown cascade complete. Exiting.");
     Ok(())
 }

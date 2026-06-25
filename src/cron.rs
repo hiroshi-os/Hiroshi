@@ -32,7 +32,7 @@ impl CronScheduler {
         }
     }
 
-    pub fn start(self) {
+    pub fn start(self, shutdown_token: tokio_util::sync::CancellationToken) {
         let tasks = self.tasks;
         let db = self.db;
         let provider = self.provider;
@@ -40,16 +40,44 @@ impl CronScheduler {
         let memory_dir = self.memory_dir;
 
         tokio::spawn(async move {
-            println!("[Cron] Scheduler service started in the background.");
+            tracing::info!("Scheduler service started in the background.");
             loop {
                 let now = Local::now();
                 let sleep_secs = 60 - now.second();
-                tokio::time::sleep(Duration::from_secs(sleep_secs as u64)).await;
+                
+                tokio::select! {
+                    _ = shutdown_token.cancelled() => {
+                        tracing::info!("Cron Scheduler shutting down...");
+                        break;
+                    }
+                    _ = tokio::time::sleep(Duration::from_secs(sleep_secs as u64)) => {}
+                }
 
                 let check_time = Local::now();
+
+                // Weekly DB Maintenance (Every Sunday at 3:00 AM)
+                if check_time.weekday().num_days_from_sunday() == 0 && check_time.hour() == 3 && check_time.minute() == 0 {
+                    let db_clone = db.clone();
+                    let memory_dir_clone = memory_dir.clone();
+                    tokio::spawn(async move {
+                        tracing::info!("Running weekly database maintenance (vacuum & backup)...");
+                        let backup_dir = memory_dir_clone.parent().map(|p| p.join("backups")).unwrap_or_else(|| memory_dir_clone.join("backups"));
+                        if let Err(e) = db_clone.backup(&backup_dir) {
+                            tracing::error!("Database backup failed: {}", e);
+                        } else {
+                            tracing::info!("Database backup saved successfully to {:?}", backup_dir);
+                        }
+                        if let Err(e) = db_clone.vacuum() {
+                            tracing::error!("Database vacuum failed: {}", e);
+                        } else {
+                            tracing::info!("Database vacuum completed successfully.");
+                        }
+                    });
+                }
+
                 for task in &tasks {
                     if should_run_cron(&task.schedule, check_time) {
-                        println!("[Cron] Triggered background task: {}", task.name);
+                        tracing::info!("Triggered background task: {}", task.name);
                         let task_clone = task.clone();
                         let task_name = task.name.clone();
                         let db_clone = db.clone();
@@ -65,7 +93,7 @@ impl CronScheduler {
                                 sandbox_clone,
                                 memory_dir_clone,
                             ).await {
-                                eprintln!("[Cron Error] Failed to run task '{}': {}", task_name, e);
+                                tracing::error!("Failed to run task '{}': {}", task_name, e);
                             }
                         });
                     }
@@ -143,7 +171,7 @@ async fn execute_cron_task(
             for call in calls {
                 let CronToolCall::WriteFile { path, content } = call;
                 sandbox.write_file(&path, &content)?;
-                println!("[Cron Task '{}'] Wrote file '{}' to workspace.", task.name, path);
+                tracing::info!("Wrote file '{}' to workspace for task '{}'.", path, task.name);
             }
         } else {
             sandbox.write_file("cron_output.txt", &response)?;

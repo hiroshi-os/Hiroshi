@@ -38,6 +38,12 @@ impl MemoryEngine {
         let conn = Connection::open(db_path)
             .map_err(|e| format!("Failed to open SQLite database: {}", e))?;
             
+        // Enable WAL mode and synchronous normal
+        conn.execute("PRAGMA journal_mode = WAL;", [])
+            .map_err(|e| format!("Failed to set WAL mode: {}", e))?;
+        conn.execute("PRAGMA synchronous = NORMAL;", [])
+            .map_err(|e| format!("Failed to set synchronous mode: {}", e))?;
+            
         // Standard chat history
         conn.execute(
             "CREATE TABLE IF NOT EXISTS history (
@@ -301,6 +307,26 @@ impl MemoryEngine {
             .map_err(|e| format!("Failed to clear history index: {}", e))?;
         conn.execute("DELETE FROM history_vectors", [])
             .map_err(|e| format!("Failed to clear history vectors: {}", e))?;
+        Ok(())
+    }
+
+    pub fn vacuum(&self) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        conn.execute("VACUUM", [])
+            .map_err(|e| format!("Failed to vacuum database: {}", e))?;
+        Ok(())
+    }
+
+    pub fn backup(&self, backup_dir: &Path) -> Result<(), String> {
+        if !backup_dir.exists() {
+            fs::create_dir_all(backup_dir)
+                .map_err(|e| format!("Failed to create backup directory: {}", e))?;
+        }
+        let date_str = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+        let backup_path = backup_dir.join(format!("hiroshi_backup_{}.db", date_str));
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        conn.execute("VACUUM INTO ?1", params![backup_path.to_string_lossy()])
+            .map_err(|e| format!("Failed to backup database: {}", e))?;
         Ok(())
     }
 }
