@@ -107,8 +107,15 @@ fn load_skill_from_folder(folder_path: &Path) -> Result<Skill, String> {
         }
     }
 
-    let executable_path = executable_path
-        .ok_or_else(|| format!("No executable script/binary found in skill folder '{}'", name))?;
+    let folder_name_str = folder_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let is_mcp = name.starts_with("mcp__") || folder_name_str.starts_with("mcp__");
+
+    let executable_path = if is_mcp {
+        executable_path.unwrap_or_else(|| PathBuf::new())
+    } else {
+        executable_path
+            .ok_or_else(|| format!("No executable script/binary found in skill folder '{}'", name))?
+    };
 
     Ok(Skill {
         name,

@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hiroshi Dashboard</title>
+    <title>Hiroshi OS // Visual Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -14,6 +14,11 @@
                     fontFamily: {
                         sans: ['Outfit', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        cyan: {
+                            450: '#00f0ff',
+                        }
                     }
                 }
             }
@@ -22,88 +27,204 @@
     <style>
         body {
             font-family: 'Outfit', sans-serif;
-            background-color: #0b0c10;
+            background-color: #08090d;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.05) 0px, transparent 50%);
         }
         .mono-font {
             font-family: 'JetBrains Mono', monospace;
         }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.5);
+        }
+        .glow-effect {
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+        .glow-cyan {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
+        }
+        .agent-active-glow {
+            animation: pulse-border 2s infinite alternate;
+        }
+        @keyframes pulse-border {
+            0% {
+                border-color: rgba(16, 185, 129, 0.3);
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+            }
+            100% {
+                border-color: rgba(16, 185, 129, 0.8);
+                box-shadow: 0 0 18px rgba(16, 185, 129, 0.3);
+            }
+        }
     </style>
 </head>
-<body class="text-zinc-100 min-h-screen flex flex-col">
+<body class="text-zinc-100 min-h-screen flex flex-col overflow-hidden">
     <!-- Header -->
-    <header class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur px-6 py-4 flex items-center justify-between">
+    <header class="border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-md px-6 py-4 flex items-center justify-between z-10">
         <div class="flex items-center space-x-3">
-            <div class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span class="font-semibold text-lg tracking-wider text-zinc-200">HIROSHI // OS</span>
+            <div class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </div>
+            <span class="font-bold text-lg tracking-widest bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mono-font">HIROSHI // OS</span>
+            <span class="text-xs px-2 py-0.5 rounded border border-zinc-800 text-zinc-500 font-mono">v7.0</span>
         </div>
-        <div class="flex items-center space-x-6 text-sm text-zinc-400">
-            <div>RAM: <span id="ram-val" class="text-zinc-200 mono-font">-- MB</span></div>
-            <div>CPU: <span id="cpu-val" class="text-zinc-200 mono-font">--%</span></div>
-            <div>Speed: <span id="tps-val" class="text-zinc-200 mono-font">-- t/s</span></div>
+        
+        <!-- Live System telemetry -->
+        <div class="flex items-center space-x-8 text-xs text-zinc-400 border border-zinc-800/60 rounded-lg px-4 py-1.5 bg-zinc-900/30">
+            <div class="flex items-center space-x-2">
+                <span class="text-zinc-600 font-mono">RAM:</span>
+                <span id="ram-val" class="text-emerald-400 font-bold mono-font">-- MB</span>
+            </div>
+            <div class="w-px h-3 bg-zinc-800"></div>
+            <div class="flex items-center space-x-2">
+                <span class="text-zinc-600 font-mono">CPU:</span>
+                <span id="cpu-val" class="text-cyan-400 font-bold mono-font">--%</span>
+            </div>
+            <div class="w-px h-3 bg-zinc-800"></div>
+            <div class="flex items-center space-x-2">
+                <span class="text-zinc-600 font-mono">SPEED:</span>
+                <span id="tps-val" class="text-amber-400 font-bold mono-font">-- t/s</span>
+            </div>
         </div>
     </header>
 
-    <!-- Main Workspace -->
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden">
-        <!-- Sidebar: Session info / agents state -->
-        <aside class="col-span-1 lg:col-span-3 border-r border-zinc-800 bg-zinc-950/30 p-6 flex flex-col space-y-6">
+    <!-- Main Workspace Split-Pane -->
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden relative">
+        
+        <!-- Left Panel: Multi-Agent Theater & Skill Permissions -->
+        <aside class="col-span-1 lg:col-span-4 border-r border-zinc-800/80 bg-zinc-950/20 p-5 flex flex-col space-y-6 overflow-y-auto">
+            
+            <!-- Multi-Agent Theater -->
             <div>
-                <h3 class="text-xs uppercase tracking-widest text-zinc-500 mb-3">Active Soul Registry</h3>
-                <div class="space-y-2">
-                    <div class="p-3 bg-zinc-900/60 border border-zinc-800 rounded-lg flex items-center justify-between">
-                        <div>
-                            <div class="font-medium text-zinc-300">Lead Architect</div>
-                            <div class="text-xs text-zinc-500">System planning / RAG</div>
+                <div class="flex items-center justify-between mb-3.5">
+                    <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        Agent Theater
+                    </h3>
+                    <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Live Shifts</span>
+                </div>
+                
+                <div class="space-y-3">
+                    <!-- Architect Card -->
+                    <div id="card-Architect" class="p-3.5 bg-zinc-900/30 border border-zinc-800 rounded-xl transition-all duration-300 flex items-start justify-between">
+                        <div class="flex items-start space-x-3">
+                            <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mt-0.5">
+                                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-zinc-200 text-sm">Lead Architect</div>
+                                <div class="text-xs text-zinc-500 mt-0.5">Generates system plans, coordinates tasks, reads logs</div>
+                            </div>
                         </div>
-                        <span id="arch-indicator" class="h-2 w-2 rounded-full bg-zinc-700"></span>
+                        <span id="arch-indicator" class="h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1"></span>
                     </div>
-                    <div class="p-3 bg-zinc-900/60 border border-zinc-800 rounded-lg flex items-center justify-between">
-                        <div>
-                            <div class="font-medium text-zinc-300">Systems Programmer</div>
-                            <div class="text-xs text-zinc-500">Code generation / Sandbox</div>
+
+                    <!-- Developer Card -->
+                    <div id="card-Developer" class="p-3.5 bg-zinc-900/30 border border-zinc-800 rounded-xl transition-all duration-300 flex items-start justify-between">
+                        <div class="flex items-start space-x-3">
+                            <div class="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mt-0.5">
+                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                            </div>
+                            <div>
+                                <div class="font-semibold text-zinc-200 text-sm">Systems Developer</div>
+                                <div class="text-xs text-zinc-500 mt-0.5">Executes compiler checks, writes code inside sandboxes</div>
+                            </div>
                         </div>
-                        <span id="dev-indicator" class="h-2 w-2 rounded-full bg-zinc-700"></span>
+                        <span id="dev-indicator" class="h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1"></span>
                     </div>
                 </div>
             </div>
 
-            <div class="flex-1">
-                <h3 class="text-xs uppercase tracking-widest text-zinc-500 mb-3">Active MCP Servers</h3>
-                <div id="mcp-list" class="space-y-2 text-sm text-zinc-400">
-                    <div class="text-xs text-zinc-600">No active servers config.</div>
+            <!-- Dynamic Skill Permissions -->
+            <div class="flex-1 flex flex-col min-h-[300px]">
+                <div class="flex items-center justify-between mb-3.5">
+                    <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        Workspace Skill Hub
+                    </h3>
+                    <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Toggles</span>
+                </div>
+                
+                <!-- Skills Panel Grid -->
+                <div id="skills-hub-grid" class="flex-1 bg-zinc-900/10 border border-zinc-800/60 rounded-xl p-4 overflow-y-auto space-y-3">
+                    <div class="text-center text-zinc-500 text-xs py-8">Fetching dynamic skills...</div>
                 </div>
             </div>
         </aside>
 
-        <!-- Center: Chat / Live Logs -->
-        <main class="col-span-1 lg:col-span-6 flex flex-col h-full bg-zinc-950/10">
+        <!-- Center Panel: The Multi-Agent Live Chat Canvas -->
+        <main class="col-span-1 lg:col-span-5 flex flex-col h-full bg-zinc-950/10 overflow-hidden">
             <!-- Messages stream -->
-            <div id="chat-stream" class="flex-1 overflow-y-auto p-6 space-y-4">
-                <div class="text-zinc-500 text-sm text-center py-8">
-                    Ready. Type a prompt below or send a command to start.
+            <div id="chat-stream" class="flex-1 overflow-y-auto p-6 space-y-5">
+                <div class="flex flex-col items-center justify-center h-full text-center p-6">
+                    <div class="h-16 w-16 rounded-full bg-zinc-900/50 border border-zinc-800 flex items-center justify-center text-emerald-400 glow-effect mb-4 animate-bounce">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h2 class="font-semibold text-zinc-300 mb-1">Hiroshi Workspace Online</h2>
+                    <p class="text-xs text-zinc-500 max-w-xs">Send requests below or execute system commands. Dynamic tool outputs will render on the right panel.</p>
                 </div>
             </div>
 
-            <!-- Input area -->
-            <div class="p-4 border-t border-zinc-800 bg-zinc-950/40">
+            <!-- Chat / Prompt Form -->
+            <div class="p-4 border-t border-zinc-850 bg-zinc-950/65 backdrop-blur-md">
                 <form id="chat-form" class="flex space-x-3">
-                    <input id="chat-input" type="text" placeholder="Instruct companion..." autocomplete="off"
-                        class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-zinc-700 text-zinc-200">
+                    <input id="chat-input" type="text" placeholder="Send system instructions..." autocomplete="off"
+                        class="flex-1 bg-zinc-900 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-700 text-zinc-200 placeholder-zinc-600 transition">
                     <button type="submit"
-                        class="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 px-5 py-2 rounded-lg text-sm font-semibold transition">
+                        class="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-zinc-950 px-6 py-2.5 rounded-xl text-sm font-semibold transition shadow-md shadow-emerald-500/10">
                         Send
                     </button>
                 </form>
             </div>
         </main>
 
-        <!-- Right Side: Visual Canvas -->
-        <section class="col-span-1 lg:col-span-3 border-l border-zinc-800 bg-zinc-950/30 p-6 flex flex-col space-y-6">
-            <h3 class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Visual Canvas</h3>
-            <div class="flex-1 border border-zinc-800/80 rounded-lg bg-zinc-900/30 flex flex-col items-center justify-center p-4">
-                <div id="canvas-status" class="text-zinc-600 text-sm mb-4">No screenshots or assets exported yet.</div>
-                <div id="canvas-image-container" class="w-full hidden">
-                    <img id="canvas-image" class="w-full h-auto rounded border border-zinc-800" src="" alt="screenshot">
+        <!-- Right Panel: Multi-Media Canvas & Stylized Terminal Log Outputs -->
+        <section class="col-span-1 lg:col-span-3 border-l border-zinc-800/80 bg-zinc-950/20 p-5 flex flex-col space-y-5 overflow-hidden">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    Multi-Media Canvas
+                </h3>
+                <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Live Viewport</span>
+            </div>
+
+            <!-- Graphic Output Area -->
+            <div class="flex-1 border border-zinc-800/80 rounded-xl bg-zinc-900/20 flex flex-col overflow-hidden">
+                <div id="canvas-status" class="flex-1 flex flex-col items-center justify-center p-6 text-center text-zinc-600 text-xs">
+                    <svg class="w-8 h-8 text-zinc-800 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    No visual screenshots exported from browser scraping tasks yet.
+                </div>
+                <div id="canvas-image-container" class="w-full h-full hidden overflow-auto flex items-center justify-center p-2 bg-black/40">
+                    <img id="canvas-image" class="max-w-full max-h-full rounded border border-zinc-850 shadow-2xl" src="" alt="Live Viewport Result">
+                </div>
+            </div>
+
+            <!-- Stylized Terminal Log Outputs -->
+            <div class="h-1/3 border border-zinc-800/80 rounded-xl bg-zinc-950 flex flex-col overflow-hidden relative">
+                <div class="px-3.5 py-1.5 bg-zinc-900 border-b border-zinc-800/60 flex items-center justify-between">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Console Streams</span>
+                    <div class="flex space-x-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
+                    </div>
+                </div>
+                <div id="terminal-logs" class="flex-1 p-3.5 overflow-y-auto text-[11px] font-mono text-zinc-400 leading-relaxed bg-zinc-950">
+                    <div class="text-zinc-600">&gt; Daemon initialized. Watching terminal subprocess channels...</div>
                 </div>
             </div>
         </section>
@@ -114,60 +235,154 @@
         const chatStream = document.getElementById('chat-stream');
         const chatForm = document.getElementById('chat-form');
         const chatInput = document.getElementById('chat-input');
-        const mcpList = document.getElementById('mcp-list');
+        const skillsHubGrid = document.getElementById('skills-hub-grid');
+        const archCard = document.getElementById('card-Architect');
+        const devCard = document.getElementById('card-Developer');
         const archInd = document.getElementById('arch-indicator');
         const devInd = document.getElementById('dev-indicator');
+        const terminalLogs = document.getElementById('terminal-logs');
 
         // Setup Websocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/api/ws`;
-        const ws = new WebSocket(wsUrl);
+        let ws;
 
-        ws.onopen = () => {
-            console.log('Connected to Hiroshi OS metrics and stream.');
-        };
+        function connectWS() {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => {
+                console.log('Connected to Hiroshi OS metrics and stream.');
+                appendLog('Connected to websocket stream');
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'metrics') {
-                document.getElementById('ram-val').innerText = `${data.ram} MB`;
-                document.getElementById('cpu-val').innerText = `${data.cpu}%`;
-                document.getElementById('tps-val').innerText = `${data.tps}`;
-                
-                // Update active agent highlights
-                if (data.active_agent === 'Architect') {
-                    archInd.className = 'h-2 w-2 rounded-full bg-emerald-500 animate-pulse';
-                    devInd.className = 'h-2 w-2 rounded-full bg-zinc-700';
-                } else if (data.active_agent === 'Developer') {
-                    devInd.className = 'h-2 w-2 rounded-full bg-emerald-500 animate-pulse';
-                    archInd.className = 'h-2 w-2 rounded-full bg-zinc-700';
+                if (data.type === 'metrics') {
+                    document.getElementById('ram-val').innerText = `${data.ram} MB`;
+                    document.getElementById('cpu-val').innerText = `${data.cpu}%`;
+                    document.getElementById('tps-val').innerText = `${data.tps}`;
+                    
+                    highlightActiveAgent(data.active_agent);
+                } 
+                else if (data.type === 'chat_chunk') {
+                    appendChatChunk(data.role, data.content);
+                } 
+                else if (data.type === 'agent_shift') {
+                    appendLog(`Agent Shift: [${data.from}] yields to [${data.to}]`);
+                    highlightActiveAgent(data.to);
+                    flashUIForHandoff(data.to);
                 }
-            } else if (data.type === 'chat_chunk') {
-                appendChatChunk(data.role, data.content);
-            } else if (data.type === 'mcp_servers') {
-                mcpList.innerHTML = '';
-                data.servers.forEach(srv => {
-                    const el = document.createElement('div');
-                    el.className = 'flex items-center space-x-2';
-                    el.innerHTML = `<span class="h-2 w-2 rounded-full bg-emerald-500"></span> <span>${srv}</span>`;
-                    mcpList.appendChild(el);
-                });
-            } else if (data.type === 'screenshot') {
-                document.getElementById('canvas-status').classList.add('hidden');
-                const imgContainer = document.getElementById('canvas-image-container');
-                const img = document.getElementById('canvas-image');
-                img.src = `data:image/png;base64,${data.image}`;
-                imgContainer.classList.remove('hidden');
+                else if (data.type === 'skill_toggle') {
+                    appendLog(`Skill toggled: ${data.name} enabled=${data.enabled}`);
+                    // update skill check in list
+                    const checkbox = document.getElementById(`toggle-${data.name}`);
+                    if (checkbox) {
+                        checkbox.checked = data.enabled;
+                    }
+                }
+                else if (data.type === 'screenshot') {
+                    appendLog(`Image screenshot data received: ${data.image.substring(0, 30)}...`);
+                    document.getElementById('canvas-status').classList.add('hidden');
+                    const imgContainer = document.getElementById('canvas-image-container');
+                    const img = document.getElementById('canvas-image');
+                    img.src = `data:image/png;base64,${data.image}`;
+                    imgContainer.classList.remove('hidden');
+                }
+            };
+            ws.onclose = () => {
+                setTimeout(connectWS, 3000);
+            };
+        }
+
+        connectWS();
+
+        // Highlight Active Agent Card
+        function highlightActiveAgent(agentName) {
+            if (agentName === 'Architect') {
+                archCard.className = 'p-3.5 bg-emerald-950/20 border border-emerald-500/50 rounded-xl transition-all duration-300 flex items-start justify-between agent-active-glow';
+                archInd.className = 'h-2 w-2 rounded-full bg-emerald-400 border border-emerald-500 mt-1 shadow shadow-emerald-500';
+                
+                devCard.className = 'p-3.5 bg-zinc-900/10 border border-zinc-850 rounded-xl transition-all duration-300 flex items-start justify-between opacity-50';
+                devInd.className = 'h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1';
+            } else if (agentName === 'Developer') {
+                devCard.className = 'p-3.5 bg-cyan-950/20 border border-cyan-500/50 rounded-xl transition-all duration-300 flex items-start justify-between agent-active-glow';
+                devInd.className = 'h-2 w-2 rounded-full bg-cyan-400 border border-cyan-500 mt-1 shadow shadow-cyan-500';
+                
+                archCard.className = 'p-3.5 bg-zinc-900/10 border border-zinc-850 rounded-xl transition-all duration-300 flex items-start justify-between opacity-50';
+                archInd.className = 'h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1';
             }
-        };
+        }
+
+        function flashUIForHandoff(nextAgent) {
+            const body = document.body;
+            const flashColor = nextAgent === 'Architect' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.15)';
+            body.style.transition = 'background-color 0.1s ease';
+            body.style.backgroundColor = flashColor;
+            setTimeout(() => {
+                body.style.backgroundColor = '#08090d';
+            }, 300);
+        }
+
+        // Fetch dynamic skills and construct checklist
+        async function fetchSkills() {
+            try {
+                const response = await fetch('/api/skills');
+                const skills = await response.json();
+                
+                skillsHubGrid.innerHTML = '';
+                if (skills.length === 0) {
+                    skillsHubGrid.innerHTML = '<div class="text-zinc-600 text-xs text-center py-4">No dynamic skills loaded.</div>';
+                    return;
+                }
+
+                skills.forEach(skill => {
+                    const el = document.createElement('div');
+                    el.className = 'p-3 bg-zinc-950/40 border border-zinc-850 rounded-lg flex items-center justify-between text-xs hover:border-zinc-800/80 transition';
+                    el.innerHTML = `
+                        <div class="flex-1 mr-3 min-w-0">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="font-bold tracking-wide truncate ${skill.is_mcp ? 'text-cyan-400' : 'text-zinc-200'}">${skill.name}</span>
+                                ${skill.is_mcp ? '<span class="text-[9px] bg-cyan-950 text-cyan-400 border border-cyan-800/40 px-1 rounded">MCP</span>' : ''}
+                            </div>
+                            <div class="text-zinc-500 truncate mt-0.5">${skill.description}</div>
+                        </div>
+                        <div class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggle-${skill.name}" ${skill.enabled ? 'checked' : ''} 
+                                onchange="toggleSkill('${skill.name}', this.checked)"
+                                class="sr-only peer">
+                            <div class="w-8 h-4.5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-zinc-100"></div>
+                        </div>
+                    `;
+                    skillsHubGrid.appendChild(el);
+                });
+            } catch (err) {
+                console.error('Failed to retrieve workspace skills:', err);
+            }
+        }
+
+        async function toggleSkill(name, enabled) {
+            try {
+                const response = await fetch('/api/skills/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, enabled })
+                });
+                const res = await response.json();
+                if (res.status === 'ok') {
+                    appendLog(`Permits changed: ${name} is now ${enabled ? 'active' : 'revoked'}`);
+                }
+            } catch (err) {
+                console.error('Failed to change skill authorization state:', err);
+            }
+        }
+
+        fetchSkills();
 
         let lastMessageBubble = null;
         let lastRole = null;
 
         function appendChatChunk(role, content) {
             if (chatStream.querySelector('.text-center')) {
-                chatStream.innerHTML = ''; // clear greeting
+                chatStream.innerHTML = ''; 
             }
 
             if (lastRole === role && lastMessageBubble) {
@@ -179,19 +394,31 @@
 
             lastRole = role;
             const bubble = document.createElement('div');
-            bubble.className = `p-4 rounded-lg border max-w-xl ${
+            bubble.className = `p-4 rounded-xl border max-w-xl transition-all duration-300 ${
                 role === 'user' 
-                ? 'bg-zinc-900 border-zinc-800 ml-auto text-right' 
-                : 'bg-zinc-950 border-zinc-800 mr-auto text-left'
+                ? 'bg-zinc-900/60 border-zinc-850 ml-auto text-left shadow-lg' 
+                : 'bg-zinc-950/60 border-zinc-900 mr-auto text-left shadow-md'
             }`;
 
             bubble.innerHTML = `
-                <div class="text-xs text-zinc-500 mb-1 uppercase tracking-wider">${role}</div>
-                <div class="content-text text-sm leading-relaxed">${content}</div>
+                <div class="flex items-center space-x-1.5 mb-1.5">
+                    <span class="h-1.5 w-1.5 rounded-full ${role === 'user' ? 'bg-zinc-400' : 'bg-emerald-500'}"></span>
+                    <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-mono font-bold">${role}</span>
+                </div>
+                <div class="content-text text-sm leading-relaxed text-zinc-200 select-text whitespace-pre-wrap">${content}</div>
             `;
             chatStream.appendChild(bubble);
             lastMessageBubble = bubble;
             chatStream.scrollTop = chatStream.scrollHeight;
+        }
+
+        function appendLog(line) {
+            const time = new Date().toLocaleTimeString();
+            const el = document.createElement('div');
+            el.className = 'border-l border-zinc-850 pl-2 py-0.5';
+            el.innerHTML = `<span class="text-zinc-600 font-mono text-[9px] mr-1">[${time}]</span> <span class="text-zinc-400">${line}</span>`;
+            terminalLogs.appendChild(el);
+            terminalLogs.scrollTop = terminalLogs.scrollHeight;
         }
 
         chatForm.onsubmit = async (e) => {
@@ -209,8 +436,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text })
                 });
+                appendLog(`Instruction sent to workspace agent`);
             } catch (err) {
                 console.error('Failed to send message:', err);
+                appendLog(`Error sending message: ${err}`);
             }
         };
     </script>

@@ -164,6 +164,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
     let provider = Arc::new(OllamaProvider::new(&config));
     
+    // Initialize MCP Registry & Clients
+    let mcp_registry = Arc::new(mcp::McpRegistry::new(&config.mcp_servers));
+    mcp_registry.initialize_all().await;
+
+    // Reflect MCP tools into skills directory as dummy skills with SKILL.md schemas
+    let mcp_tools = mcp_registry.get_all_tools().await;
+    for tool in &mcp_tools {
+        if let Some(obj) = tool.as_object() {
+            let namespaced_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+            let desc = obj.get("description").and_then(|d| d.as_str()).unwrap_or("");
+            let input_schema = obj.get("inputSchema");
+            let schema_str = input_schema
+                .map(|schema| serde_json::to_string(schema).unwrap_or_else(|_| "{}".to_string()))
+                .unwrap_or_else(|| "{}".to_string());
+            
+            let mcp_skill_name = format!("mcp__{}", namespaced_name);
+            let skill_folder = skills_dir.join(&mcp_skill_name);
+            if !skill_folder.exists() {
+                if let Err(e) = std::fs::create_dir_all(&skill_folder) {
+                    tracing::error!("Failed to create MCP skill folder {:?}: {}", skill_folder, e);
+                    continue;
+                }
+            }
+            let skill_md_path = skill_folder.join("SKILL.md");
+            let md_content = format!(
+                "---\nname: {}\ndescription: {:?}\nschema: {:?}\n---\n# MCP Tool Reflection\nAuto-generated skill placeholder for MCP tool `{}`.",
+                mcp_skill_name, desc, schema_str, namespaced_name
+            );
+            if let Err(e) = std::fs::write(&skill_md_path, md_content) {
+                tracing::error!("Failed to write SKILL.md for MCP skill: {}", e);
+            }
+        }
+    }
+
     // Dynamic Skills Registry
     let skills_registry = Arc::new(SkillsRegistry::scan_dir(&skills_dir)?);
     tracing::info!("Discovered {} dynamic skill(s) in registry.", skills_registry.skills.len());
@@ -173,10 +207,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.security.allowed_binaries.clone(),
         workspace_path.clone(),
     ));
-
-    // Initialize MCP Registry & Clients
-    let mcp_registry = Arc::new(mcp::McpRegistry::new(&config.mcp_servers));
-    mcp_registry.initialize_all().await;
 
     // Initialize Session Router
     let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
@@ -205,12 +235,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     tg_gateway.start(shutdown_token.clone());
 
+    // Shared disabled skills set
+    let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+
     // Spawn local Web UI dashboard server (Port 8080)
     let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
     let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
     let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
     let web_addr = "127.0.0.1:8080".parse().unwrap();
-    web::start_web_server(web_addr, web_input_tx, ws_tx.clone(), active_agent_name.clone());
+    web::start_web_server(
+        web_addr,
+        web_input_tx,
+        ws_tx.clone(),
+        active_agent_name.clone(),
+        disabled_skills.clone(),
+        skills_dir.clone(),
+    );
+
+    // Spawn a background thread to broadcast metrics periodically
+    let ws_tx_metrics = ws_tx.clone();
+    let active_agent_metrics = active_agent_name.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let active = {
+                let guard = active_agent_metrics.lock().unwrap();
+                guard.clone()
+            };
+            let metrics_msg = serde_json::json!({
+                "type": "metrics",
+                "ram": 18, 
+                "cpu": 0.5,
+                "tps": "0.1",
+                "active_agent": active
+            });
+            if let Ok(msg_str) = serde_json::to_string(&metrics_msg) {
+                let _ = ws_tx_metrics.send(msg_str);
+            }
+        }
+    });
 
     // Approximate character-to-token ratio (1 token = 4 chars)
     let context_chars_limit = config.ollama.context_window * 4;
@@ -396,27 +459,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            let mcp_tools = mcp_registry.get_all_tools().await;
-            if !mcp_tools.is_empty() {
-                dynamic_skills_str.push_str("\nYou can also execute the following Model Context Protocol (MCP) tools by outputting XML tags format:\n");
-                for tool in &mcp_tools {
-                    if let Some(obj) = tool.as_object() {
-                        let t_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
-                        let desc = obj.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                        let input_schema = obj.get("inputSchema");
-                        let schema_str = input_schema
-                            .map(|schema| serde_json::to_string(schema).unwrap_or_else(|_| "JSON_ARGS".to_string()))
-                            .unwrap_or_else(|| "JSON_ARGS".to_string());
-                        dynamic_skills_str.push_str(&format!(
-                            "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
-                            t_name,
-                            schema_str,
-                            desc
-                        ));
-                    }
-                }
-            }
-
             let system_prompt = format!(
                 "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a built-in file tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
                 active_agent.prompt,
@@ -484,6 +526,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Check if hand-off to another agent is triggered
             if let Some(next_agent) = router.detect_handoff(&full_response) {
                 println!("\n[Handoff Route] Switching from {} to {}", router.active_agent, next_agent);
+                let ws_handoff = serde_json::json!({
+                    "type": "agent_shift",
+                    "from": router.active_agent.clone(),
+                    "to": next_agent.clone()
+                });
+                if let Ok(msg_str) = serde_json::to_string(&ws_handoff) {
+                    let _ = ws_tx.send(msg_str);
+                }
                 router.switch_agent(&next_agent);
                 let _ = session_router.update(session_id, router.clone());
                 {
@@ -545,7 +595,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     ToolCall::CallTool { name, json_args } => {
                         println!("\n>> Running Tool: call_tool({}, {})", name, json_args);
-                        if !active_agent.allowed_tools.contains(&name) {
+                        if disabled_skills.lock().unwrap().contains(&name) {
+                            let err_msg = format!("Permission Denied: Dynamic skill/binary '{}' has been disabled via the Web Dashboard.", name);
+                            println!(">> {}", err_msg);
+                            db.add_message("user", &err_msg)?;
+                            continue;
+                        }
+
+                        let has_permission = active_agent.allowed_tools.contains(&name)
+                            || (name.starts_with("mcp__") && active_agent.allowed_tools.contains(&"mcp".to_string()));
+                        if !has_permission {
                             let err_msg = format!("Permission Denied: Active agent does not have permission to use dynamic skill/binary '{}'.", name);
                             println!(">> {}", err_msg);
                             db.add_message("user", &err_msg)?;
@@ -554,18 +613,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if let Some(skill) = skills_registry.get_skill(&name) {
                             let start_tool = Instant::now();
-                            match skill.run_ipc(&json_args, &workspace_path).await {
-                                Ok(stdout) => {
-                                    tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_tool.elapsed());
-                                    let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
-                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
-                                    println!(">> Skill executed successfully.");
+                            if name.starts_with("mcp__") {
+                                let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                                let mcp_tool_name = &name[5..]; // Strip "mcp__"
+                                match mcp_registry.execute_tool(mcp_tool_name, args_val).await {
+                                    Ok(output) => {
+                                        tracing::info!("MCP tool execution '{}' took {:?}", name, start_tool.elapsed());
+                                        let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
+                                        let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
+                                        println!(">> MCP Tool executed successfully.");
+
+                                        // Extract and broadcast screenshot if any
+                                        if output.contains("[SCREENSHOT]:") || output.contains("data:image/png;base64,") {
+                                            let base64_data = if let Some(pos) = output.find("[SCREENSHOT]:") {
+                                                output[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                            } else if let Some(pos) = output.find("data:image/png;base64,") {
+                                                output[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                            } else {
+                                                String::new()
+                                            };
+                                            if !base64_data.is_empty() {
+                                                let ws_img = serde_json::json!({
+                                                    "type": "screenshot",
+                                                    "image": base64_data
+                                                });
+                                                if let Ok(msg_str) = serde_json::to_string(&ws_img) {
+                                                    let _ = ws_tx.send(msg_str);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("MCP tool execution '{}' failed after {:?}", name, start_tool.elapsed());
+                                        let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
+                                        db.add_message("user", &err_msg)?;
+                                        println!(">> MCP Tool failed: {}", e);
+                                    }
                                 }
-                                Err(e) => {
-                                    tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_tool.elapsed());
-                                    let err_msg = format!("Skill '{}' execution failed: {}", name, e);
-                                    db.add_message("user", &err_msg)?;
-                                    println!(">> Skill failed: {}", e);
+                            } else {
+                                match skill.run_ipc(&json_args, &workspace_path).await {
+                                    Ok(stdout) => {
+                                        tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_tool.elapsed());
+                                        let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
+                                        let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
+                                        println!(">> Skill executed successfully.");
+
+                                        // Extract and broadcast screenshot if any
+                                        if stdout.contains("[SCREENSHOT]:") || stdout.contains("data:image/png;base64,") {
+                                            let base64_data = if let Some(pos) = stdout.find("[SCREENSHOT]:") {
+                                                stdout[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                            } else if let Some(pos) = stdout.find("data:image/png;base64,") {
+                                                stdout[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                            } else {
+                                                String::new()
+                                            };
+                                            if !base64_data.is_empty() {
+                                                let ws_img = serde_json::json!({
+                                                    "type": "screenshot",
+                                                    "image": base64_data
+                                                });
+                                                if let Ok(msg_str) = serde_json::to_string(&ws_img) {
+                                                    let _ = ws_tx.send(msg_str);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_tool.elapsed());
+                                        let err_msg = format!("Skill '{}' execution failed: {}", name, e);
+                                        db.add_message("user", &err_msg)?;
+                                        println!(">> Skill failed: {}", e);
+                                    }
                                 }
                             }
                         } else if mcp_registry.clients.keys().any(|k| name.starts_with(&(k.to_owned() + "__"))) {
@@ -577,6 +695,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
                                     let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
                                     println!(">> MCP Tool executed successfully.");
+
+                                    // Extract and broadcast screenshot if any
+                                    if output.contains("[SCREENSHOT]:") || output.contains("data:image/png;base64,") {
+                                        let base64_data = if let Some(pos) = output.find("[SCREENSHOT]:") {
+                                            output[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                        } else if let Some(pos) = output.find("data:image/png;base64,") {
+                                            output[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
+                                        } else {
+                                            String::new()
+                                        };
+                                        if !base64_data.is_empty() {
+                                            let ws_img = serde_json::json!({
+                                                "type": "screenshot",
+                                                "image": base64_data
+                                            });
+                                            if let Ok(msg_str) = serde_json::to_string(&ws_img) {
+                                                let _ = ws_tx.send(msg_str);
+                                            }
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     tracing::error!("MCP tool execution '{}' failed after {:?}", name, start_mcp.elapsed());

@@ -335,27 +335,6 @@ async fn handle_telegram_message(
             }
         }
 
-        let mcp_tools = mcp_registry.get_all_tools().await;
-        if !mcp_tools.is_empty() {
-            dynamic_skills_str.push_str("\nYou can also execute the following Model Context Protocol (MCP) tools by outputting XML tags format:\n");
-            for tool in &mcp_tools {
-                if let Some(obj) = tool.as_object() {
-                    let t_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
-                    let desc = obj.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                    let input_schema = obj.get("inputSchema");
-                    let schema_str = input_schema
-                        .map(|schema| serde_json::to_string(schema).unwrap_or_else(|_| "JSON_ARGS".to_string()))
-                        .unwrap_or_else(|| "JSON_ARGS".to_string());
-                    dynamic_skills_str.push_str(&format!(
-                        "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
-                        t_name,
-                        schema_str,
-                        desc
-                    ));
-                }
-            }
-        }
-
         let system_prompt = format!(
             "{}\nHand-off Rule: {}\nAllowed Tools: {:?}\nTo run a tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
             active_agent.prompt,
@@ -449,7 +428,9 @@ async fn handle_telegram_message(
                     }
                 }
                 ToolCall::CallTool { name, json_args } => {
-                    if !active_agent.allowed_tools.contains(&name) {
+                    let has_permission = active_agent.allowed_tools.contains(&name)
+                        || (name.starts_with("mcp__") && active_agent.allowed_tools.contains(&"mcp".to_string()));
+                    if !has_permission {
                         let err_msg = format!("Permission Denied: Active agent does not have permission to use dynamic skill/binary '{}'.", name);
                         db.add_message("user", &err_msg)?;
                         continue;
@@ -459,14 +440,29 @@ async fn handle_telegram_message(
                     let actual_workspace = sandbox.sanitize_path(".").unwrap_or(std::path::PathBuf::from("."));
 
                     if let Some(skill) = skills_registry.get_skill(&name) {
-                        match skill.run_ipc(&json_args, &actual_workspace).await {
-                            Ok(stdout) => {
-                                let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
-                                db.add_message("user", &result_msg)?;
+                        if name.starts_with("mcp__") {
+                            let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                            let mcp_tool_name = &name[5..]; // Strip "mcp__"
+                            match mcp_registry.execute_tool(mcp_tool_name, args_val).await {
+                                Ok(output) => {
+                                    let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
+                                    db.add_message("user", &result_msg)?;
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
+                                    db.add_message("user", &err_msg)?;
+                                }
                             }
-                            Err(e) => {
-                                let err_msg = format!("Skill '{}' execution failed: {}", name, e);
-                                db.add_message("user", &err_msg)?;
+                        } else {
+                            match skill.run_ipc(&json_args, &actual_workspace).await {
+                                Ok(stdout) => {
+                                    let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
+                                    db.add_message("user", &result_msg)?;
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Skill '{}' execution failed: {}", name, e);
+                                    db.add_message("user", &err_msg)?;
+                                }
                             }
                         }
                     } else if mcp_registry.clients.keys().any(|k| name.starts_with(&(k.to_owned() + "__"))) {

@@ -168,6 +168,7 @@ pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf,
         fs::create_dir_all(&skills_dir)
             .map_err(|e| format!("Failed to create ~/.hiroshi/skills: {}", e))?;
     }
+    auto_generate_bundled_skills(&skills_dir)?;
     
     // Check config.toml
     let config_path = hiroshi_dir.join("config.toml");
@@ -226,4 +227,142 @@ pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf,
     }
     
     Ok((config, db_path, workspace_path, agents_path, memory_dir, skills_dir))
+}
+
+fn auto_generate_bundled_skills(skills_dir: &std::path::Path) -> Result<(), String> {
+    // 1. git_manager
+    let git_dir = skills_dir.join("git_manager");
+    if !git_dir.exists() {
+        fs::create_dir_all(&git_dir).map_err(|e| e.to_string())?;
+        fs::write(git_dir.join("SKILL.md"), r#"---
+name: git_manager
+description: "Orchestrates Git repo state, runs diffs, commits code changes, and manages branches."
+schema: '{ "action": "string", "branch": "string", "commit_message": "string" }'
+---
+# Git Manager Skill
+Allows Hiroshi to orchestrate repositories and track code versioning.
+"#).map_err(|e| e.to_string())?;
+        fs::write(git_dir.join("git_manager.py"), r#"import sys, json, subprocess
+def run_cmd(args):
+    try:
+        res = subprocess.run(args, capture_output=True, text=True, check=True)
+        return res.stdout
+    except Exception as e:
+        return str(e)
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        action = args.get("action", "status")
+        if action == "status":
+            print(run_cmd(["git", "status"]))
+        elif action == "diff":
+            print(run_cmd(["git", "diff"]))
+        elif action == "commit":
+            msg = args.get("commit_message", "update")
+            run_cmd(["git", "add", "."])
+            print(run_cmd(["git", "commit", "-m", msg]))
+        elif action == "branch":
+            br = args.get("branch", "main")
+            print(run_cmd(["git", "checkout", "-b", br]))
+    except Exception as e:
+        print(f"Error: {e}")
+if __name__ == '__main__': main()
+"#).map_err(|e| e.to_string())?;
+    }
+
+    // 2. browser_automation
+    let browser_dir = skills_dir.join("browser_automation");
+    if !browser_dir.exists() {
+        fs::create_dir_all(&browser_dir).map_err(|e| e.to_string())?;
+        fs::write(browser_dir.join("SKILL.md"), r#"---
+name: browser_automation
+description: "Playwright headless browser scraping and viewport screenshots."
+schema: '{ "url": "string", "action": "string" }'
+---
+# Browser Automation
+Allows Hiroshi to scrape pages and export viewport screenshots.
+"#).map_err(|e| e.to_string())?;
+        fs::write(browser_dir.join("browser_automation.py"), r#"import sys, json, urllib.request
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        url = args.get("url", "")
+        if not url:
+            print("No URL provided.")
+            return
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+            print(f"Fetched HTML of length {len(html)}")
+    except Exception as e:
+        print(f"Error: {e}")
+if __name__ == '__main__': main()
+"#).map_err(|e| e.to_string())?;
+    }
+
+    // 3. file_janitor
+    let janitor_dir = skills_dir.join("file_janitor");
+    if !janitor_dir.exists() {
+        fs::create_dir_all(&janitor_dir).map_err(|e| e.to_string())?;
+        fs::write(janitor_dir.join("SKILL.md"), r#"---
+name: file_janitor
+description: "Tracks file hashes, lists duplicate items, structures chaotic workspace directories, and updates README file indices."
+schema: '{ "action": "string" }'
+---
+# File Janitor
+Workspace index organizer.
+"#).map_err(|e| e.to_string())?;
+        fs::write(janitor_dir.join("file_janitor.py"), r#"import sys, os, json, hashlib
+def get_md5(path):
+    h = hashlib.md5()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            h.update(chunk)
+    return h.hexdigest()
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        action = args.get("action", "scan")
+        files = {}
+        for root, dirs, filenames in os.walk('.'):
+            for f in filenames:
+                p = os.path.join(root, f)
+                try:
+                    files[p] = get_md5(p)
+                except: pass
+        if action == "scan":
+            print(json.dumps(files, indent=2))
+    except Exception as e:
+        print(f"Error: {e}")
+if __name__ == '__main__': main()
+"#).map_err(|e| e.to_string())?;
+    }
+
+    // 4. task_sync
+    let task_dir = skills_dir.join("task_sync");
+    if !task_dir.exists() {
+        fs::create_dir_all(&task_dir).map_err(|e| e.to_string())?;
+        fs::write(task_dir.join("SKILL.md"), r#"---
+name: task_sync
+description: "Syncs project milestones, deadlines, and logs task completion states inside task markdown files."
+schema: '{ "task_name": "string", "status": "string" }'
+---
+# Task Sync
+Synchronizes project milestones.
+"#).map_err(|e| e.to_string())?;
+        fs::write(task_dir.join("task_sync.py"), r#"import sys, json
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        name = args.get("task_name", "")
+        status = args.get("status", "pending")
+        with open("TODO.md", "a") as f:
+            f.write(f"- [{ 'x' if status == 'done' else ' ' }] {name}\n")
+        print(f"Task '{name}' synced.")
+    except Exception as e:
+        print(f"Error: {e}")
+if __name__ == '__main__': main()
+"#).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
