@@ -288,48 +288,48 @@ export default function HomePage() {
           <div className="flex flex-wrap items-center justify-center gap-12 max-w-4xl mx-auto select-none">
             {/* Vercel */}
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-dark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-light.svg"
               alt="Vercel"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-light.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-dark.svg"
               alt="Vercel"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
             />
 
             {/* OpenAI */}
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-dark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-light.svg"
               alt="OpenAI"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-light.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-dark.svg"
               alt="OpenAI"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
             />
 
             {/* Cursor */}
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-dark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-light.svg"
               alt="Cursor"
               className="h-5 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-light.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-dark.svg"
               alt="Cursor"
               className="h-5 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
             />
 
             {/* GitHub */}
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-dark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-light.svg"
               alt="GitHub"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-light.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-dark.svg"
               alt="GitHub"
               className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
             />
