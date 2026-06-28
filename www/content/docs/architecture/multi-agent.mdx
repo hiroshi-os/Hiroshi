@@ -1,0 +1,29 @@
+---
+title: Multi-Agent Handoff Router
+description: Dynamic agent specs & role-switching loops.
+---
+
+Hiroshi utilizes a decentralized multi-agent system where specialized roles yield task control dynamically based on structural handoff directives.
+
+### The Agent Directory (`AGENTS.md`)
+
+Agents are configured dynamically inside `~/.hiroshi/AGENTS.md`. The default layout registers two primary souls:
+
+```markdown
+## Architect
+- Prompt: "You are Hiroshi's Lead Architect. Deconstruct user tasks..."
+- Allowed Tools: [ReadFile, WriteFile]
+- Hand-off: "If execution code needs to be written, yield control to Developer using [HANDOFF: Developer]."
+
+## Developer
+- Prompt: "You are Hiroshi's Systems Programmer. Write clean code..."
+- Allowed Tools: [WriteFile]
+- Hand-off: "Yield back to Architect upon task completion using [HANDOFF: Architect]."
+```
+
+### The Handoff Logic
+
+1. **Generation Monitoring**: During the Ollama LLM stream process, Hiroshi constantly monitors assistant token blocks.
+2. **Handoff Token Detection**: If the pattern `[HANDOFF: <Target_Agent>]` is encountered, Hiroshi immediately intercepts the conversation loop.
+3. **Session Switching**: The `SessionRouter` modifies the active role in the database state, updates the system prompt instructions, and redirects the next cycle back to the newly targeted agent role.
+4. **Visual UI Sync**: A WebSocket packet is broadcast to the dashboard panel, updating active cards and flashing active border colors to show theater focus shifts.

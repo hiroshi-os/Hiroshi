@@ -1,0 +1,37 @@
+---
+title: Static Compiler Setup & Building
+description: Build the zero-dependency, static Hiroshi executable from source.
+---
+
+Hiroshi compiles down to a single, zero-dependency release binary that embeds all core business logic, RAG memory engines, and web dashboard assets inside it.
+
+### Prerequisites
+
+To compile Hiroshi, ensure you have the Rust toolchain installed:
+
+- **Rust / Cargo**: 1.75+ (tokio, async/await support)
+- **C/C++ Compiler**: Required for compiling the local SQLite SQLite3 libraries.
+
+### Building from Source
+
+1. Clone or enter your workspace directory:
+   ```bash
+   cd Hiroshi
+   ```
+
+2. Compile the binary in release mode to bundle all web dashboard assets statically:
+   ```bash
+   cargo build --release
+   ```
+
+3. The compiled zero-dependency binary will be generated at:
+   - **Windows**: `target/release/hiroshi.exe`
+   - **Linux/macOS**: `target/release/hiroshi`
+
+### Launching the Daemon
+
+Simply execute the compiled binary:
+```bash
+./target/release/hiroshi
+```
+If this is the first execution on your host machine, the boot loader will automatically intercept your terminal and redirect you into the **Interactive Onboarding Wizard**.

@@ -1,0 +1,33 @@
+---
+title: Setup & Onboarding Wizard
+description: How Hiroshi configures itself on first boot.
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+
+If a `config.toml` file is missing in the system directory (`~/.hiroshi/config.toml`) upon initial execution, Hiroshi auto-intercepts the boot sequence and launches an interactive setup terminal wizard using `inquire`.
+
+<Steps>
+<Step>
+### Local Hardware Probe
+Hiroshi scans active loopback ports (typically `http://127.0.0.1:11434`) to detect local **Ollama** server configurations automatically.
+</Step>
+
+<Step>
+### Target Model Allocation
+The interface yields an interactive multi-choice selector list allowing the user to select their preferred active coding and reasoning weights (e.g., `qwen2.5-coder:1.5b`).
+</Step>
+
+<Step>
+### Remote Communication Pairing
+Prompts for optional external **Telegram Bot API Tokens** and locks verification to your distinct `allowed_user_ids` security group array to prevent unauthorized access.
+</Step>
+
+<Step>
+### Directory Initialization
+Generates the base folders inside your home directory:
+- `~/.hiroshi/skills/` (for dynamic custom polyglot skills)
+- `~/.hiroshi/memory/` (for SQLite database files)
+- `~/.hiroshi/workspace/` (as the secure process workspace sandbox)
+</Step>
+</Steps>

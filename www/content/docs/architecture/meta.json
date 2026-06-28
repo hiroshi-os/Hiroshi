@@ -1,0 +1,8 @@
+{
+  "title": "🧠 Architecture",
+  "pages": [
+    "multi-agent",
+    "memory-rag",
+    "secure-sandbox"
+  ]
+}

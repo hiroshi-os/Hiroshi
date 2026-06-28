@@ -1,0 +1,24 @@
+---
+title: Process Shields & Command Sandboxing
+description: Directory locks, shell sanitization, and execution safety parameters.
+---
+
+Hiroshi operates as a secure daemon, containing all automated scripts, compiler tasks, and file writes strictly inside a designated sandbox boundary to shield host safety.
+
+### 1. Workspace Isolation
+File tools are explicitly relative to the directory path set in `config.toml` (defaults to `~/.hiroshi/workspace`). Any attempts to read or write files utilizing absolute paths, windows drive identifiers (`C:\`), or directory traversal (`../`) are actively blocked by the validation layer:
+
+```rust
+pub fn sanitize_path(&self, rel_path: &str) -> Result<PathBuf, String> {
+    if rel_path.contains("..") || Path::new(rel_path).is_absolute() {
+        return Err("Traversal error: Paths must be strictly relative to the workspace root.".to_string());
+    }
+    // ...
+}
+```
+
+### 2. Whitelisted Binary Executions
+Rather than allowing arbitrary shell scripts, the `SafeCommandRunner` restricts commands to a strict whitelist matching standard binaries configured in `config.toml` (e.g., `["cargo", "git", "rustfmt", "python"]`).
+
+### 3. Execution Timeout Circuit Breakers
+If an external script (e.g., a Playwright scrape task or compilation task) enters an infinite loop or hangs, a tokio timeout circuit breaker shuts down the subprocess ID automatically after **10 seconds** to avoid performance degradation on the host machine.

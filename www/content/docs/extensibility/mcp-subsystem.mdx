@@ -1,0 +1,35 @@
+---
+title: Model Context Protocol (MCP) Subsystem
+description: Registering JSON-RPC 2.0 stdio MCP servers.
+---
+
+Hiroshi interfaces directly with external community Model Context Protocol (MCP) servers, translating tools into namespaced skills dynamically on startup.
+
+### Registering an MCP Server
+
+Configure your server entries inside the `[mcp_servers]` namespace in `config.toml`:
+
+```toml
+[mcp_servers.gdrive]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-gdrive"]
+
+[mcp_servers.sqlite]
+command = "uvx"
+args = ["mcp-server-sqlite", "--db-path", "./memory.db"]
+```
+
+### Auto-Bridge Reflection Layer
+
+When the daemon starts:
+1. Hiroshi launches the MCP server subprocesses over stdio channels.
+2. It requests available tools via `tools/list` JSON-RPC calls.
+3. For each returned tool, Hiroshi generates a local folder under `~/.hiroshi/skills/mcp__<server_name>__<tool_name>/`.
+4. It writes a translated `SKILL.md` document, exposing the tool's schemas to the dynamic skills list.
+
+### Polymorphic Execution Routing
+
+When the active agent invokes the reflected skill:
+- The parser captures `<call_tool name="mcp__<server_name>__<tool_name>">`.
+- Hiroshi strips the `mcp__` identifier and maps parameters to a JSON-RPC `tools/call` query sent to the respective MCP client.
+- The outcome is streamed back to the agent history and the web canvas.
