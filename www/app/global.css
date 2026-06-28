@@ -16,6 +16,19 @@ html > body[data-scroll-locked] {
   --removed-body-scroll-bar-size: 0px !important;
 }
 
+/* Dither pattern background overlay */
+.dither-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.025; /* extremely subtle, premium look */
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+  background-size: 4px 4px;
+  z-index: 100;
+}
+
 /* Custom Header / Topbar styling matching Conductor zinc design */
 header {
   background-color: #09090b !important; /* Neutral zinc-950 background */

@@ -4,6 +4,57 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PixelThemeSwitcher } from "../../components/ThemeSwitcher";
 
+function InteractiveTitle() {
+  const base = `██   ██  ███████  ██████    ██████   ██████  ██   ██  ███████
+██   ██    ██     ██   ██  ██    ██ ██       ██   ██    ██
+███████    ██     ██████   ██    ██  ██████  ███████    ██
+██   ██    ██     ██   ██  ██    ██       ██ ██   ██    ██
+██   ██  ███████  ██   ██   ██████   ██████  ██   ██  ███████`;
+
+  const [display, setDisplay] = useState(base);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (!isHovered) {
+      setDisplay(base);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const chars = base.split("");
+      const glitched = chars.map((char) => {
+        if (char === " " || char === "\n") return char;
+        if (Math.random() < 0.15) {
+          const glyphs = ["░", "▒", "▓", "X", "0", "1", "?", "*", "#", "H", "I", "R", "O", "S", "H", "I"];
+          return glyphs[Math.floor(Math.random() * glyphs.length)];
+        }
+        return char;
+      });
+      setDisplay(glitched.join(""));
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, [isHovered]);
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="mb-10 text-center select-none overflow-x-auto max-w-full cursor-pointer"
+    >
+      <pre
+        className={`text-[10px] sm:text-xs leading-none font-bold tracking-tight inline-block text-left transition-colors duration-150 ${
+          isHovered
+            ? "text-emerald-500 dark:text-emerald-400 font-mono"
+            : "dark:text-zinc-50 text-zinc-900 font-mono"
+        }`}
+      >
+        {display}
+      </pre>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -17,6 +68,7 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-800 dark:text-zinc-300 flex flex-col font-mono selection:bg-emerald-500/20 selection:text-emerald-300 transition-colors duration-200">
+      <div className="dither-overlay" />
       {/* Custom Centered Navigation Bar */}
       <nav
         className={`bg-zinc-50 dark:bg-[#09090b] px-6 py-4 flex flex-wrap items-center justify-center gap-6 text-sm tracking-wider font-mono select-none w-full sticky top-0 z-50 transition-all duration-200 ${
@@ -93,15 +145,7 @@ export default function HomePage() {
         </div>*/}
 
         {/* Corrected Big Block ASCII Title: HIROSHI */}
-        <div className="mb-10 text-center select-none overflow-x-auto max-w-full">
-          <pre className="dark:text-zinc-50 text-zinc-900 text-[10px] sm:text-xs leading-none font-bold tracking-tight inline-block text-left">
-            {`██   ██  ███████  ██████    ██████   ██████  ██   ██  ███████
-██   ██    ██     ██   ██  ██    ██ ██       ██   ██    ██
-███████    ██     ██████   ██    ██  ██████  ███████    ██
-██   ██    ██     ██   ██  ██    ██       ██ ██   ██    ██
-██   ██  ███████  ██   ██   ██████   ██████  ██   ██  ███████`}
-          </pre>
-        </div>
+        <InteractiveTitle />
 
         {/* Hero Copy */}
         <div className="text-center max-w-2xl mb-14">
@@ -129,9 +173,9 @@ export default function HomePage() {
               viewBox="0 0 24 24"
             >
               <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
               ></path>
             </svg>
@@ -419,9 +463,9 @@ export default function HomePage() {
               viewBox="0 0 24 24"
             >
               <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
               ></path>
             </svg>
