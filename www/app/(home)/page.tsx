@@ -17,32 +17,60 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-800 dark:text-zinc-300 flex flex-col font-mono selection:bg-emerald-500/20 selection:text-emerald-300 transition-colors duration-200">
-      
       {/* Custom Centered Navigation Bar */}
-      <nav className={`bg-zinc-50 dark:bg-[#09090b] px-6 py-4 flex flex-wrap items-center justify-center gap-6 text-sm tracking-wider font-mono select-none w-full sticky top-0 z-50 transition-all duration-200 ${
-        isScrolled 
-          ? "border-b border-zinc-200 dark:border-zinc-800" 
-          : "border-b border-transparent"
-      }`}>
+      <nav
+        className={`bg-zinc-50 dark:bg-[#09090b] px-6 py-4 flex flex-wrap items-center justify-center gap-6 text-sm tracking-wider font-mono select-none w-full sticky top-0 z-50 transition-all duration-200 ${
+          isScrolled
+            ? "border-b border-zinc-200 dark:border-zinc-800"
+            : "border-b border-transparent"
+        }`}
+      >
         <div className="flex items-center space-x-2">
           <div className="h-5 w-5 border border-zinc-700 bg-zinc-900 flex items-center justify-center font-bold text-zinc-100 text-[10px]">
             H
           </div>
-          <span className="font-bold tracking-widest text-zinc-900 dark:text-zinc-100">HIROSHI</span>
+          <span className="font-bold tracking-widest text-zinc-900 dark:text-zinc-100">
+            HIROSHI
+          </span>
         </div>
-        
+
         <span className="text-zinc-300 dark:text-zinc-800">|</span>
-        
-        <a href="#" className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition">Changelog</a>
-        <Link href="/docs" className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition">Docs</Link>
-        <a href="#" className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition">Team</a>
-        <a href="#" className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition">Enterprise</a>
-        <a href="#" className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition">Join Us</a>
-        
-        <span className="text-zinc-300 dark:text-zinc-800">|</span>
-        
-        <Link 
-          href="/docs/getting-started/installation" 
+
+        <a
+          href="#"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition"
+        >
+          Changelog
+        </a>
+        <Link
+          href="/docs"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition"
+        >
+          Docs
+        </Link>
+        <a
+          href="#"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition"
+        >
+          Team
+        </a>
+        <a
+          href="#"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition"
+        >
+          Enterprise
+        </a>
+        <a
+          href="#"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100 text-zinc-650 dark:text-zinc-400 transition"
+        >
+          Join Us
+        </a>
+
+        <span className="text-zinc-305 dark:text-zinc-800">|</span>
+
+        <Link
+          href="/docs/getting-started/installation"
           className="custom-download-btn px-4 py-1.5 rounded text-xs font-semibold transition"
         >
           Download
@@ -52,9 +80,8 @@ export default function HomePage() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center pt-20 pb-20 px-6 max-w-6xl mx-auto w-full relative z-10">
-        
-        {/* Release badge */}
+      <main className="flex-1 flex flex-col items-center pt-40 pb-20 px-6 max-w-6xl mx-auto w-full relative z-10">
+        {/* Release badge
         <div className="mb-10">
           <a
             href="#"
@@ -63,7 +90,7 @@ export default function HomePage() {
             <span>See what's new in 0.70.0</span>
             <span className="text-zinc-400">→</span>
           </a>
-        </div>
+        </div>*/}
 
         {/* Corrected Big Block ASCII Title: HIROSHI */}
         <div className="mb-10 text-center select-none overflow-x-auto max-w-full">
@@ -79,16 +106,17 @@ export default function HomePage() {
         {/* Hero Copy */}
         <div className="text-center max-w-2xl mb-14">
           <h2 className="text-xl dark:text-zinc-100 text-zinc-900 font-semibold mb-5 tracking-tight">
-            Run parallel coding agents in the background.
+            Parallel agents, Bare-metal performance, No cloud dependencies
           </h2>
-          <p className="text-sm dark:text-zinc-300 text-zinc-605 leading-relaxed font-sans">
-            An ultra-lightweight, self-hosted, multi-agent AI operating system built in Rust.
-            Run parallel coding loops locally, sandboxed, and 100% offline.
+          <p className="text-sm dark:text-zinc-300 text-zinc-600 leading-relaxed font-sans">
+            An ultra-lightweight, self-hosted, multi-agent AI operating system
+            built in Rust. Run parallel coding loops locally, sandboxed, and
+            100% offline.
           </p>
         </div>
 
         {/* Hero CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-24 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-20 w-full sm:w-auto">
           <Link
             href="/docs/getting-started/installation"
             className="w-full sm:w-auto bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-zinc-50 dark:text-zinc-950 px-8 py-3.5 rounded-lg text-sm font-semibold transition flex items-center justify-center space-x-2 font-sans shadow"
@@ -118,10 +146,42 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Space for Hero Image (Placeholder) */}
-        <div className="w-full border border-dashed dark:border-zinc-800 border-zinc-300 dark:bg-zinc-900/10 bg-zinc-100/10 rounded-xl overflow-hidden min-h-[480px] max-w-5xl flex items-center justify-center mb-28">
-          <div className="text-center font-mono text-sm dark:text-zinc-500 text-zinc-400">
-            [ Workspace Cockpit / Dashboard Mockup Image Placeholder ]
+        {/* Installation Terminal Box */}
+        <div className="w-full max-w-2xl border dark:border-zinc-800 border-zinc-300 bg-zinc-100 dark:bg-[#18181b] rounded-lg overflow-hidden shadow-sm mb-28 font-mono">
+          <div className="flex items-center justify-between px-4 py-2 border-b dark:border-zinc-800 border-zinc-200 bg-zinc-250 dark:bg-zinc-900/50 text-xs dark:text-zinc-400 text-zinc-650">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 dark:bg-zinc-700" />
+              <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 dark:bg-zinc-700" />
+              <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 dark:bg-zinc-700" />
+            </div>
+            <span>bash</span>
+            <div className="w-10" />
+          </div>
+          <div className="p-5 text-sm dark:text-zinc-100 text-zinc-800 space-y-1 select-all overflow-x-auto leading-relaxed">
+            <div className="flex">
+              <span className="text-zinc-400 dark:text-zinc-600 mr-3 select-none">
+                $
+              </span>
+              git clone https://github.com/hiroshi-os/hiroshi.git
+            </div>
+            <div className="flex">
+              <span className="text-zinc-400 dark:text-zinc-600 mr-3 select-none">
+                $
+              </span>
+              cd hiroshi
+            </div>
+            <div className="flex">
+              <span className="text-zinc-400 dark:text-zinc-600 mr-3 select-none">
+                $
+              </span>
+              cargo build --release
+            </div>
+            <div className="flex">
+              <span className="text-zinc-400 dark:text-zinc-600 mr-3 select-none">
+                $
+              </span>
+              ./target/release/hiroshi
+            </div>
           </div>
         </div>
 
@@ -131,25 +191,52 @@ export default function HomePage() {
             [ Powered by ]
           </div>
           <div className="flex flex-wrap items-center justify-center gap-12 max-w-4xl mx-auto select-none">
+            {/* Vercel */}
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-dark.svg"
               alt="Vercel"
-              className="h-6 w-auto opacity-75 dark:invert hover:opacity-100 transition duration-200"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/vercel/wordmark-light.svg"
+              alt="Vercel"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
+            />
+
+            {/* OpenAI */}
+            <img
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-dark.svg"
               alt="OpenAI"
-              className="h-6 w-auto opacity-75 dark:invert hover:opacity-100 transition duration-200"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/openai/wordmark-light.svg"
+              alt="OpenAI"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
+            />
+
+            {/* Cursor */}
+            <img
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-dark.svg"
               alt="Cursor"
-              className="h-5 w-auto opacity-75 dark:invert hover:opacity-100 transition duration-200"
+              className="h-5 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
             />
             <img
-              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark.svg"
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/cursor/wordmark-light.svg"
+              alt="Cursor"
+              className="h-5 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
+            />
+
+            {/* GitHub */}
+            <img
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-dark.svg"
               alt="GitHub"
-              className="h-6 w-auto opacity-75 dark:invert hover:opacity-100 transition duration-200"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 dark:hidden block"
+            />
+            <img
+              src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/github/wordmark-light.svg"
+              alt="GitHub"
+              className="h-6 w-auto opacity-75 hover:opacity-100 transition duration-200 hidden dark:block"
             />
           </div>
         </div>
@@ -158,42 +245,52 @@ export default function HomePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mb-32 text-sm tracking-normal font-sans">
           <div className="p-6 border dark:border-zinc-800 border-zinc-200 dark:bg-zinc-900/10 bg-zinc-150/10 rounded-xl flex flex-col justify-between space-y-6">
             <p className="dark:text-zinc-200 text-zinc-800 italic leading-relaxed">
-              "Hiroshi's offline Ollama execution and local vector search give us full code privacy with under 5ms execution latency."
+              "Hiroshi's offline Ollama execution and local vector search give
+              us full code privacy with under 5ms execution latency."
             </p>
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-205 flex items-center justify-center font-bold text-xs">
+              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-200 flex items-center justify-center font-bold text-xs">
                 BL
               </div>
               <div>
                 <span className="font-semibold dark:text-zinc-100 text-zinc-900 block">
                   Brandon
                 </span>
-                <span className="dark:text-zinc-400 text-zinc-600 block text-xs">Co-founder</span>
+                <span className="dark:text-zinc-400 text-zinc-600 block text-xs">
+                  Co-founder
+                </span>
               </div>
             </div>
           </div>
 
           <div className="p-6 border dark:border-zinc-800 border-zinc-200 dark:bg-zinc-900/10 bg-zinc-150/10 rounded-xl flex flex-col justify-between space-y-6">
             <p className="dark:text-zinc-200 text-zinc-800 italic leading-relaxed">
-              "Running parallel, background-active developer loops with whitelisted commands is an absolute lifesaver. We run tests overnight and review diffs."
+              "Running parallel, background-active developer loops with
+              whitelisted commands is an absolute lifesaver. We run tests
+              overnight and review diffs."
             </p>
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-205 flex items-center justify-center font-bold text-xs">
+              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-200 flex items-center justify-center font-bold text-xs">
                 JP
               </div>
               <div>
-                <span className="font-semibold dark:text-zinc-100 text-zinc-900 block">Josh</span>
-                <span className="dark:text-zinc-400 text-zinc-600 block text-xs">Founder</span>
+                <span className="font-semibold dark:text-zinc-100 text-zinc-900 block">
+                  Josh
+                </span>
+                <span className="dark:text-zinc-400 text-zinc-600 block text-xs">
+                  Founder
+                </span>
               </div>
             </div>
           </div>
 
           <div className="p-6 border dark:border-zinc-800 border-zinc-200 dark:bg-zinc-900/10 bg-zinc-150/10 rounded-xl flex flex-col justify-between space-y-6">
             <p className="dark:text-zinc-200 text-zinc-800 italic leading-relaxed">
-              "The Telegram integration and inquire setup wizard make it the most polished developer tool I've seen this year."
+              "The Telegram integration and inquire setup wizard make it the
+              most polished developer tool I've seen this year."
             </p>
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-205 flex items-center justify-center font-bold text-xs">
+              <div className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-200 flex items-center justify-center font-bold text-xs">
                 NX
               </div>
               <div>
@@ -226,7 +323,8 @@ export default function HomePage() {
                   Setup.
                 </h4>
                 <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                  Start the binary. The inquire onboarding wizard automatically detects Ollama ports and configures Telegram tokens.
+                  Start the binary. The inquire onboarding wizard automatically
+                  detects Ollama ports and configures Telegram tokens.
                 </p>
               </div>
             </div>
@@ -240,7 +338,8 @@ export default function HomePage() {
                   Configure.
                 </h4>
                 <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                  Declare agent prompts and whitelisted tools inside AGENTS.md. Tokio loops route agent actions dynamically.
+                  Declare agent prompts and whitelisted tools inside AGENTS.md.
+                  Tokio loops route agent actions dynamically.
                 </p>
               </div>
             </div>
@@ -254,7 +353,8 @@ export default function HomePage() {
                   Extend.
                 </h4>
                 <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                  Drop custom scripts into ~/.hiroshi/skills/ or connect community JSON-RPC stdio MCP servers.
+                  Drop custom scripts into ~/.hiroshi/skills/ or connect
+                  community JSON-RPC stdio MCP servers.
                 </p>
               </div>
             </div>
@@ -275,7 +375,8 @@ export default function HomePage() {
                 Does Hiroshi require an internet connection?
               </h4>
               <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                No. Hiroshi is 100% offline-capable, utilizing local Ollama server instances and native Rust vector computations.
+                No. Hiroshi is 100% offline-capable, utilizing local Ollama
+                server instances and native Rust vector computations.
               </p>
             </div>
 
@@ -284,7 +385,8 @@ export default function HomePage() {
                 Is execution secure?
               </h4>
               <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                Yes. Scripts execute strictly inside a path-sanitized workspace with whitelisted commands and a 10s timeout circuit breaker.
+                Yes. Scripts execute strictly inside a path-sanitized workspace
+                with whitelisted commands and a 10s timeout circuit breaker.
               </p>
             </div>
 
@@ -293,7 +395,8 @@ export default function HomePage() {
                 What is the resource footprint?
               </h4>
               <p className="dark:text-zinc-400 text-zinc-600 leading-relaxed">
-                Hiroshi runs as a lightweight background daemon consuming less than 40 MB RAM with under 5ms execution loop latency.
+                Hiroshi runs as a lightweight background daemon consuming less
+                than 40 MB RAM with under 5ms execution loop latency.
               </p>
             </div>
           </div>
@@ -302,8 +405,7 @@ export default function HomePage() {
         {/* Bottom CTA Block */}
         <div className="w-full text-center border-t dark:border-zinc-900 border-zinc-200 pt-20 flex flex-col items-center">
           <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-8 font-sans">
-            We built Hiroshi using Hiroshi. We think you'll like it as much as
-            we do.
+            Accessible from WhatsApp, Telegram, or any chat app you already use.
           </p>
           <a
             href="/docs/getting-started/installation"
@@ -335,16 +437,28 @@ export default function HomePage() {
               [Company]
             </span>
             <div className="space-y-2 dark:text-zinc-400 text-zinc-600">
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Team
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Blog
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Enterprise
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Join us
               </a>
             </div>
@@ -361,10 +475,16 @@ export default function HomePage() {
               >
                 Docs
               </Link>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Changelog
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Brand kit
               </a>
             </div>
@@ -375,10 +495,16 @@ export default function HomePage() {
               [Legal]
             </span>
             <div className="space-y-2 dark:text-zinc-400 text-zinc-600">
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Privacy
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Terms
               </a>
             </div>
@@ -389,16 +515,28 @@ export default function HomePage() {
               [Connect]
             </span>
             <div className="space-y-2 dark:text-zinc-400 text-zinc-600">
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 X
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 YouTube
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Reddit
               </a>
-              <a href="#" className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition">
+              <a
+                href="#"
+                className="block hover:dark:text-zinc-200 hover:text-zinc-900 transition"
+              >
                 Discord
               </a>
             </div>
@@ -406,8 +544,8 @@ export default function HomePage() {
         </div>
 
         <div className="max-w-6xl mx-auto flex items-center justify-between text-xs dark:text-zinc-500 text-zinc-400 font-mono">
-          <span>© 2026 Melty Labs</span>
-          <span>HIROSHI OS // CLONE COCKPIT</span>
+          <span>© 2026 Tom</span>
+          <span>tomlin7.com</span>
         </div>
       </footer>
     </div>
