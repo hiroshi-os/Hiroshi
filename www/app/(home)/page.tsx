@@ -55,6 +55,57 @@ function InteractiveTitle() {
   );
 }
 
+function GiantInteractiveTitle() {
+  const base = `██   ██  ███████  ██████    ██████   ██████  ██   ██  ███████
+██   ██    ██     ██   ██  ██    ██ ██       ██   ██    ██
+███████    ██     ██████   ██    ██  ██████  ███████    ██
+██   ██    ██     ██   ██  ██    ██       ██ ██   ██    ██
+██   ██  ███████  ██   ██   ██████   ██████  ██   ██  ███████`;
+
+  const [display, setDisplay] = useState(base);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (!isHovered) {
+      setDisplay(base);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const chars = base.split("");
+      const glitched = chars.map((char) => {
+        if (char === " " || char === "\n") return char;
+        if (Math.random() < 0.15) {
+          const glyphs = ["░", "▒", "▓", "X", "0", "1", "?", "*", "#", "H", "I", "R", "O", "S", "H", "I"];
+          return glyphs[Math.floor(Math.random() * glyphs.length)];
+        }
+        return char;
+      });
+      setDisplay(glitched.join(""));
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, [isHovered]);
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="text-center select-none overflow-hidden cursor-pointer w-full flex justify-center py-10"
+    >
+      <pre
+        className={`text-[3vw] md:text-[2vw] leading-none font-bold tracking-tight inline-block text-left transition-colors duration-150 ${
+          isHovered
+            ? "text-emerald-500 dark:text-emerald-400 font-mono"
+            : "dark:text-zinc-50 text-zinc-900 font-mono"
+        }`}
+      >
+        {display}
+      </pre>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -592,6 +643,11 @@ export default function HomePage() {
           <span>tomlin7.com</span>
         </div>
       </footer>
+
+      {/* Huge Interactive Title at the very bottom */}
+      <div className="w-full py-20 flex justify-center border-t dark:border-zinc-900 border-zinc-200 select-none overflow-hidden bg-zinc-50 dark:bg-[#09090b]">
+        <GiantInteractiveTitle />
+      </div>
     </div>
   );
 }
