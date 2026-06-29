@@ -1,9 +1,11 @@
 {
-  "title": "⚙️ Setup & Onboarding",
+  "title": "⚙️ Getting Started",
   "pages": [
     "installation",
     "onboarding",
     "telegram-gateway",
+    "discord-gateway",
+    "slack-gateway",
     "daemonization"
   ]
 }

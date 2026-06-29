@@ -1,0 +1,39 @@
+---
+title: Connecting Slack Bots
+description: Connect Hiroshi to Slack workspaces without exposing public webhooks or ports, using Slack Socket Mode.
+---
+
+Hiroshi can integrate directly with Slack workspaces using **Slack Socket Mode**. This runs over WebSockets, allowing the agent to listen and respond to messages securely from behind a home router or firewall without needing a public webhook URL.
+
+## 1. Create a Slack App
+
+1. Go to [Slack API Applications](https://api.slack.com/apps).
+2. Click **Create New App** -> **From scratch**, name it (e.g. `Hiroshi`), and select your workspace.
+3. Enable **Socket Mode**:
+   - Go to **Settings** -> **Socket Mode** in the left sidebar and toggle it **On**.
+   - Create an App-Level Token with `connections:write` scope and name it. Copy the token starting with `xapp-...`.
+4. Enable **Event Subscriptions**:
+   - Go to **Features** -> **Event Subscriptions** in the left sidebar and toggle it **On**.
+   - Under **Subscribe to bot events**, add the following events:
+     - `message.im` (for direct messages)
+     - `message.channels` (for channel messages)
+5. Install App to Workspace:
+   - Go to **Settings** -> **Install App** and click **Install to Workspace**.
+   - Copy the **Bot User OAuth Token** starting with `xoxb-...`.
+
+## 2. Configuration Setup (`config.toml`)
+
+Enable the gateway and configure both tokens in `~/.hiroshi/config.toml`:
+
+```toml
+[slack]
+enabled = true
+bot_token = "xoxb-YOUR_BOT_USER_TOKEN"
+app_token = "xapp-YOUR_APP_LEVEL_TOKEN"
+```
+
+## 3. Run & Chat
+
+1. Start the daemon with `cargo run`.
+2. Invite your Slack app into any channel or open a DM with it.
+3. Message the app. Hiroshi will receive the incoming events, process them through the agent loops, and reply instantly.

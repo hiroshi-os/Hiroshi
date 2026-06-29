@@ -43,7 +43,7 @@ Upon its initial boot sequence, Hiroshi creates a secure configuration and stora
 
 ### File and Directory Descriptions:
 
-1.  **`config.toml`**: The main configuration manifest. It controls ports, local Ollama API endpoints, Model Context Protocol (MCP) server blocks, and allowed Telegram security user IDs.
+1.  **`config.toml`**: The main configuration manifest. It controls ports, local Ollama API endpoints, Model Context Protocol (MCP) server blocks, and multi-channel credential details (Telegram, Discord, and Slack Socket Mode).
 2.  **`hiroshi.db`**: A self-contained SQLite database storing session history, tool logs, and floating-point vector blobs representing the meaning of past conversations.
 3.  **`hiroshi.log`**: A text log capturing execution steps, timing metrics, and error stack details. Consult this file if debugging setup errors.
 4.  **`AGENTS.md`**: A markdown file declaring the system prompts and tool lists for your agent personas (such as Architect and Developer).

@@ -1,0 +1,36 @@
+---
+title: Connecting Discord Bots
+description: Connect Hiroshi to Discord to prompt agents and execute sandboxed code changes from Discord channels.
+---
+
+Hiroshi supports connecting to Discord, allowing you to prompt agents and execute sandboxed code changes directly from your Discord server.
+
+## 1. Create a Discord Bot
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Click **New Application**, name it, and create it.
+3. Navigate to the **Bot** tab on the left sidebar and click **Add Bot**.
+4. Under the bot settings:
+   - Click **Reset Token** and copy the **Bot Token** (e.g. `OTg3NjU0MzIx...`).
+   - Under **Privileged Gateway Intents**, enable **Presence Intent**, **Server Members Intent**, and **Message Content Intent** (required to read instructions).
+5. Navigate to the **OAuth2** -> **URL Generator** tab:
+   - Under **Scopes**, select `bot`.
+   - Under **Bot Permissions**, select `Send Messages`, `Read Message History`, and `View Channel`.
+   - Copy the generated URL and open it in a browser to invite the bot to your server.
+
+## 2. Configuration Setup (`config.toml`)
+
+Enable the gateway and add your token in `~/.hiroshi/config.toml`:
+
+```toml
+[discord]
+enabled = true
+token = "YOUR_DISCORD_BOT_TOKEN"
+allowed_channels = ["123456789012345678"] # Optional: restrict bot to these channel IDs
+```
+
+## 3. Run & Chat
+
+1. Start the daemon with `cargo run`.
+2. Open Discord and go to one of the allowed channels.
+3. Message your bot. Hiroshi will receive the message, process it through the active agent, and send responses directly back to the channel.
