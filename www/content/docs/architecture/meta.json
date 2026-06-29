@@ -3,6 +3,7 @@
   "pages": [
     "multi-agent",
     "memory-rag",
-    "secure-sandbox"
+    "secure-sandbox",
+    "cron-scheduler"
   ]
 }

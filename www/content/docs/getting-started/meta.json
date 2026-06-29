@@ -2,6 +2,8 @@
   "title": "🚀 Getting Started",
   "pages": [
     "installation",
-    "onboarding"
+    "onboarding",
+    "telegram-gateway",
+    "daemonization"
   ]
 }

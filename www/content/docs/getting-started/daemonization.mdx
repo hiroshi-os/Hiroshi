@@ -1,4 +1,7 @@
-# Hiroshi Unattended Daemonization Guide
+---
+title: Unattended Daemonization
+description: Configure the compiled Hiroshi daemon to run unattended in the background as a persistent system service.
+---
 
 This guide walks through configuring the compiled `Hiroshi` daemon to run unattended in the background as a persistent system service.
 
@@ -13,7 +16,7 @@ To run Hiroshi silently on startup without needing an active interactive termina
 - Extract `nssm.exe` (specifically the version matching your OS architecture, e.g., `win64/nssm.exe`) to a directory on your system path.
 
 ### Step 2: Install the Service
-Run the following command in an Administrator PowerShell window to open the service configuration interface:
+Run the following command in an service terminal configuration window (Administrator PowerShell):
 ```powershell
 nssm install Hiroshi
 ```
