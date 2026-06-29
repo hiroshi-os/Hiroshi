@@ -52,13 +52,22 @@ impl SafeCommandRunner {
     pub async fn run_command(&self, cmd_line: &str) -> Result<String, String> {
         let (binary, args) = self.validate_command(cmd_line)?;
 
-        let mut child = Command::new(&binary)
-            .args(&args)
+        let mut cmd = Command::new(&binary);
+        cmd.args(&args)
             .current_dir(&self.workspace_path)
+            .env_clear()
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null())
-            .spawn()
+            .stdin(Stdio::null());
+
+        #[cfg(windows)]
+        {
+            #[allow(unused_imports)]
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000 | 0x00004000); // CREATE_NO_WINDOW + BELOW_NORMAL_PRIORITY_CLASS
+        }
+
+        let mut child = cmd.spawn()
             .map_err(|e| format!("Failed to spawn process '{}': {}", binary, e))?;
 
         // 10 second timeout check

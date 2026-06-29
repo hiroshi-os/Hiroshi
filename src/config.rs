@@ -119,6 +119,38 @@ impl Default for CronConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SopTask {
+    pub name: String,
+    pub routine: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SopConfig {
+    pub enabled: bool,
+    pub agent: String,
+    pub interval_minutes: u64,
+    pub routines: Vec<SopTask>,
+    pub notify_channels: Vec<String>,
+}
+
+impl Default for SopConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            agent: "Architect".to_string(),
+            interval_minutes: 30,
+            routines: vec![
+                SopTask {
+                    name: "workspace_health".to_string(),
+                    routine: "Check the workspace and compile status. If there are compilation errors or new files, write a short summary report.".to_string(),
+                }
+            ],
+            notify_channels: vec!["telegram".to_string()],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct McpServerConfig {
     pub command: String,
     pub args: Vec<String>,
@@ -137,6 +169,8 @@ pub struct AppConfig {
     pub slack: SlackConfig,
     #[serde(default)]
     pub cron: CronConfig,
+    #[serde(default)]
+    pub sop: SopConfig,
     #[serde(default)]
     pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
 }
@@ -164,6 +198,7 @@ impl Default for AppConfig {
             discord: DiscordConfig::default(),
             slack: SlackConfig::default(),
             cron: CronConfig::default(),
+            sop: SopConfig::default(),
             mcp_servers: std::collections::HashMap::new(),
         }
     }
@@ -222,11 +257,12 @@ pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf,
         let has_discord = content.contains("[discord]");
         let has_slack = content.contains("[slack]");
         let has_cron = content.contains("[cron]") || content.contains("[[cron.tasks]]");
+        let has_sop = content.contains("[sop]") || content.contains("[[sop.routines]]");
         let has_allowed_binaries = content.contains("allowed_binaries");
         let has_embedding_model = content.contains("embedding_model");
         let has_mcp = content.contains("mcp_servers");
         
-        (parsed, !has_telegram || !has_discord || !has_slack || !has_cron || !has_allowed_binaries || !has_embedding_model || !has_mcp)
+        (parsed, !has_telegram || !has_discord || !has_slack || !has_cron || !has_sop || !has_allowed_binaries || !has_embedding_model || !has_mcp)
     } else {
         let parsed = crate::onboard::run_onboarding_wizard(&config_path).await?;
         (parsed, false)

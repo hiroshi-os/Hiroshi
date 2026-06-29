@@ -4,18 +4,26 @@ mod provider;
 mod sandbox;
 mod agents;
 mod cron;
+#[cfg(feature = "channel-telegram")]
 mod telegram;
+#[cfg(feature = "channel-discord")]
 mod discord;
+#[cfg(feature = "channel-slack")]
 mod slack;
 mod sandbox_cmd;
 mod skills;
 mod onboard;
 mod mcp;
+#[cfg(feature = "gateway-ui")]
 mod web;
 mod channel;
 mod engine;
+mod sop;
+
+use clap::{Parser, Subcommand};
 
 use config::init_hiroshi_dir;
+#[allow(unused_imports)]
 use channel::CommunicationChannel;
 use db::MemoryEngine;
 use provider::OllamaProvider;
@@ -27,13 +35,29 @@ use skills::SkillsRegistry;
 
 use std::io::{self, Write};
 use std::sync::Arc;
-
-
+use std::time::Duration;
 
 use tracing_subscriber::{fmt, prelude::*};
 
+#[derive(Parser)]
+#[command(name = "hiroshi", about = "Hiroshi Agent Kernel")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start interactive agent terminal chat mode
+    Agent,
+    /// Boot background services daemon (Gateways, Dashboard, SOP)
+    Daemon,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+
     let (config, db_path, workspace_path, agents_path, memory_dir, skills_dir) = match init_hiroshi_dir().await {
         Ok(paths) => paths,
         Err(e) => {
@@ -81,7 +105,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Agents File:  {}", agents_path.to_string_lossy());
     tracing::info!("Skills Dir:   {}", skills_dir.to_string_lossy());
     tracing::info!("--------------------------------------------------");
-    tracing::info!("Type /help to see available commands or type /exit to quit.\n");
 
     let db = Arc::new(MemoryEngine::new(&db_path)?);
     let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
@@ -133,294 +156,324 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize Session Router
     let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
-    let shutdown_token = tokio_util::sync::CancellationToken::new();
 
-    // Spawn Background Scheduler
-    let scheduler = CronScheduler::new(
-        config.cron.tasks.clone(),
-        db.clone(),
-        provider.clone(),
-        sandbox.clone(),
-        memory_dir.clone(),
-    );
-    scheduler.start(shutdown_token.clone());
+    match cli.command {
+        Commands::Agent => {
+            println!("Interactive Agent Terminal Mode started.");
+            println!("Type /help to see available commands or type /exit to quit.\n");
 
-    let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
-    let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
-    let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+            let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
+            tokio::task::spawn_blocking(move || {
+                use std::io::BufRead;
+                let stdin = io::stdin();
+                let mut reader = stdin.lock();
+                loop {
+                    let mut line = String::new();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if stdin_tx.blocking_send(line).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
 
-    // Initialize gateways channel multiplexer
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::IncomingEvent>(100);
-    let mut channels: std::collections::HashMap<String, Arc<dyn channel::CommunicationChannel>> = std::collections::HashMap::new();
+            loop {
+                let mut router = session_router.get_or_create("terminal")?;
+                let active_name = &router.active_agent;
+                print!("Hiroshi [{}] > ", active_name);
+                io::stdout().flush()?;
 
-    if config.telegram.enabled {
-        let tg = Arc::new(telegram::TelegramGateway::new(config.telegram.clone()));
-        let _ = tg.listen(event_tx.clone()).await;
-        channels.insert("telegram".to_string(), tg);
-    }
-    if config.discord.enabled {
-        let dc = Arc::new(discord::DiscordGateway::new(config.discord.clone()));
-        let _ = dc.listen(event_tx.clone()).await;
-        channels.insert("discord".to_string(), dc);
-    }
-    if config.slack.enabled {
-        let sl = Arc::new(slack::SlackGateway::new(config.slack.clone()));
-        let _ = sl.listen(event_tx.clone()).await;
-        channels.insert("slack".to_string(), sl);
-    }
-    let channels = Arc::new(channels);
+                let input_line = tokio::select! {
+                    line = stdin_rx.recv() => {
+                        match line {
+                            Some(l) => l,
+                            None => break,
+                        }
+                    }
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Ctrl+C signal received. Exiting Interactive mode...");
+                        break;
+                    }
+                };
 
-    // Spawning Gateway Multiplexer router
-    let db_clone = db.clone();
-    let provider_clone = provider.clone();
-    let session_router_clone = session_router.clone();
-    let skills_registry_clone = skills_registry.clone();
-    let mcp_registry_clone = mcp_registry.clone();
-    let command_runner_clone = command_runner.clone();
-    let sandbox_clone = sandbox.clone();
-    let config_clone = Arc::new(config.clone());
-    let disabled_skills_clone = disabled_skills.clone();
-    let ws_tx_clone = ws_tx.clone();
-    let active_agent_name_clone = active_agent_name.clone();
-    let channels_clone = channels.clone();
+                let input = input_line.trim();
+                if input.is_empty() {
+                    continue;
+                }
 
-    tokio::spawn(async move {
-        while let Some(event) = event_rx.recv().await {
-            let session_id = format!("{}:{}", event.channel_type, event.session_id);
-            let db = db_clone.clone();
-            let provider = provider_clone.clone();
-            let session_router = session_router_clone.clone();
-            let skills_registry = skills_registry_clone.clone();
-            let mcp_registry = mcp_registry_clone.clone();
-            let command_runner = command_runner_clone.clone();
-            let sandbox = sandbox_clone.clone();
-            let config = config_clone.clone();
-            let disabled_skills = disabled_skills_clone.clone();
-            let ws_tx = ws_tx_clone.clone();
-            let active_agent_name = active_agent_name_clone.clone();
-            
-            let channel = channels_clone.get(&event.channel_type).cloned();
-            let channel_session_id = event.session_id.clone();
-            let text = event.text.clone();
+                if input.starts_with('/') {
+                    let parts: Vec<&str> = input.splitn(3, ' ').collect();
+                    match parts[0] {
+                        "/exit" | "/quit" => break,
+                        "/clear" => {
+                            db.clear_history()?;
+                            println!("Conversation history cleared.");
+                        }
+                        "/help" => {
+                            println!("Available commands:");
+                            println!("  /agent <name> - Switch active agent");
+                            println!("  /agents       - List all registered agents");
+                            println!("  /skills       - List dynamic skills");
+                            println!("  /clear        - Clear history");
+                            println!("  /exit         - Quit");
+                        }
+                        "/skills" => {
+                            println!("Discovered Skills:");
+                            for skill in &skills_registry.skills {
+                                println!("  - {}: {}", skill.name, skill.description);
+                            }
+                        }
+                        "/agents" => {
+                            println!("Registered Agents:");
+                            for (name, agent) in &router.agents {
+                                println!("  - {}: prompt: '{}'", name, agent.prompt);
+                            }
+                        }
+                        "/agent" => {
+                            if parts.len() < 2 {
+                                println!("Usage: /agent <agent_name>");
+                            } else if router.switch_agent(parts[1]) {
+                                println!("Switched active agent to: {}", parts[1]);
+                                let _ = session_router.update("terminal", router.clone());
+                            } else {
+                                println!("Agent '{}' not found", parts[1]);
+                            }
+                        }
+                        _ => println!("Unknown command: {}", parts[0]),
+                    }
+                    continue;
+                }
 
-            tokio::spawn(async move {
+                let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+                let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+                let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
+
                 if let Err(e) = crate::engine::run_agent_turn(
-                    &session_id,
-                    &text,
-                    db,
-                    provider,
-                    session_router,
-                    skills_registry,
-                    mcp_registry,
-                    command_runner,
-                    sandbox,
+                    "terminal",
+                    input,
+                    db.clone(),
+                    provider.clone(),
+                    session_router.clone(),
+                    skills_registry.clone(),
+                    mcp_registry.clone(),
+                    command_runner.clone(),
+                    sandbox.clone(),
                     &config,
                     disabled_skills,
                     ws_tx,
                     active_agent_name,
-                    channel,
-                    &channel_session_id,
+                    None,
+                    "",
                 ).await {
-                    tracing::error!("Error executing agent turn for session {}: {}", session_id, e);
+                    eprintln!("Error: {}", e);
+                }
+            }
+        }
+        Commands::Daemon => {
+            println!("Background Daemon Mode started.");
+            let shutdown_token = tokio_util::sync::CancellationToken::new();
+
+            // Spawn Background Scheduler
+            let scheduler = CronScheduler::new(
+                config.cron.tasks.clone(),
+                db.clone(),
+                provider.clone(),
+                sandbox.clone(),
+                memory_dir.clone(),
+            );
+            scheduler.start(shutdown_token.clone());
+
+            let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+            let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
+            let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+
+            // Initialize gateways channel multiplexer
+            let (_event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::IncomingEvent>(100);
+            #[allow(unused_mut)]
+            let mut channels: std::collections::HashMap<String, Arc<dyn channel::CommunicationChannel>> = std::collections::HashMap::new();
+
+            #[cfg(feature = "channel-telegram")]
+            {
+                if config.telegram.enabled {
+                    let tg = Arc::new(telegram::TelegramGateway::new(config.telegram.clone()));
+                    let _ = tg.listen(_event_tx.clone()).await;
+                    channels.insert("telegram".to_string(), tg);
+                }
+            }
+            #[cfg(feature = "channel-discord")]
+            {
+                if config.discord.enabled {
+                    let dc = Arc::new(discord::DiscordGateway::new(config.discord.clone()));
+                    let _ = dc.listen(_event_tx.clone()).await;
+                    channels.insert("discord".to_string(), dc);
+                }
+            }
+            #[cfg(feature = "channel-slack")]
+            {
+                if config.slack.enabled {
+                    let sl = Arc::new(slack::SlackGateway::new(config.slack.clone()));
+                    let _ = sl.listen(_event_tx.clone()).await;
+                    channels.insert("slack".to_string(), sl);
+                }
+            }
+            let channels = Arc::new(channels);
+
+            // Spawning Gateway Multiplexer router
+            let db_clone = db.clone();
+            let provider_clone = provider.clone();
+            let session_router_clone = session_router.clone();
+            let skills_registry_clone = skills_registry.clone();
+            let mcp_registry_clone = mcp_registry.clone();
+            let command_runner_clone = command_runner.clone();
+            let sandbox_clone = sandbox.clone();
+            let config_clone = Arc::new(config.clone());
+            let disabled_skills_clone = disabled_skills.clone();
+            let ws_tx_clone = ws_tx.clone();
+            let active_agent_name_clone = active_agent_name.clone();
+            let channels_clone = channels.clone();
+
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    let session_id = format!("{}:{}", event.channel_type, event.session_id);
+                    let db = db_clone.clone();
+                    let provider = provider_clone.clone();
+                    let session_router = session_router_clone.clone();
+                    let skills_registry = skills_registry_clone.clone();
+                    let mcp_registry = mcp_registry_clone.clone();
+                    let command_runner = command_runner_clone.clone();
+                    let sandbox = sandbox_clone.clone();
+                    let config = config_clone.clone();
+                    let disabled_skills = disabled_skills_clone.clone();
+                    let ws_tx = ws_tx_clone.clone();
+                    let active_agent_name = active_agent_name_clone.clone();
+                    
+                    let channel = channels_clone.get(&event.channel_type).cloned();
+                    let channel_session_id = event.session_id.clone();
+                    let text = event.text.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::engine::run_agent_turn(
+                            &session_id,
+                            &text,
+                            db,
+                            provider,
+                            session_router,
+                            skills_registry,
+                            mcp_registry,
+                            command_runner,
+                            sandbox,
+                            &config,
+                            disabled_skills,
+                            ws_tx,
+                            active_agent_name,
+                            channel,
+                            &channel_session_id,
+                        ).await {
+                            tracing::error!("Error executing agent turn for session {}: {}", session_id, e);
+                        }
+                    });
                 }
             });
-        }
-    });
 
-    // Spawn local Web UI dashboard server (Port 8080)
-    let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
-    let web_addr = "127.0.0.1:8080".parse().unwrap();
-    web::start_web_server(
-        web_addr,
-        web_input_tx,
-        ws_tx.clone(),
-        active_agent_name.clone(),
-        disabled_skills.clone(),
-        skills_dir.clone(),
-    );
+            // Start SOP Engine
+            let sop_engine = sop::SopEngine::new(
+                Arc::new(config.clone()),
+                db.clone(),
+                provider.clone(),
+                session_router.clone(),
+                skills_registry.clone(),
+                mcp_registry.clone(),
+                command_runner.clone(),
+                sandbox.clone(),
+                channels.clone(),
+            );
+            sop_engine.start(shutdown_token.clone());
 
-    // Spawn a background thread to broadcast metrics periodically
-    let ws_tx_metrics = ws_tx.clone();
-    let active_agent_metrics = active_agent_name.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-            let active = {
-                let guard = active_agent_metrics.lock().unwrap();
-                guard.clone()
-            };
-            let metrics_msg = serde_json::json!({
-                "type": "metrics",
-                "ram": 18, 
-                "cpu": 0.5,
-                "tps": "0.1",
-                "active_agent": active
-            });
-            if let Ok(msg_str) = serde_json::to_string(&metrics_msg) {
-                let _ = ws_tx_metrics.send(msg_str);
-            }
-        }
-    });
+            // Spawn local Web UI dashboard server
+            #[cfg(feature = "gateway-ui")]
+            {
+                let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
+                let web_addr = "127.0.0.1:8080".parse().unwrap();
+                web::start_web_server(
+                    web_addr,
+                    web_input_tx,
+                    ws_tx.clone(),
+                    active_agent_name.clone(),
+                    disabled_skills.clone(),
+                    skills_dir.clone(),
+                );
 
-
-    // Channel for Async Stdin Multiplexing
-    let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
-    tokio::task::spawn_blocking(move || {
-        use std::io::BufRead;
-        let stdin = io::stdin();
-        let mut reader = stdin.lock();
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(0) => break,
-                Ok(_) => {
-                    if stdin_tx.blocking_send(line).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let session_id = "terminal";
-
-    loop {
-        let mut router = session_router.get_or_create(session_id)?;
-        {
-            let mut guard = active_agent_name.lock().unwrap();
-            *guard = router.active_agent.clone();
-        }
-        
-        let active_name = &router.active_agent;
-        print!("Hiroshi [{}] > ", active_name);
-        io::stdout().flush()?;
-
-        let input_line = tokio::select! {
-            line = stdin_rx.recv() => {
-                match line {
-                    Some(l) => l,
-                    None => break,
-                }
-            }
-            line = web_input_rx.recv() => {
-                match line {
-                    Some(l) => l,
-                    None => break,
-                }
-            }
-            _ = tokio::signal::ctrl_c() => {
-                tracing::info!("Ctrl+C signal received. Starting graceful shutdown cascade...");
-                shutdown_token.cancel();
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                break;
-            }
-        };
-
-        let input = input_line.trim();
-        if input.is_empty() {
-            continue;
-        }
-
-        // Process slash commands
-        if input.starts_with('/') {
-            let parts: Vec<&str> = input.splitn(3, ' ').collect();
-            match parts[0] {
-                "/exit" | "/quit" => {
-                    tracing::info!("Exit command received.");
-                    break;
-                }
-                "/clear" => {
-                    db.clear_history()?;
-                    tracing::info!("Conversation history cleared.");
-                }
-                "/help" => {
-                    println!("Available commands:");
-                    println!("  /read <path>            - Read file inside workspace");
-                    println!("  /write <path> <content> - Write file inside workspace");
-                    println!("  /agent <name>           - Switch active agent");
-                    println!("  /agents                 - List all registered agents");
-                    println!("  /skills                 - List discovered polyglot skills");
-                    println!("  /clear                  - Clear conversation history");
-                    println!("  /exit                   - Quit Hiroshi");
-                }
-                "/skills" => {
-                    println!("Discovered Skills:");
-                    if skills_registry.skills.is_empty() {
-                        println!("  No dynamic skills found.");
-                    } else {
-                        for skill in &skills_registry.skills {
-                            println!("  - {}: description: '{}', path: '{}'", skill.name, skill.description, skill.executable_path.to_string_lossy());
+                // Spawn background metrics thread
+                let ws_tx_metrics = ws_tx.clone();
+                let active_agent_metrics = active_agent_name.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        let active = {
+                            let guard = active_agent_metrics.lock().unwrap();
+                            guard.clone()
+                        };
+                        let metrics_msg = serde_json::json!({
+                            "type": "metrics",
+                            "ram": 18, 
+                            "cpu": 0.5,
+                            "tps": "0.1",
+                            "active_agent": active
+                        });
+                        if let Ok(msg_str) = serde_json::to_string(&metrics_msg) {
+                            let _ = ws_tx_metrics.send(msg_str);
                         }
                     }
-                }
-                "/agents" => {
-                    println!("Registered Agents in AGENTS.md:");
-                    for (name, agent) in &router.agents {
-                        println!("  - {}: prompt: '{}', tools: {:?}", name, agent.prompt, agent.allowed_tools);
-                    }
-                }
-                "/agent" => {
-                    if parts.len() < 2 {
-                        println!("Usage: /agent <agent_name>");
-                    } else if router.switch_agent(parts[1]) {
-                        println!("Switched active agent to: {}", parts[1]);
-                        let _ = session_router.update(session_id, router.clone());
-                    } else {
-                        println!("Agent '{}' not found in AGENTS.md", parts[1]);
-                    }
-                }
-                "/read" => {
-                    if parts.len() < 2 {
-                        println!("Usage: /read <relative_path>");
-                    } else {
-                        match sandbox.read_file(parts[1]) {
-                            Ok(content) => println!("--- File Content ({}) ---\n{}\n-------------------------", parts[1], content),
-                            Err(e) => println!("Error: {}", e),
-                        }
-                    }
-                }
-                "/write" => {
-                    if parts.len() < 3 {
-                        println!("Usage: /write <relative_path> <content>");
-                    } else {
-                        match sandbox.write_file(parts[1], parts[2]) {
-                            Ok(_) => println!("Successfully wrote to {}", parts[1]),
-                            Err(e) => println!("Error: {}", e),
-                        }
-                    }
-                }
-                _ => {
-                    println!("Unknown command: {}. Type /help for assistance.", parts[0]);
-                }
-            }
-            continue;
-        }
+                });
 
-        // Run agent turn
-        if let Err(e) = crate::engine::run_agent_turn(
-            "terminal",
-            input,
-            db.clone(),
-            provider.clone(),
-            session_router.clone(),
-            skills_registry.clone(),
-            mcp_registry.clone(),
-            command_runner.clone(),
-            sandbox.clone(),
-            &config,
-            disabled_skills.clone(),
-            ws_tx.clone(),
-            active_agent_name.clone(),
-            None,
-            "",
-        ).await {
-            eprintln!("Error: {}", e);
+                // Listen to web input channel
+                let db_clone = db.clone();
+                let provider_clone = provider.clone();
+                let session_router_clone = session_router.clone();
+                let skills_registry_clone = skills_registry.clone();
+                let mcp_registry_clone = mcp_registry.clone();
+                let command_runner_clone = command_runner.clone();
+                let sandbox_clone = sandbox.clone();
+                let config_clone = Arc::new(config.clone());
+                let disabled_skills_clone = disabled_skills.clone();
+                let ws_tx_clone = ws_tx.clone();
+                let active_agent_name_clone = active_agent_name.clone();
+                
+                tokio::spawn(async move {
+                    while let Some(msg) = web_input_rx.recv().await {
+                        let _ = crate::engine::run_agent_turn(
+                            "terminal",
+                            &msg,
+                            db_clone.clone(),
+                            provider_clone.clone(),
+                            session_router_clone.clone(),
+                            skills_registry_clone.clone(),
+                            mcp_registry_clone.clone(),
+                            command_runner_clone.clone(),
+                            sandbox_clone.clone(),
+                            &config_clone,
+                            disabled_skills_clone.clone(),
+                            ws_tx_clone.clone(),
+                            active_agent_name_clone.clone(),
+                            None,
+                            "",
+                        ).await;
+                    }
+                });
+            }
+
+            tokio::signal::ctrl_c().await.unwrap();
+            tracing::info!("Ctrl+C received. Gracefully stopping daemon...");
+            shutdown_token.cancel();
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 
     // Graceful Shutdown Cascade
-    tracing::info!("Halted new terminal messages.");
     tracing::info!("Flushing database buffers...");
     drop(db);
     tracing::info!("Shutdown cascade complete. Exiting.");

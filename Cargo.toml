@@ -19,7 +19,16 @@ chrono = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 inquire = "0.7"
-axum = { version = "0.7", features = ["ws"] }
-tower-http = { version = "0.5", features = ["cors", "fs"] }
+axum = { version = "0.7", features = ["ws"], optional = true }
+tower-http = { version = "0.5", features = ["cors", "fs"], optional = true }
 async-trait = "0.1"
-tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"], optional = true }
+clap = { version = "4.5", features = ["derive"] }
+
+[features]
+default = ["gateway-ui", "channel-telegram", "channel-discord", "channel-slack"]
+kernel-only = []
+gateway-ui = ["dep:axum", "dep:tower-http"]
+channel-telegram = []
+channel-discord = ["dep:tokio-tungstenite"]
+channel-slack = ["dep:tokio-tungstenite"]

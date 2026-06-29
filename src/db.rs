@@ -333,6 +333,36 @@ impl MemoryEngine {
             .map_err(|e| format!("Failed to backup database: {}", e))?;
         Ok(())
     }
+
+    pub fn get_last_session_id(&self, channel_name: &str) -> Option<String> {
+        let conn = match self.conn.lock() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let mut stmt = match conn.prepare(
+            "SELECT session_id FROM history WHERE session_id LIKE ?1 ORDER BY id DESC LIMIT 1"
+        ) {
+            Ok(s) => s,
+            Err(_) => return None,
+        };
+        let pattern = format!("{}:%", channel_name);
+        let mut rows = match stmt.query_map(params![pattern], |row| {
+            let session_id: String = row.get(0)?;
+            if let Some(pos) = session_id.find(':') {
+                Ok(session_id[pos + 1..].to_string())
+            } else {
+                Ok(session_id)
+            }
+        }) {
+            Ok(r) => r,
+            Err(_) => return None,
+        };
+        if let Some(Ok(session_id)) = rows.next() {
+            Some(session_id)
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]

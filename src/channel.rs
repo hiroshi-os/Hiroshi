@@ -9,6 +9,7 @@ pub struct IncomingEvent {
 
 #[async_trait]
 pub trait CommunicationChannel: Send + Sync {
+    #[allow(dead_code)]
     async fn listen(&self, tx: tokio::sync::mpsc::Sender<IncomingEvent>) -> Result<(), String>;
     async fn send_message(&self, target_id: &str, content: &str) -> Result<(), String>;
 }
