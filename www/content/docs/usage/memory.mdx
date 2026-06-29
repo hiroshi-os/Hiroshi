@@ -40,3 +40,12 @@ Hiroshi searches your past notes by "meaning and intent" rather than looking for
 *   **Vector Database Blobs**: When new notes are saved, Hiroshi requests coordinate points (embeddings) from your local model and saves them as binary data inside `hiroshi.db`.
 *   **Rapid Lookups**: When you ask a question, Hiroshi runs a local math comparison algorithm (cosine similarity) to search the database. It finds matching historical context in **under 15 milliseconds**.
 *   **Context Safety Window**: Relevant matches are automatically added to the agent system prompt, keeping the session under model context limits.
+
+---
+
+## 🔒 Multi-Channel Session Isolation
+
+When you connect Hiroshi to multiple chat platforms (such as Telegram, Discord, and Slack) simultaneously, all conversation sessions are strictly partitioned:
+
+*   **Isolated Session Histories**: Each incoming source maps to a unique compound identifier (e.g., `discord:123456` or `slack:98765`). Conversation histories and logs are tagged with a `session_id` inside `hiroshi.db` to prevent agents from mixing up details across channels.
+*   **Vector Search Scope**: Retrieval-Augmented Generation (RAG) queries are scoped to the active session. Queries run in one Discord server won't pull up private keys or logs from a Telegram bot chat, maintaining strict workspace boundary limits.

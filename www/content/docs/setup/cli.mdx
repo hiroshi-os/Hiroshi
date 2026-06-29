@@ -1,0 +1,43 @@
+---
+title: Command Line Options
+description: Learn how to launch Hiroshi in interactive chat mode or boot the background service daemon.
+---
+
+Hiroshi comes with a built-in Command Line Interface (CLI) that splits execution into two modes: interactive terminal chat and background daemon mode.
+
+## Launch Modes
+
+To see all available CLI options, run:
+
+```bash
+hiroshi --help
+```
+
+### 1. Interactive Agent Mode (`hiroshi agent`)
+
+Launches Hiroshi as an interactive chat shell directly in your terminal. This mode is lightweight, private, and runs entirely in the foreground.
+
+```bash
+hiroshi agent
+```
+
+*   **Keyboard Commands**:
+    *   `/help` - Show all available console slash commands.
+    *   `/agent <name>` - Switch active agent persona (e.g., `/agent Architect`).
+    *   `/agents` - List all registered agent personas.
+    *   `/skills` - List all dynamic polyglot skill tools.
+    *   `/clear` - Clear your local conversation history.
+    *   `/exit` or `/quit` - Quit interactive shell.
+
+### 2. Background Daemon Mode (`hiroshi daemon`)
+
+Boots the persistent background services. Stdin is detached, allowing the daemon to run unattended as a system service.
+
+```bash
+hiroshi daemon
+```
+
+When started in daemon mode, Hiroshi spins up:
+*   **Active Chat Gateways**: Connects to enabled Telegram, Discord, and Slack Socket Mode channels.
+*   **Web Dashboard**: Hosts the local cockpit server at `http://127.0.0.1:8080/`.
+*   **Proactive SOP Engine**: Triggers background tasks periodically as scheduled.

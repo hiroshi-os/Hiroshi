@@ -30,8 +30,35 @@ To compile Hiroshi, ensure you have the Rust toolchain installed:
 
 ### Launching the Daemon
 
-Simply execute the compiled binary:
+Simply execute the compiled binary with a subcommand:
 ```bash
-./target/release/hiroshi
+# Launch interactive agent chat prompt
+./target/release/hiroshi agent
+
+# Launch background service daemon
+./target/release/hiroshi daemon
 ```
 If this is the first execution on your host machine, the boot loader will automatically intercept your terminal and redirect you into the **Interactive Onboarding Wizard**.
+
+---
+
+### Custom Compilation Features
+
+Hiroshi supports modular feature flags that allow you to customize the binary footprint and compile only what you need:
+
+| Feature Flag | Description | Added Dependencies |
+| :--- | :--- | :--- |
+| `gateway-ui` | Embeds the local web dashboard, server, and assets | Axum, Tower-HTTP |
+| `channel-telegram` | Enables the Telegram gateway connector | None |
+| `channel-discord` | Enables the Discord gateway connector | Tokio-Tungstenite |
+| `channel-slack` | Enables the Slack gateway connector | Tokio-Tungstenite |
+| `kernel-only` | Compiles *only* the core string engine, SQLite storage, and sandbox | None |
+
+#### Compiling a Lean Headless Kernel
+
+If you only want a lightweight terminal agent without any UI, background servers, or network listening suites:
+
+```bash
+cargo build --release --no-default-features --features kernel-only
+```
+Compiling with `kernel-only` drops the final release binary size under **< 7 MB** with an idle memory usage of under **< 5 MB RAM**.

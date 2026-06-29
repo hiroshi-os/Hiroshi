@@ -24,6 +24,7 @@ nssm install Hiroshi
 ### Step 3: Configure Service Parameters
 In the NSSM configuration dialog, set:
 - **Application Path**: Select your compiled `Hiroshi.exe` release binary (e.g. `E:\Hiroshi\target\release\Hiroshi.exe`).
+- **Arguments**: Set this to `daemon` (required to run persistent background services and detach interactive stdin).
 - **Startup Directory**: The workspace sandbox path (e.g. `C:\Users\<username>\.hiroshi\workspace`).
 - **Environment Variables** (Optional): Add any required environment paths or Ollama server variables.
 
@@ -59,7 +60,7 @@ After=network.target
 Type=simple
 User=yourusername
 WorkingDirectory=/home/yourusername/.hiroshi/workspace
-ExecStart=/home/yourusername/Hiroshi/target/release/Hiroshi
+ExecStart=/home/yourusername/Hiroshi/target/release/Hiroshi daemon
 Restart=always
 RestartSec=5
 LimitNOFILE=65536

@@ -3,6 +3,7 @@
   "pages": [
     "multi-agent",
     "tools-registry",
-    "memory"
+    "memory",
+    "sop-engine"
   ]
 }

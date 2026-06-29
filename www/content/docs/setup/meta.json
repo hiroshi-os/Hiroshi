@@ -3,6 +3,7 @@
   "pages": [
     "installation",
     "onboarding",
+    "cli",
     "telegram-gateway",
     "discord-gateway",
     "slack-gateway",

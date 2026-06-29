@@ -1,0 +1,40 @@
+---
+title: Proactive Automation (SOP Engine)
+description: Configure Hiroshi to run background tasks periodically and send status updates to your chat channels.
+---
+
+Hiroshi isn't just a reactive chatbot—it contains an autonomous **Standard Operating Procedure (SOP) Engine** that performs checks on your workspace and sends proactive alerts directly to your Discord, Telegram, or Slack channels.
+
+## How it Works
+
+The SOP Engine runs in the background while `hiroshi daemon` is active. Every configurable interval, the engine:
+1.  Awakes the configured agent persona (e.g., `Architect`).
+2.  Feeds the list of background routines through the LLM.
+3.  Executes system tools (RAG searches, compiler checks, command execution) to complete those tasks.
+4.  Sends the summary report or warnings directly to your active chat channels.
+
+## Configuration Setup (`config.toml`)
+
+You can define your automated routines directly inside `~/.hiroshi/config.toml` under the `[sop]` block:
+
+```toml
+[sop]
+enabled = true
+agent = "Architect"
+interval_minutes = 30                    # How often to run checks
+notify_channels = ["telegram", "discord"] # Where to post reports
+
+[[sop.routines]]
+name = "workspace_health"
+routine = "Check the workspace compile status. If there are compiler errors or new files, write a short summary report."
+
+[[sop.routines]]
+name = "cleanup"
+routine = "Scan the project build directory and recommend optimization passes if cache sizes exceed 500MB."
+```
+
+## Security Containment
+
+All command execution routines run inside an OS-level sandbox:
+*   **Environment Scrubbing**: Environment variables are completely cleared before running commands.
+*   **Resource Throttling**: On Windows, child processes are throttled to below-normal priority classes and isolated from GUI windows.
