@@ -1,7 +1,7 @@
 {
-  "title": "🔌 Extensibility",
+  "title": "🔌 Custom Integrations",
   "pages": [
-    "polyglot-skills",
-    "mcp-subsystem"
+    "custom-skills",
+    "mcp-servers"
   ]
 }

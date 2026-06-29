@@ -1,0 +1,94 @@
+---
+title: The Master Tool Registry
+description: A complete list of every available tool name you can assign to your agents inside AGENTS.md.
+---
+
+# 🔌 The Master Tool Registry
+
+> A complete list of every available tool name you can assign to your agents inside `AGENTS.md`.
+
+When configuring your agents, you control their capabilities by adding explicit tool strings to their `Allowed Tools` list. If an agent tries to use a tool that isn't explicitly listed in their profile, Hiroshi's safety shield blocks the request instantly.
+
+Below is the complete dictionary of built-in tools, reflected tools, and how to write them.
+
+---
+
+## 📦 1. Pre-Bundled Mega Tools (Built-in)
+
+These core capabilities ship directly inside Hiroshi and are ready to use out of the box. Copy the exact text inside the code blocks to add them to your `AGENTS.md`.
+
+### `git_manager`
+
+* **What it does:** Gives the agent the ability to look at your project's version control state. It can run code diffs, create new feature branches, bundle code changes, write clean commit messages, and push updates to your repositories using your system's `git` or `gh` commands.
+* **When to use it:** Give this to your **Developer** or code-focused agents so they can track changes and save their work automatically.
+
+### `browser_automation`
+
+* **What it does:** Spawns a hidden, isolated web browser (Chromium) on your machine. The agent can use it to visit complex web pages, click navigation buttons, fill out interactive forms, extract primary text block nodes, and stream full-resolution screenshots back to your visual dashboard panel.
+* **When to use it:** Perfect for research agents, document fetchers, or testers who need to interact with modern websites that basic text scrapers can't read.
+
+### `file_janitor`
+
+* **What it does:** Functions as an automated folder organizer. It scans your sandbox tree, indexes file layouts, cleans up messy duplicate files, sorts chaotic items, and automatically updates structural `README.md` maps to keep your project workspace tidy.
+* **When to use it:** Give this to an **Organizer** or **Manager** agent to maintain order in your project workspaces.
+
+### `task_sync`
+
+* **What it does:** Accesses and synchronizes local project milestone documents, task check-lists, and deadline calendars. It logs agent progress across separate sessions so your assistant knows exactly what remains to be done when it wakes up.
+* **When to use it:** Essential for project management or scheduling assistants.
+
+### `web_search`
+
+* **What it does:** Searches the live web using an optimized browser scraper. It queries search engines, fetches page contents, strips out annoying ad blocks or script clutter, and returns clean, easy-to-read text data to the agent's context.
+* **When to use it:** Give this to almost every agent so they can pull up-to-date documentation or search for solutions to compilation bugs.
+
+---
+
+## 🔌 2. Model Context Protocol (MCP) Tools
+
+If you have configured external **MCP Servers** under the `[mcp_servers]` section in your `config.toml`, Hiroshi automatically builds custom tool names for them on startup.
+
+To give an agent access to these tools, you use a clean, predictable naming format: **`mcp__<server_name>__<tool_name>`**.
+
+### Common Examples:
+
+* If you link a **Postgres** server named `database`, your agent can use:
+  * `mcp__database__query_db` (Runs custom SQL commands)
+  * `mcp__database__list_tables` (Inspects data tables)
+
+* If you link the official **Filesystem** server named `local_files`, your agent can use:
+  * `mcp__local_files__read_file`
+  * `mcp__local_files__write_file`
+
+> 💡 **The Wildcard Superpower (`mcp`):** If you don't want to type out every single MCP tool name individually, you can simply type `"mcp"` into an agent's allowed tools list. This single keyword instantly gives that specific agent permission to use *every* tool provided by *every* connected MCP server.
+
+---
+
+## 🛠️ 3. Your Custom Polyglot Skills
+
+Whenever you drop a brand-new automation script into your `~/.hiroshi/skills/` directory, **the folder name becomes the exact tool string** you use in `AGENTS.md`.
+
+* **Example:** If you create a custom Python script folder named `check_weather`, your tool configuration looks like this:
+```markdown
+## WeatherBot
+- Prompt: "Alert me about local forecasts."
+- Allowed Tools: [check_weather]
+```
+
+---
+
+## 📝 Complete `AGENTS.md` Configuration Example
+
+Here is how a perfectly mapped, fully transparent `AGENTS.md` file looks now that you know exactly what strings are supported:
+
+```markdown
+## Architect
+- Prompt: "You are Hiroshi's Lead Architect. Plan systems and research tech docs."
+- Allowed Tools: [web_search, browser_automation, file_janitor]
+- Hand-off: "If execution code needs to be written, yield control to Developer."
+
+## Developer
+- Prompt: "You are Hiroshi's Systems Programmer. Write code and manage version control."
+- Allowed Tools: [mcp__local_files__write_file, git_manager, task_sync]
+- Hand-off: "Yield back to Architect upon completing successful execution passes."
+```

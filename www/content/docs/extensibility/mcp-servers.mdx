@@ -1,0 +1,51 @@
+---
+title: Model Context Protocol (MCP) Integration
+description: Register open community tools directly in config.toml using stdio MCP.
+---
+
+Hiroshi supports the Model Context Protocol (MCP), allowing you to connect local agent layers to community tool servers (such as databases, memory repositories, or file system inspectors).
+
+---
+
+## 🔌 Registering an MCP Server
+
+Configure your server entries inside the `[mcp_servers]` namespace inside `~/.hiroshi/config.toml`:
+
+```toml
+[mcp_servers.postgres]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "--connection-string", "postgresql://localhost/db"]
+
+[mcp_servers.sqlite]
+command = "uvx"
+args = ["mcp-server-sqlite", "--db-path", "~/.hiroshi/hiroshi.db"]
+```
+
+---
+
+## 🔎 Virtual Skill Reflection
+
+When the Hiroshi background daemon boots:
+
+1.  **Process Connection**: Hiroshi launches the configured MCP servers as background processes over standard input/output channels.
+2.  **Tool Querying**: The daemon requests available tools using the standard protocol.
+3.  **Dummy Folder Generation**: For each tool, Hiroshi generates a matching folder structure inside your custom skills directory:
+    ```text
+    ~/.hiroshi/skills/mcp__<server_name>__<tool_name>/
+    └── SKILL.md
+    ```
+4.  **Auto-Exposes to Agents**: Hiroshi writes the parameters and description to the `SKILL.md` file, making the tool available to the prompt parser.
+
+---
+
+## 🛠️ Granting MCP Permissions
+
+To grant an agent permission to invoke reflected MCP tools, list the custom `mcp__` tool identifier inside `~/.hiroshi/AGENTS.md`:
+
+```markdown
+## Developer
+- Prompt: "You are Hiroshi's Systems Programmer."
+- Allowed Tools: [WriteFile, mcp__sqlite__query_db]
+```
+
+When the agent triggers this tool, Hiroshi redirects the JSON arguments back to the active MCP server subprocess, returning the execution outcome to the conversation history.

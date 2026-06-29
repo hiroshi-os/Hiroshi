@@ -2,8 +2,9 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
-/* Force Monospace Font Globally Everywhere */
-* {
+
+/* Scoped Monospace Font for Landing Page elements */
+.font-mono, .font-mono * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 

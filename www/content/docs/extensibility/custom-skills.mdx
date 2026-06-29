@@ -1,0 +1,86 @@
+---
+title: Custom Skills Integration
+description: Build custom plug-and-play tools for your agents in Python, Bash, or PowerShell.
+---
+
+You can write custom capability scripts in **any programming language** (Python, Bash, Node.js, Go) and register them as skills without modifying or compiling the core Hiroshi executable.
+
+---
+
+## 📂 Custom Skill Directory Contract
+
+Each skill is represented by a folder inside `~/.hiroshi/skills/` containing:
+
+```text
+~/.hiroshi/skills/
+└── image_converter/
+    ├── SKILL.md       # Tool name, description, and parameter schema
+    └── convert.py     # The executable script or binary file
+```
+
+---
+
+## 📝 Defining Tool Metadata (`SKILL.md`)
+
+The `SKILL.md` file uses a YAML frontmatter block to explain the tool description and JSON parameters to the agent.
+
+```markdown
+---
+name: image_converter
+description: "Converts local png files to jpg format."
+schema: '{ "source_path": "string", "quality": "number" }'
+---
+# Image Converter
+Converts image files using python pillow dependencies.
+```
+
+*   **`name`**: The unique keyword agents output to trigger this skill.
+*   **`description`**: Explains to the model when to choose this tool.
+*   **`schema`**: Declares expected JSON arguments.
+
+---
+
+## 🔌 The Input/Output Contract (IPC)
+
+When an agent calls your skill, Hiroshi executes your script:
+
+1.  **Arguments on Standard Input (`stdin`)**: Hiroshi passes arguments into your script as a JSON string (e.g. `{"source_path": "image.png", "quality": 90}`).
+2.  **Output on Standard Output (`stdout`)**: Your script should print its execution results to stdout. Hiroshi captures this output and returns it to the agent.
+
+### Example Python Script (`convert.py`):
+```python
+import sys
+import json
+
+def main():
+    # 1. Read JSON parameters from standard input
+    raw_input = sys.stdin.read()
+    args = json.loads(raw_input)
+    
+    source = args.get("source_path")
+    quality = args.get("quality", 85)
+    
+    # 2. Run your tool logic here
+    # ...
+    
+    result = {
+        "success": True,
+        "message": f"Saved {source} as jpg at {quality}% quality."
+    }
+    
+    # 3. Print output back to standard output
+    print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## 🛡️ Security Protections
+
+To protect your system, Hiroshi passes all script executions through a safety filter:
+
+*   **Allowed Binaries Whitelist**: The shell runner will reject execution if the script interpreter (e.g., `python`, `node`) is not whitelisted inside the `allowed_binaries` list in your `config.toml`.
+*   **Command Injection Filter**: Hiroshi actively blocks commands containing special characters that link terminal execution commands (like `&`, `|`, `;`, `$`, or backticks).
+*   **10-Second Circuit Breaker**: Subprocess runs are monitored. If a script enters an infinite loop or hangs, a background thread terminates the process ID automatically after **10 seconds**.

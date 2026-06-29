@@ -3,8 +3,8 @@ import './global.css';
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className="font-mono" suppressHydrationWarning>
-      <body className="flex flex-col min-h-screen font-mono">
+    <html lang="en" suppressHydrationWarning>
+      <body className="flex flex-col min-h-screen">
         <RootProvider>{children}</RootProvider>
       </body>
     </html>

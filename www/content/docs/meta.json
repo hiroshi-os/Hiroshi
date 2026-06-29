@@ -1,8 +1,9 @@
 {
   "pages": [
     "index",
-    "getting-started",
-    "architecture",
-    "extensibility"
+    "setup",
+    "usage",
+    "extensibility",
+    "dashboard"
   ]
 }

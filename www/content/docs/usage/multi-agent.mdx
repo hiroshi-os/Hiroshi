@@ -1,0 +1,48 @@
+---
+title: Multi-Agent Workflows
+description: How to customize your agent personas and configure automatic task handoffs.
+---
+
+Hiroshi splits operations across specialized agent profiles configured in a plain-text markdown file at `~/.hiroshi/AGENTS.md`.
+
+---
+
+## 📝 Configuration Blueprint (`AGENTS.md`)
+
+Each agent is defined using a Markdown level-2 header (`## Name`) followed by list options:
+
+```markdown
+## Architect
+- Prompt: "You are Hiroshi's Lead Architect. Deconstruct user requests into system designs."
+- Allowed Tools: [ReadFile, WriteFile]
+- Hand-off: "If code needs to be written, transfer control using [HANDOFF: Developer]."
+
+## Developer
+- Prompt: "You are Hiroshi's Systems Programmer. Write clean code inside the workspace."
+- Allowed Tools: [WriteFile]
+- Hand-off: "When you finish writing code and compile successfully, return control using [HANDOFF: Architect]."
+```
+
+### Parameter Reference:
+
+*   **`Prompt`**: The system instructions defining the agent's identity, role, and boundaries.
+*   **`Allowed Tools`**: Explicit list of permissions (see the [Master Tool Registry](/docs/usage/tools-registry) for all available strings). The agent can only execute tools listed here (e.g. `[ReadFile, WriteFile]`).
+*   **`Hand-off`**: Instructions telling the agent when it should yield control to another profile.
+
+---
+
+## 🔀 Automatic Context Shifting
+
+Handoffs happen automatically without user intervention when the active agent outputs a target token matching this pattern in the text completion stream:
+
+```text
+[HANDOFF: TargetAgentName]
+```
+
+### How the Handoff Cycle Works:
+
+1.  **Monitor Stream**: As the local model outputs tokens, Hiroshi checks for the `[HANDOFF: ...]` phrase.
+2.  **Intercept Loop**: When found, Hiroshi stops the current generation cycle.
+3.  **Swap Prompts**: The active system prompt is swapped to the system prompt of the `TargetAgentName` defined in `AGENTS.md`.
+4.  **Forward Conversation**: The ongoing chat logs and file context are carried over, and the new agent starts generating immediately.
+5.  **Interface Notification**: The local web dashboard flashes and updates its visual elements to show that control has shifted to the new agent.
