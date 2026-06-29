@@ -141,10 +141,10 @@ async fn execute_cron_task(
     memory_dir: PathBuf,
 ) -> Result<(), String> {
     // 1. Export daily log
-    db.export_daily_log(&memory_dir)?;
+    db.export_daily_log("terminal", &memory_dir)?;
 
     // 2. Perform memory compaction
-    db.compact_memory(&memory_dir, &provider).await?;
+    db.compact_memory("terminal", &memory_dir, &provider).await?;
 
     // 3. Run LLM task prompt
     let system_prompt = format!(

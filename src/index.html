@@ -5,19 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hiroshi OS // Visual Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
+        // Load initial theme from localStorage
+        const theme = localStorage.getItem('theme') || 'dark';
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Outfit', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
                     colors: {
-                        cyan: {
-                            450: '#00f0ff',
+                        zinc: {
+                            950: '#09090b',
+                            900: '#121214',
+                            850: '#1c1c1f',
+                            800: '#27272a',
                         }
                     }
                 }
@@ -25,209 +32,329 @@
         }
     </script>
     <style>
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+        }
         body {
             font-family: 'Outfit', sans-serif;
-            background-color: #08090d;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.05) 0px, transparent 50%);
+            background-color: #ffffff;
+            color: #18181b;
+            transition: background-color 0.2s, color 0.2s;
         }
-        .mono-font {
-            font-family: 'JetBrains Mono', monospace;
+        .dark body {
+            background-color: #09090b;
+            color: #fafafa;
         }
+        
+        /* Scoped Monospace Font for code, titles, and metrics */
+        .font-mono, .font-mono * {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+        }
+        
+        /* Fine grain noise overlay */
+        .dither-overlay {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.05;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            z-index: 100;
+        }
+
         /* Custom scrollbars */
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
         }
         ::-webkit-scrollbar-track {
-            background: rgba(30, 41, 59, 0.1);
+            background: rgba(161, 161, 170, 0.1);
+        }
+        .dark ::-webkit-scrollbar-track {
+            background: rgba(39, 39, 42, 0.2);
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.3);
-            border-radius: 4px;
+            background: #d4d4d8;
+            border-radius: 0px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #27272a;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, 0.5);
+            background: #a1a1aa;
         }
-        .glow-effect {
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46;
         }
-        .glow-cyan {
-            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
+
+        /* Pixel-style toggle switch */
+        .pixel-switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 18px;
+            background-color: #e4e4e7;
+            border: 1px solid #d4d4d8;
+            cursor: pointer;
         }
-        .agent-active-glow {
-            animation: pulse-border 2s infinite alternate;
+        .dark .pixel-switch {
+            background-color: #27272a;
+            border-color: #3f3f46;
         }
-        @keyframes pulse-border {
-            0% {
-                border-color: rgba(16, 185, 129, 0.3);
-                box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
-            }
-            100% {
-                border-color: rgba(16, 185, 129, 0.8);
-                box-shadow: 0 0 18px rgba(16, 185, 129, 0.3);
-            }
+        .pixel-switch::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #71717a;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.1s steps(2);
+        }
+        input:checked + .pixel-switch {
+            background-color: #10b981;
+            border-color: #34d399;
+        }
+        input:checked + .pixel-switch::after {
+            transform: translateX(18px);
+            background-color: #fafafa;
+        }
+
+        /* Resize handlers */
+        .resizer {
+            width: 3px;
+            cursor: col-resize;
+            background-color: #e4e4e7;
+            transition: background-color 0.1s;
+            position: relative;
+            z-index: 20;
+        }
+        .dark .resizer {
+            background-color: #27272a;
+        }
+        .resizer:hover, .resizer:active {
+            background-color: #a1a1aa;
+        }
+        .dark .resizer:hover, .dark .resizer:active {
+            background-color: #3f3f46;
+        }
+
+        /* Active indicators */
+        .active-border-Architect {
+            border: 1px solid #10b981 !important;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.12);
+        }
+        .active-border-Developer {
+            border: 1px solid #10b981 !important;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.12);
         }
     </style>
 </head>
-<body class="text-zinc-100 min-h-screen flex flex-col overflow-hidden">
-    <!-- Header -->
-    <header class="border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-md px-6 py-4 flex items-center justify-between z-10">
-        <div class="flex items-center space-x-3">
-            <div class="relative flex h-3 w-3">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-            </div>
-            <span class="font-bold text-lg tracking-widest bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mono-font">HIROSHI // OS</span>
-            <span class="text-xs px-2 py-0.5 rounded border border-zinc-800 text-zinc-500 font-mono">v7.0</span>
-        </div>
-        
-        <!-- Live System telemetry -->
-        <div class="flex items-center space-x-8 text-xs text-zinc-400 border border-zinc-800/60 rounded-lg px-4 py-1.5 bg-zinc-900/30">
-            <div class="flex items-center space-x-2">
-                <span class="text-zinc-600 font-mono">RAM:</span>
-                <span id="ram-val" class="text-emerald-400 font-bold mono-font">-- MB</span>
-            </div>
-            <div class="w-px h-3 bg-zinc-800"></div>
-            <div class="flex items-center space-x-2">
-                <span class="text-zinc-600 font-mono">CPU:</span>
-                <span id="cpu-val" class="text-cyan-400 font-bold mono-font">--%</span>
-            </div>
-            <div class="w-px h-3 bg-zinc-800"></div>
-            <div class="flex items-center space-x-2">
-                <span class="text-zinc-600 font-mono">SPEED:</span>
-                <span id="tps-val" class="text-amber-400 font-bold mono-font">-- t/s</span>
-            </div>
-        </div>
-    </header>
+<body class="h-screen flex flex-col overflow-hidden relative selection:bg-emerald-500/20 selection:text-emerald-300">
+    <div class="dither-overlay"></div>
 
-    <!-- Main Workspace Split-Pane -->
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden relative">
+    <!-- Main Workspace Container -->
+    <div class="flex-1 flex overflow-hidden relative w-full h-full">
         
-        <!-- Left Panel: Multi-Agent Theater & Skill Permissions -->
-        <aside class="col-span-1 lg:col-span-4 border-r border-zinc-800/80 bg-zinc-950/20 p-5 flex flex-col space-y-6 overflow-y-auto">
-            
-            <!-- Multi-Agent Theater -->
-            <div>
-                <div class="flex items-center justify-between mb-3.5">
-                    <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                        Agent Theater
-                    </h3>
-                    <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Live Shifts</span>
+        <!-- Left Vertical Toolbar (Always visible, clean, containing only functional buttons) -->
+        <nav class="w-14 border-r border-zinc-200 dark:border-zinc-800 bg-[#f4f4f5] dark:bg-[#09090b] flex flex-col justify-between py-6 items-center flex-shrink-0 z-25 select-none transition-colors duration-200">
+            <!-- Top Buttons -->
+            <div class="flex flex-col space-y-6 items-center">
+                <!-- Logo Box -->
+                <div class="h-6 w-6 border border-zinc-300 dark:border-zinc-700 bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center font-bold text-zinc-900 dark:text-zinc-100 text-[10px] font-mono select-none">
+                    H
                 </div>
                 
-                <div class="space-y-3">
-                    <!-- Architect Card -->
-                    <div id="card-Architect" class="p-3.5 bg-zinc-900/30 border border-zinc-800 rounded-xl transition-all duration-300 flex items-start justify-between">
-                        <div class="flex items-start space-x-3">
-                            <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mt-0.5">
-                                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                            </div>
-                            <div>
-                                <div class="font-semibold text-zinc-200 text-sm">Lead Architect</div>
-                                <div class="text-xs text-zinc-500 mt-0.5">Generates system plans, coordinates tasks, reads logs</div>
-                            </div>
-                        </div>
-                        <span id="arch-indicator" class="h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1"></span>
-                    </div>
+                <div class="w-8 h-px bg-zinc-200 dark:bg-zinc-850"></div>
 
-                    <!-- Developer Card -->
-                    <div id="card-Developer" class="p-3.5 bg-zinc-900/30 border border-zinc-800 rounded-xl transition-all duration-300 flex items-start justify-between">
-                        <div class="flex items-start space-x-3">
-                            <div class="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mt-0.5">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
-                            </div>
-                            <div>
-                                <div class="font-semibold text-zinc-200 text-sm">Systems Developer</div>
-                                <div class="text-xs text-zinc-500 mt-0.5">Executes compiler checks, writes code inside sandboxes</div>
-                            </div>
-                        </div>
-                        <span id="dev-indicator" class="h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1"></span>
-                    </div>
-                </div>
+                <!-- Toggle Left Panel (Agent Theater & Permits Hub) -->
+                <button id="left-collapse-btn" onclick="toggleLeftPanel()" title="Toggle Agent Hub" class="p-2 border border-transparent hover:border-zinc-355 dark:hover:border-zinc-700 rounded text-zinc-600 dark:text-zinc-400 hover:text-zinc-955 dark:hover:text-zinc-100 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+
+                <!-- Toggle Right Panel (Canvas & Console Logs) -->
+                <button id="right-collapse-btn" onclick="toggleRightPanel()" title="Toggle Viewport & Logs" class="p-2 border border-transparent hover:border-zinc-355 dark:hover:border-zinc-700 rounded text-zinc-650 dark:text-zinc-400 hover:text-zinc-955 dark:hover:text-zinc-100 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                </button>
             </div>
 
-            <!-- Dynamic Skill Permissions -->
-            <div class="flex-1 flex flex-col min-h-[300px]">
-                <div class="flex items-center justify-between mb-3.5">
-                    <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                        Workspace Skill Hub
-                    </h3>
-                    <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Toggles</span>
+            <!-- Bottom Buttons -->
+            <div class="flex flex-col space-y-6 items-center">
+                <!-- Theme Toggler -->
+                <button onclick="toggleTheme()" title="Toggle Light/Dark Theme" class="p-2 border border-transparent hover:border-zinc-355 dark:hover:border-zinc-700 rounded text-zinc-650 dark:text-zinc-400 hover:text-zinc-955 dark:hover:text-zinc-100 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Left Panel: Multi-Agent Theater & Skill Permissions (Collapsed by default) -->
+        <aside id="left-panel" style="width: 0px; border-right-width: 0px; padding: 0px;" class="overflow-hidden flex-shrink-0 flex flex-col bg-[#f4f4f5] dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 transition-all duration-300">
+            <div class="w-[280px] p-6 space-y-6 flex flex-col h-full flex-shrink-0">
+                <!-- Multi-Agent Theater -->
+                <div>
+                    <div class="flex items-center justify-between mb-4 select-none font-mono">
+                        <h3 class="text-xs uppercase tracking-widest text-zinc-600 dark:text-zinc-300 font-bold">
+                            [ Agent Theater ]
+                        </h3>
+                        <span class="text-[9px] text-zinc-600 dark:text-zinc-400 uppercase bg-zinc-200 dark:bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-800/60">Active Shifts</span>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <!-- Architect Card -->
+                        <div id="card-Architect" class="p-5 bg-zinc-100/50 dark:bg-zinc-900/10 border border-zinc-200 dark:border-zinc-800 rounded transition-all duration-300 flex items-start justify-between">
+                            <div class="flex items-start space-x-3.5">
+                                <div class="p-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 mt-0.5 font-mono text-xs font-bold">
+                                    A
+                                </div>
+                                <div>
+                                    <div class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wider font-mono">Lead Architect</div>
+                                    <div class="text-[12px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">Generates workspace structures, coordinates execution, inspects logs</div>
+                                </div>
+                            </div>
+                            <span id="arch-indicator" class="h-2.5 w-2.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 mt-1.5 flex-shrink-0"></span>
+                        </div>
+
+                        <!-- Developer Card -->
+                        <div id="card-Developer" class="p-5 bg-zinc-100/50 dark:bg-zinc-900/10 border border-zinc-200 dark:border-zinc-800 rounded transition-all duration-300 flex items-start justify-between">
+                            <div class="flex items-start space-x-3.5">
+                                <div class="p-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 mt-0.5 font-mono text-xs font-bold">
+                                    D
+                                </div>
+                                <div>
+                                    <div class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wider font-mono">Systems Developer</div>
+                                    <div class="text-[12px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">Executes whitelisted terminal scripts, compiles binaries inside sandbox</div>
+                                </div>
+                            </div>
+                            <span id="dev-indicator" class="h-2.5 w-2.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 mt-1.5 flex-shrink-0"></span>
+                        </div>
+                    </div>
                 </div>
-                
-                <!-- Skills Panel Grid -->
-                <div id="skills-hub-grid" class="flex-1 bg-zinc-900/10 border border-zinc-800/60 rounded-xl p-4 overflow-y-auto space-y-3">
-                    <div class="text-center text-zinc-500 text-xs py-8">Fetching dynamic skills...</div>
+
+                <!-- Dynamic Skill Permissions -->
+                <div class="flex-1 flex flex-col min-h-[300px]">
+                    <div class="flex items-center justify-between mb-4 select-none font-mono">
+                        <h3 class="text-xs uppercase tracking-widest text-zinc-600 dark:text-zinc-300 font-bold">
+                            [ Skill Permits Hub ]
+                        </h3>
+                        <span class="text-[9px] text-zinc-600 dark:text-zinc-400 uppercase bg-zinc-200 dark:bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-800/60">Toggles</span>
+                    </div>
+                    
+                    <!-- Skills Panel Grid -->
+                    <div id="skills-hub-grid" class="flex-1 bg-zinc-100/20 dark:bg-zinc-900/10 border border-zinc-200 dark:border-zinc-800 rounded p-4 overflow-y-auto space-y-3">
+                        <div class="text-center text-zinc-500 dark:text-zinc-400 text-xs py-8">Loading workspace capabilities registry...</div>
+                    </div>
                 </div>
             </div>
         </aside>
 
+        <!-- Left Resizer Bar (Hidden by default) -->
+        <div id="resizer-left" class="resizer hidden"></div>
+
         <!-- Center Panel: The Multi-Agent Live Chat Canvas -->
-        <main class="col-span-1 lg:col-span-5 flex flex-col h-full bg-zinc-950/10 overflow-hidden">
-            <!-- Messages stream -->
-            <div id="chat-stream" class="flex-1 overflow-y-auto p-6 space-y-5">
-                <div class="flex flex-col items-center justify-center h-full text-center p-6">
-                    <div class="h-16 w-16 rounded-full bg-zinc-900/50 border border-zinc-800 flex items-center justify-center text-emerald-400 glow-effect mb-4 animate-bounce">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        <main id="center-panel" class="flex-1 flex flex-col h-full overflow-hidden relative bg-[#ffffff] dark:bg-[#09090b]">
+            
+            <!-- Compact Telemetry Status Bar (Centered, Clean) -->
+            <div class="px-6 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-[#f4f4f5] dark:bg-[#09090b] flex items-center justify-between font-mono text-[10px] text-zinc-650 dark:text-zinc-400 select-none flex-shrink-0 z-10 relative">
+                <span class="text-zinc-600 dark:text-zinc-550 font-bold">STATUS // ONLINE</span>
+                <div class="flex items-space space-x-6">
+                    <div class="flex items-center space-x-1">
+                        <span>RAM:</span> <span id="ram-val" class="text-zinc-900 dark:text-zinc-200 font-bold">-- MB</span>
                     </div>
-                    <h2 class="font-semibold text-zinc-300 mb-1">Hiroshi Workspace Online</h2>
-                    <p class="text-xs text-zinc-500 max-w-xs">Send requests below or execute system commands. Dynamic tool outputs will render on the right panel.</p>
+                    <div class="w-px h-2.5 bg-zinc-300 dark:bg-zinc-800"></div>
+                    <div class="flex items-center space-x-1">
+                        <span>CPU:</span> <span id="cpu-val" class="text-zinc-900 dark:text-zinc-200 font-bold">--%</span>
+                    </div>
+                    <div class="w-px h-2.5 bg-zinc-300 dark:bg-zinc-850"></div>
+                    <div class="flex items-center space-x-1">
+                        <span>SPEED:</span> <span id="tps-val" class="text-zinc-900 dark:text-zinc-200 font-bold">-- t/s</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Chat / Prompt Form -->
-            <div class="p-4 border-t border-zinc-850 bg-zinc-950/65 backdrop-blur-md">
-                <form id="chat-form" class="flex space-x-3">
-                    <input id="chat-input" type="text" placeholder="Send system instructions..." autocomplete="off"
-                        class="flex-1 bg-zinc-900 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-700 text-zinc-200 placeholder-zinc-600 transition">
-                    <button type="submit"
-                        class="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-zinc-950 px-6 py-2.5 rounded-xl text-sm font-semibold transition shadow-md shadow-emerald-500/10">
-                        Send
-                    </button>
-                </form>
+            <!-- Scrollable Message Canvas (Initially spans full center area absolute) -->
+            <div id="chat-stream" class="absolute inset-0 overflow-y-auto px-6 pt-16 pb-12 w-full h-full flex flex-col justify-center items-center">
+                <!-- Welcome layout screen -->
+                <div id="welcome-container" class="flex flex-col items-center justify-center p-6 text-center select-none max-w-xl mx-auto w-full flex-shrink-0 mt-8">
+                    <h2 class="font-bold text-zinc-900 dark:text-zinc-100 text-2xl tracking-wider mb-2 font-mono">What can I do for you?</h2>
+                    <p class="text-[14px] text-zinc-700 dark:text-zinc-300 mb-6 leading-relaxed font-sans">Enter offline agent commands or execute local workspace tasks inside the sandbox below.</p>
+                    
+                    <!-- Quick action helper buttons -->
+                    <div class="flex flex-wrap justify-center gap-2 mb-8">
+                        <button type="button" onclick="sendQuickCommand('Check workspace status')" class="px-3.5 py-1.8 border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-mono text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-zinc-100 transition">
+                            Check Status
+                        </button>
+                        <button type="button" onclick="sendQuickCommand('Run compiler checks')" class="px-3.5 py-1.8 border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-mono text-zinc-800 dark:text-zinc-200 hover:text-zinc-955 dark:hover:text-zinc-100 transition">
+                            Run Tests
+                        </button>
+                        <button type="button" onclick="sendQuickCommand('Sync master memory log')" class="px-3.5 py-1.8 border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-200 dark:hover:bg-zinc-900 text-xs font-mono text-zinc-800 dark:text-zinc-200 hover:text-zinc-955 dark:hover:text-zinc-100 transition">
+                            Sync Memory
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat Input Box Container (Starts nested inside the flow of the welcome screen, centered) -->
+                <div id="input-container" class="w-full max-w-3xl mx-auto px-6 pb-12 pt-2 z-15 flex justify-center flex-shrink-0 transition-all duration-300">
+                    <form id="chat-form" class="relative w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl p-2.5 flex items-center transition focus-within:border-zinc-400 dark:focus-within:border-zinc-650 shadow-md">
+                        <input id="chat-input" type="text" placeholder="Assign a task or prompt agents..." autocomplete="off"
+                            class="flex-1 bg-transparent px-4 py-2.5 text-[15px] text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none font-mono">
+                        <button type="submit" title="Send Instruction"
+                            class="bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-850 dark:hover:bg-zinc-200 text-zinc-50 dark:text-zinc-955 p-2.8 rounded-lg flex items-center justify-center border border-zinc-800 dark:border-zinc-300 transition select-none flex-shrink-0">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
             </div>
         </main>
 
-        <!-- Right Panel: Multi-Media Canvas & Stylized Terminal Log Outputs -->
-        <section class="col-span-1 lg:col-span-3 border-l border-zinc-800/80 bg-zinc-950/20 p-5 flex flex-col space-y-5 overflow-hidden">
-            <div class="flex items-center justify-between">
-                <h3 class="text-xs uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    Multi-Media Canvas
-                </h3>
-                <span class="text-[10px] text-zinc-500 font-mono uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/60">Live Viewport</span>
-            </div>
+        <!-- Right Resizer Bar (Hidden by default) -->
+        <div id="resizer-right" class="resizer hidden"></div>
 
-            <!-- Graphic Output Area -->
-            <div class="flex-1 border border-zinc-800/80 rounded-xl bg-zinc-900/20 flex flex-col overflow-hidden">
-                <div id="canvas-status" class="flex-1 flex flex-col items-center justify-center p-6 text-center text-zinc-600 text-xs">
-                    <svg class="w-8 h-8 text-zinc-800 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                    No visual screenshots exported from browser scraping tasks yet.
+        <!-- Right Panel: Multi-Media Canvas & Stylized Terminal Log Outputs (Collapsed by default) -->
+        <aside id="right-panel" style="width: 0px; border-left-width: 0px; padding: 0px;" class="overflow-hidden flex-shrink-0 flex flex-col bg-[#f4f4f5] dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 transition-all duration-300">
+            <div class="w-[280px] p-6 space-y-6 flex flex-col h-full flex-shrink-0">
+                <div class="flex items-center justify-between select-none font-mono">
+                    <h3 class="text-xs uppercase tracking-widest text-zinc-650 dark:text-zinc-350 font-bold">
+                        [ Canvas Viewport ]
+                    </h3>
+                    <span class="text-[9px] text-zinc-655 dark:text-zinc-400 uppercase bg-zinc-200 dark:bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-800/60">Base64 Images</span>
                 </div>
-                <div id="canvas-image-container" class="w-full h-full hidden overflow-auto flex items-center justify-center p-2 bg-black/40">
-                    <img id="canvas-image" class="max-w-full max-h-full rounded border border-zinc-850 shadow-2xl" src="" alt="Live Viewport Result">
-                </div>
-            </div>
 
-            <!-- Stylized Terminal Log Outputs -->
-            <div class="h-1/3 border border-zinc-800/80 rounded-xl bg-zinc-950 flex flex-col overflow-hidden relative">
-                <div class="px-3.5 py-1.5 bg-zinc-900 border-b border-zinc-800/60 flex items-center justify-between">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Console Streams</span>
-                    <div class="flex space-x-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
-                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
-                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
+                <!-- Graphic Output Area -->
+                <div class="flex-1 border border-zinc-200 dark:border-zinc-800 rounded bg-zinc-100/30 dark:bg-zinc-900/20 flex flex-col overflow-hidden">
+                    <div id="canvas-status" class="flex-1 flex flex-col items-center justify-center p-6 text-center text-zinc-600 dark:text-zinc-450 text-[11px] leading-relaxed select-none font-mono">
+                        [ Waiting for viewport stream from automation tasks ]
+                    </div>
+                    <div id="canvas-image-container" class="w-full h-full hidden overflow-auto flex items-center justify-center p-2 bg-black/5 dark:bg-black/40">
+                        <img id="canvas-image" class="max-w-full max-h-full rounded border border-zinc-200 dark:border-zinc-800" src="" alt="Live Viewport Result">
                     </div>
                 </div>
-                <div id="terminal-logs" class="flex-1 p-3.5 overflow-y-auto text-[11px] font-mono text-zinc-400 leading-relaxed bg-zinc-950">
-                    <div class="text-zinc-600">&gt; Daemon initialized. Watching terminal subprocess channels...</div>
+
+                <!-- Stylized Terminal Log Outputs -->
+                <div class="h-[200px] border border-zinc-200 dark:border-zinc-800 rounded bg-[#fafafa] dark:bg-zinc-950 flex flex-col overflow-hidden relative font-mono">
+                    <div class="px-3.5 py-1.5 bg-[#f4f4f5] dark:bg-[#09090b] border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between select-none">
+                        <span class="text-[9px] uppercase font-bold tracking-wider text-zinc-550">Console Logs</span>
+                        <div class="flex space-x-1.5">
+                            <span class="w-1.5 h-1.5 bg-zinc-300 dark:bg-zinc-800"></span>
+                            <span class="w-1.5 h-1.5 bg-zinc-300 dark:bg-zinc-800"></span>
+                            <span class="w-1.5 h-1.5 bg-zinc-300 dark:bg-zinc-800"></span>
+                        </div>
+                    </div>
+                    <div id="terminal-logs" class="flex-1 p-3.5 overflow-y-auto text-[10px] text-zinc-650 dark:text-zinc-300 leading-relaxed bg-[#f4f4f5] dark:bg-[#09090b]">
+                        <div class="text-zinc-600 dark:text-zinc-500">&gt; Daemon initialized. Subprocess feeds active.</div>
+                    </div>
                 </div>
             </div>
-        </section>
+        </aside>
     </div>
 
     <!-- Scripts -->
@@ -241,6 +368,103 @@
         const archInd = document.getElementById('arch-indicator');
         const devInd = document.getElementById('dev-indicator');
         const terminalLogs = document.getElementById('terminal-logs');
+        const welcomeContainer = document.getElementById('welcome-container');
+        const inputContainer = document.getElementById('input-container');
+
+        // Resizable Split Panels Logic
+        const leftPanel = document.getElementById('left-panel');
+        const rightPanel = document.getElementById('right-panel');
+        const resizerLeft = document.getElementById('resizer-left');
+        const resizerRight = document.getElementById('resizer-right');
+
+        let isLeftCollapsed = true;
+        let isRightCollapsed = true;
+        let leftWidth = 300; 
+        let rightWidth = 300; 
+
+        let isResizingLeft = false;
+        let isResizingRight = false;
+
+        function toggleLeftPanel() {
+            isLeftCollapsed = !isLeftCollapsed;
+            const btn = document.getElementById('left-collapse-btn');
+            
+            if (isLeftCollapsed) {
+                leftPanel.style.width = '0px';
+                leftPanel.style.borderRightWidth = '0px';
+                resizerLeft.classList.add('hidden');
+                btn.classList.remove('bg-zinc-200', 'dark:bg-zinc-900', 'text-zinc-800', 'dark:text-zinc-200');
+            } else {
+                leftPanel.style.width = `${leftWidth}px`;
+                leftPanel.style.borderRightWidth = '1px';
+                resizerLeft.classList.remove('hidden');
+                btn.classList.add('bg-zinc-200', 'dark:bg-zinc-900', 'text-zinc-800', 'dark:text-zinc-200');
+            }
+        }
+
+        function toggleRightPanel() {
+            isRightCollapsed = !isRightCollapsed;
+            const btn = document.getElementById('right-collapse-btn');
+            
+            if (isRightCollapsed) {
+                rightPanel.style.width = '0px';
+                rightPanel.style.borderLeftWidth = '0px';
+                resizerRight.classList.add('hidden');
+                btn.classList.remove('bg-zinc-200', 'dark:bg-zinc-900', 'text-zinc-800', 'dark:text-zinc-200');
+            } else {
+                rightPanel.style.width = `${rightWidth}px`;
+                rightPanel.style.borderLeftWidth = '1px';
+                resizerRight.classList.remove('hidden');
+                btn.classList.add('bg-zinc-200', 'dark:bg-zinc-900', 'text-zinc-800', 'dark:text-zinc-200');
+            }
+        }
+
+        resizerLeft.addEventListener('mousedown', (e) => {
+            isResizingLeft = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        resizerRight.addEventListener('mousedown', (e) => {
+            isResizingRight = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizingLeft && !isLeftCollapsed) {
+                const newWidth = e.clientX - 56; // account for vertical toolbar
+                if (newWidth > 220 && newWidth < 500) {
+                    leftWidth = newWidth;
+                    leftPanel.style.width = `${leftWidth}px`;
+                }
+            } else if (isResizingRight && !isRightCollapsed) {
+                const newWidth = window.innerWidth - e.clientX;
+                if (newWidth > 200 && newWidth < 450) {
+                    rightWidth = newWidth;
+                    rightPanel.style.width = `${rightWidth}px`;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizingLeft = false;
+            isResizingRight = false;
+            document.body.style.cursor = 'default';
+            document.body.style.userSelect = 'auto';
+        });
+
+        // Theme Toggle Logic
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
 
         // Setup Websocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -273,14 +497,13 @@
                 }
                 else if (data.type === 'skill_toggle') {
                     appendLog(`Skill toggled: ${data.name} enabled=${data.enabled}`);
-                    // update skill check in list
                     const checkbox = document.getElementById(`toggle-${data.name}`);
                     if (checkbox) {
                         checkbox.checked = data.enabled;
                     }
                 }
                 else if (data.type === 'screenshot') {
-                    appendLog(`Image screenshot data received: ${data.image.substring(0, 30)}...`);
+                    appendLog('Viewport update received');
                     document.getElementById('canvas-status').classList.add('hidden');
                     const imgContainer = document.getElementById('canvas-image-container');
                     const img = document.getElementById('canvas-image');
@@ -298,28 +521,28 @@
         // Highlight Active Agent Card
         function highlightActiveAgent(agentName) {
             if (agentName === 'Architect') {
-                archCard.className = 'p-3.5 bg-emerald-950/20 border border-emerald-500/50 rounded-xl transition-all duration-300 flex items-start justify-between agent-active-glow';
-                archInd.className = 'h-2 w-2 rounded-full bg-emerald-400 border border-emerald-500 mt-1 shadow shadow-emerald-500';
+                archCard.className = 'p-5 bg-zinc-200/50 dark:bg-zinc-900/30 border border-zinc-350 dark:border-zinc-850 rounded transition-all duration-300 flex items-start justify-between active-border-Architect';
+                archInd.className = 'h-2.5 w-2.5 bg-emerald-500 border border-emerald-400 mt-1.5 flex-shrink-0';
                 
-                devCard.className = 'p-3.5 bg-zinc-900/10 border border-zinc-850 rounded-xl transition-all duration-300 flex items-start justify-between opacity-50';
-                devInd.className = 'h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1';
+                devCard.className = 'p-5 bg-zinc-100/20 dark:bg-zinc-900/5 border border-zinc-200 dark:border-zinc-900 rounded transition-all duration-300 flex items-start justify-between opacity-40';
+                devInd.className = 'h-2.5 w-2.5 bg-zinc-300 dark:bg-zinc-800 border border-zinc-400 dark:border-zinc-700 mt-1.5 flex-shrink-0';
             } else if (agentName === 'Developer') {
-                devCard.className = 'p-3.5 bg-cyan-950/20 border border-cyan-500/50 rounded-xl transition-all duration-300 flex items-start justify-between agent-active-glow';
-                devInd.className = 'h-2 w-2 rounded-full bg-cyan-400 border border-cyan-500 mt-1 shadow shadow-cyan-500';
+                devCard.className = 'p-5 bg-zinc-200/50 dark:bg-zinc-900/30 border border-zinc-355 dark:border-zinc-855 rounded transition-all duration-300 flex items-start justify-between active-border-Developer';
+                devInd.className = 'h-2.5 w-2.5 bg-emerald-500 border border-emerald-400 mt-1.5 flex-shrink-0';
                 
-                archCard.className = 'p-3.5 bg-zinc-900/10 border border-zinc-850 rounded-xl transition-all duration-300 flex items-start justify-between opacity-50';
-                archInd.className = 'h-2 w-2 rounded-full bg-zinc-800 border border-zinc-700 mt-1';
+                archCard.className = 'p-5 bg-zinc-100/20 dark:bg-zinc-900/5 border border-zinc-200 dark:border-zinc-900 rounded transition-all duration-300 flex items-start justify-between opacity-40';
+                archInd.className = 'h-2.5 w-2.5 bg-zinc-300 dark:bg-zinc-800 border border-zinc-400 dark:border-zinc-700 mt-1.5 flex-shrink-0';
             }
         }
 
         function flashUIForHandoff(nextAgent) {
             const body = document.body;
-            const flashColor = nextAgent === 'Architect' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.15)';
             body.style.transition = 'background-color 0.1s ease';
-            body.style.backgroundColor = flashColor;
+            body.style.backgroundColor = 'rgba(16, 185, 129, 0.08)';
             setTimeout(() => {
-                body.style.backgroundColor = '#08090d';
-            }, 300);
+                const isDark = document.documentElement.classList.contains('dark');
+                body.style.backgroundColor = isDark ? '#09090b' : '#ffffff';
+            }, 250);
         }
 
         // Fetch dynamic skills and construct checklist
@@ -330,26 +553,26 @@
                 
                 skillsHubGrid.innerHTML = '';
                 if (skills.length === 0) {
-                    skillsHubGrid.innerHTML = '<div class="text-zinc-600 text-xs text-center py-4">No dynamic skills loaded.</div>';
+                    skillsHubGrid.innerHTML = '<div class="text-zinc-550 dark:text-zinc-400 text-[10px] text-center py-4">No skills registered.</div>';
                     return;
                 }
 
                 skills.forEach(skill => {
                     const el = document.createElement('div');
-                    el.className = 'p-3 bg-zinc-950/40 border border-zinc-850 rounded-lg flex items-center justify-between text-xs hover:border-zinc-800/80 transition';
+                    el.className = 'p-3 bg-zinc-50 dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/80 rounded flex items-center justify-between text-[11px] hover:border-zinc-300 dark:hover:border-zinc-700 transition';
                     el.innerHTML = `
-                        <div class="flex-1 mr-3 min-w-0">
+                        <div class="flex-1 mr-3 min-w-0 font-sans font-semibold text-left">
                             <div class="flex items-center space-x-1.5">
-                                <span class="font-bold tracking-wide truncate ${skill.is_mcp ? 'text-cyan-400' : 'text-zinc-200'}">${skill.name}</span>
-                                ${skill.is_mcp ? '<span class="text-[9px] bg-cyan-950 text-cyan-400 border border-cyan-800/40 px-1 rounded">MCP</span>' : ''}
+                                <span class="font-bold tracking-wide truncate text-zinc-900 dark:text-zinc-200">${skill.name}</span>
+                                ${skill.is_mcp ? '<span class="text-[8px] bg-zinc-250 dark:bg-zinc-900 text-zinc-550 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 px-1 py-0.2 rounded font-mono">MCP</span>' : ''}
                             </div>
-                            <div class="text-zinc-500 truncate mt-0.5">${skill.description}</div>
+                            <div class="text-zinc-550 dark:text-zinc-400 truncate mt-0.5 font-normal">${skill.description}</div>
                         </div>
-                        <div class="relative inline-flex items-center cursor-pointer">
+                        <div class="relative inline-flex items-center flex-shrink-0">
                             <input type="checkbox" id="toggle-${skill.name}" ${skill.enabled ? 'checked' : ''} 
                                 onchange="toggleSkill('${skill.name}', this.checked)"
-                                class="sr-only peer">
-                            <div class="w-8 h-4.5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-zinc-100"></div>
+                                class="sr-only">
+                            <div class="pixel-switch"></div>
                         </div>
                     `;
                     skillsHubGrid.appendChild(el);
@@ -368,7 +591,7 @@
                 });
                 const res = await response.json();
                 if (res.status === 'ok') {
-                    appendLog(`Permits changed: ${name} is now ${enabled ? 'active' : 'revoked'}`);
+                    appendLog(`Privileges changed: ${name} is ${enabled ? 'active' : 'revoked'}`);
                 }
             } catch (err) {
                 console.error('Failed to change skill authorization state:', err);
@@ -379,11 +602,35 @@
 
         let lastMessageBubble = null;
         let lastRole = null;
+        let isChatActiveState = false;
+
+        function transitionToChatState() {
+            if (isChatActiveState) return;
+            isChatActiveState = true;
+
+            // 1. Hide welcome container
+            if (welcomeContainer) {
+                welcomeContainer.classList.add('hidden');
+            }
+
+            // 2. Adjust chat-stream flow: remove centered centering classes
+            chatStream.className = "absolute inset-0 overflow-y-auto px-6 pt-16 pb-36 w-full flex flex-col justify-start items-stretch";
+
+            // 3. Reparent input box out of chat-stream to center-panel
+            const centerPanel = document.getElementById('center-panel');
+            centerPanel.appendChild(inputContainer);
+
+            // 4. Position input box absolute floating locked at the bottom of the screen panel
+            inputContainer.className = "absolute bottom-0 left-0 right-0 w-full pointer-events-none p-6 bg-gradient-to-t from-white via-white/95 to-transparent dark:from-[#09090b] dark:via-[#09090b]/95 dark:to-transparent z-15 flex justify-center";
+            document.getElementById('chat-form').classList.add('pointer-events-auto', 'shadow-xl');
+
+            // 5. Instantly force scroll height synchronization
+            chatStream.scrollTop = chatStream.scrollHeight;
+        }
 
         function appendChatChunk(role, content) {
-            if (chatStream.querySelector('.text-center')) {
-                chatStream.innerHTML = ''; 
-            }
+            // Trigger transition shifts
+            transitionToChatState();
 
             if (lastRole === role && lastMessageBubble) {
                 const textNode = lastMessageBubble.querySelector('.content-text');
@@ -394,18 +641,19 @@
 
             lastRole = role;
             const bubble = document.createElement('div');
-            bubble.className = `p-4 rounded-xl border max-w-xl transition-all duration-300 ${
+            // Centered layout wrapping for all messages in the thread flow (max-w-3xl mx-auto)
+            bubble.className = `p-6 border max-w-3xl mx-auto w-full transition-all duration-300 rounded text-left ${
                 role === 'user' 
-                ? 'bg-zinc-900/60 border-zinc-850 ml-auto text-left shadow-lg' 
-                : 'bg-zinc-950/60 border-zinc-900 mr-auto text-left shadow-md'
+                ? 'bg-zinc-100/60 dark:bg-zinc-900/40 border-zinc-200 dark:border-zinc-800' 
+                : 'bg-transparent border-transparent'
             }`;
 
             bubble.innerHTML = `
-                <div class="flex items-center space-x-1.5 mb-1.5">
-                    <span class="h-1.5 w-1.5 rounded-full ${role === 'user' ? 'bg-zinc-400' : 'bg-emerald-500'}"></span>
-                    <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-mono font-bold">${role}</span>
+                <div class="flex items-center space-x-2 mb-2 select-none font-mono">
+                    <span class="h-1.5 w-1.5 rounded-full ${role === 'user' ? 'bg-zinc-650' : 'bg-emerald-500'}"></span>
+                    <span class="text-[10px] text-zinc-555 dark:text-zinc-400 uppercase tracking-widest font-bold">${role}</span>
                 </div>
-                <div class="content-text text-sm leading-relaxed text-zinc-200 select-text whitespace-pre-wrap">${content}</div>
+                <div class="content-text text-[15px] leading-relaxed text-zinc-900 dark:text-zinc-100 select-text whitespace-pre-wrap font-sans">${content}</div>
             `;
             chatStream.appendChild(bubble);
             lastMessageBubble = bubble;
@@ -415,10 +663,15 @@
         function appendLog(line) {
             const time = new Date().toLocaleTimeString();
             const el = document.createElement('div');
-            el.className = 'border-l border-zinc-850 pl-2 py-0.5';
-            el.innerHTML = `<span class="text-zinc-600 font-mono text-[9px] mr-1">[${time}]</span> <span class="text-zinc-400">${line}</span>`;
+            el.className = 'border-l border-zinc-300 dark:border-zinc-800 pl-2 py-0.5';
+            el.innerHTML = `<span class="text-zinc-500 dark:text-zinc-555 font-mono text-[9px] mr-1">[${time}]</span> <span class="text-zinc-650 dark:text-zinc-400 font-mono">${line}</span>`;
             terminalLogs.appendChild(el);
             terminalLogs.scrollTop = terminalLogs.scrollHeight;
+        }
+
+        function sendQuickCommand(cmd) {
+            chatInput.value = cmd;
+            chatForm.dispatchEvent(new Event('submit'));
         }
 
         chatForm.onsubmit = async (e) => {
@@ -429,7 +682,6 @@
             appendChatChunk('user', text + '\n');
             chatInput.value = '';
 
-            // Send via API
             try {
                 await fetch('/api/chat', {
                     method: 'POST',

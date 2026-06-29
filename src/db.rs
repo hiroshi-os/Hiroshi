@@ -39,9 +39,9 @@ impl MemoryEngine {
             .map_err(|e| format!("Failed to open SQLite database: {}", e))?;
             
         // Enable WAL mode and synchronous normal
-        conn.execute("PRAGMA journal_mode = WAL;", [])
+        conn.pragma_update(None, "journal_mode", &"WAL")
             .map_err(|e| format!("Failed to set WAL mode: {}", e))?;
-        conn.execute("PRAGMA synchronous = NORMAL;", [])
+        conn.pragma_update(None, "synchronous", &"NORMAL")
             .map_err(|e| format!("Failed to set synchronous mode: {}", e))?;
             
         // Standard chat history
@@ -49,11 +49,15 @@ impl MemoryEngine {
             "CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                session_id TEXT NOT NULL DEFAULT 'global',
                 role TEXT NOT NULL,
                 content TEXT NOT NULL
              )",
             [],
         ).map_err(|e| format!("Failed to create history table: {}", e))?;
+
+        // Migration: Add session_id column if it doesn't exist
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN session_id TEXT NOT NULL DEFAULT 'global'", []);
         
         // FTS5 Virtual Table for semantic keyword search
         conn.execute(
@@ -77,26 +81,26 @@ impl MemoryEngine {
         Ok(Self { conn: Mutex::new(conn) })
     }
 
-    pub fn add_message(&self, role: &str, content: &str) -> Result<i64, String> {
+    pub fn add_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
         
         conn.execute(
-            "INSERT INTO history (role, content) VALUES (?1, ?2)",
-            params![role, content],
+            "INSERT INTO history (session_id, role, content) VALUES (?1, ?2, ?3)",
+            params![session_id, role, content],
         ).map_err(|e| format!("Failed to insert chat history: {}", e))?;
         
         let id = conn.last_insert_rowid();
 
         conn.execute(
-            "INSERT INTO history_fts (role, content) VALUES (?1, ?2)",
-            params![role, content],
+            "INSERT INTO history_fts (rowid, role, content) VALUES (?1, ?2, ?3)",
+            params![id, role, content],
         ).map_err(|e| format!("Failed to index in FTS5: {}", e))?;
         
         Ok(id)
     }
 
-    pub async fn add_message_with_vector(&self, role: &str, content: &str, provider: &OllamaProvider) -> Result<(), String> {
-        let id = self.add_message(role, content)?;
+    pub async fn add_message_with_vector(&self, session_id: &str, role: &str, content: &str, provider: &OllamaProvider) -> Result<(), String> {
+        let id = self.add_message(session_id, role, content)?;
         
         // Generate embeddings asynchronously
         if let Ok(vector) = provider.get_embeddings(content).await {
@@ -111,14 +115,14 @@ impl MemoryEngine {
         Ok(())
     }
 
-    pub fn get_context(&self, context_limit_chars: usize) -> Result<Vec<ChatMessage>, String> {
+    pub fn get_context(&self, session_id: &str, context_limit_chars: usize) -> Result<Vec<ChatMessage>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
         
         let mut stmt = conn.prepare(
-            "SELECT role, content FROM history ORDER BY id DESC"
+            "SELECT role, content FROM history WHERE session_id = ?1 ORDER BY id DESC"
         ).map_err(|e| format!("Failed to prepare history query: {}", e))?;
         
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(params![session_id], |row| {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
@@ -143,7 +147,7 @@ impl MemoryEngine {
         Ok(messages)
     }
 
-    pub fn search_rag_history(&self, query: &str, limit: usize) -> Result<Vec<ChatMessage>, String> {
+    pub fn search_rag_history(&self, session_id: &str, query: &str, limit: usize) -> Result<Vec<ChatMessage>, String> {
         let clean_query = query.replace('"', "").replace('\'', "").replace('*', "");
         if clean_query.trim().is_empty() {
             return Ok(Vec::new());
@@ -152,10 +156,10 @@ impl MemoryEngine {
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT role, content FROM history_fts WHERE content MATCH ?1 LIMIT ?2"
+            "SELECT h.role, h.content FROM history h JOIN history_fts f ON h.id = f.rowid WHERE h.session_id = ?1 AND f.content MATCH ?2 LIMIT ?3"
         ).map_err(|e| format!("Failed to prepare RAG search query: {}", e))?;
 
-        let rows = stmt.query_map(params![clean_query, limit], |row| {
+        let rows = stmt.query_map(params![session_id, clean_query, limit], |row| {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
@@ -171,11 +175,11 @@ impl MemoryEngine {
         Ok(results)
     }
 
-    pub fn search_vector_rag(&self, query_vector: &[f32], limit: usize) -> Result<Vec<ChatMessage>, String> {
+    pub fn search_vector_rag(&self, session_id: &str, query_vector: &[f32], limit: usize) -> Result<Vec<ChatMessage>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT v.vector, h.role, h.content FROM history_vectors v JOIN history h ON v.message_id = h.id"
+            "SELECT v.vector, h.role, h.content FROM history_vectors v JOIN history h ON v.message_id = h.id WHERE h.session_id = ?1"
         ).map_err(|e| format!("Failed to prepare vector search query: {}", e))?;
 
         struct VectorRow {
@@ -184,7 +188,7 @@ impl MemoryEngine {
             content: String,
         }
 
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(params![session_id], |row| {
             Ok(VectorRow {
                 vector_blob: row.get(0)?,
                 role: row.get(1)?,
@@ -216,17 +220,17 @@ impl MemoryEngine {
         Ok(results)
     }
 
-    pub fn export_daily_log(&self, memory_dir: &Path) -> Result<(), String> {
+    pub fn export_daily_log(&self, session_id: &str, memory_dir: &Path) -> Result<(), String> {
         let date_str = Local::now().format("%Y-%m-%d").to_string();
         let log_file_path = memory_dir.join(format!("{}.md", date_str));
 
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT timestamp, role, content FROM history WHERE date(timestamp) = date('now') ORDER BY id ASC"
+            "SELECT timestamp, role, content FROM history WHERE session_id = ?1 AND date(timestamp) = date('now') ORDER BY id ASC"
         ).map_err(|e| format!("Failed to prepare daily query: {}", e))?;
 
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(params![session_id], |row| {
             let timestamp: String = row.get(0)?;
             let role: String = row.get(1)?;
             let content: String = row.get(2)?;
@@ -247,8 +251,8 @@ impl MemoryEngine {
         Ok(())
     }
 
-    pub async fn compact_memory(&self, memory_dir: &Path, provider: &OllamaProvider) -> Result<(), String> {
-        let history = self.get_context(8000)?;
+    pub async fn compact_memory(&self, session_id: &str, memory_dir: &Path, provider: &OllamaProvider) -> Result<(), String> {
+        let history = self.get_context(session_id, 8000)?;
         if history.is_empty() {
             return Ok(());
         }

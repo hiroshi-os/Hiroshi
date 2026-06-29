@@ -5,107 +5,30 @@ mod sandbox;
 mod agents;
 mod cron;
 mod telegram;
+mod discord;
+mod slack;
 mod sandbox_cmd;
 mod skills;
 mod onboard;
 mod mcp;
 mod web;
+mod channel;
+mod engine;
 
 use config::init_hiroshi_dir;
+use channel::CommunicationChannel;
 use db::MemoryEngine;
 use provider::OllamaProvider;
 use sandbox::WorkspaceSandbox;
 use agents::SessionRouter;
 use cron::CronScheduler;
-use telegram::TelegramGateway;
 use sandbox_cmd::SafeCommandRunner;
 use skills::SkillsRegistry;
 
-use futures_util::StreamExt;
 use std::io::{self, Write};
 use std::sync::Arc;
-use std::time::Instant;
 
-enum ToolCall {
-    ReadFile { path: String },
-    WriteFile { path: String, content: String },
-    CallTool { name: String, json_args: String },
-}
 
-fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
-    let mut calls = Vec::new();
-    
-    // Parse <read_file>path</read_file>
-    let mut last_idx = 0;
-    while let Some(start) = content[last_idx..].find("<read_file>") {
-        let abs_start = last_idx + start;
-        if let Some(end) = content[abs_start..].find("</read_file>") {
-            let path = content[abs_start + 11..abs_start + end].trim().to_string();
-            calls.push(ToolCall::ReadFile { path });
-            last_idx = abs_start + end + 12;
-        } else {
-            break;
-        }
-    }
-
-    // Parse <write_file path="path">content</write_file>
-    let mut last_idx = 0;
-    while let Some(start) = content[last_idx..].find("<write_file") {
-        let abs_start = last_idx + start;
-        if let Some(end) = content[abs_start..].find("</write_file>") {
-            let header_end = content[abs_start..].find(">").unwrap_or(0);
-            let header = &content[abs_start..abs_start + header_end];
-            let path = if let Some(p_start) = header.find("path=\"") {
-                let p_sub = &header[p_start + 6..];
-                if let Some(p_end) = p_sub.find("\"") {
-                    p_sub[..p_end].to_string()
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-
-            let file_content = content[abs_start + header_end + 1..abs_start + end].to_string();
-            if !path.is_empty() {
-                calls.push(ToolCall::WriteFile { path, content: file_content });
-            }
-            last_idx = abs_start + end + 13;
-        } else {
-            break;
-        }
-    }
-
-    // Parse <call_tool name="name">json_arguments</call_tool>
-    let mut last_idx = 0;
-    while let Some(start) = content[last_idx..].find("<call_tool") {
-        let abs_start = last_idx + start;
-        if let Some(end) = content[abs_start..].find("</call_tool>") {
-            let header_end = content[abs_start..].find(">").unwrap_or(0);
-            let header = &content[abs_start..abs_start + header_end];
-            let name = if let Some(p_start) = header.find("name=\"") {
-                let p_sub = &header[p_start + 6..];
-                if let Some(p_end) = p_sub.find("\"") {
-                    p_sub[..p_end].to_string()
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-
-            let args = content[abs_start + header_end + 1..abs_start + end].trim().to_string();
-            if !name.is_empty() {
-                calls.push(ToolCall::CallTool { name, json_args: args });
-            }
-            last_idx = abs_start + end + 12;
-        } else {
-            break;
-        }
-    }
-
-    calls
-}
 
 use tracing_subscriber::{fmt, prelude::*};
 
@@ -222,26 +145,90 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     scheduler.start(shutdown_token.clone());
 
-    // Spawn Telegram Long-polling gateway
-    let tg_gateway = TelegramGateway::new(
-        config.telegram.clone(),
-        db.clone(),
-        provider.clone(),
-        session_router.clone(),
-        skills_registry.clone(),
-        mcp_registry.clone(),
-        command_runner.clone(),
-        workspace_path.clone(),
-    );
-    tg_gateway.start(shutdown_token.clone());
-
-    // Shared disabled skills set
+    let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+    let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
     let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+
+    // Initialize gateways channel multiplexer
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::IncomingEvent>(100);
+    let mut channels: std::collections::HashMap<String, Arc<dyn channel::CommunicationChannel>> = std::collections::HashMap::new();
+
+    if config.telegram.enabled {
+        let tg = Arc::new(telegram::TelegramGateway::new(config.telegram.clone()));
+        let _ = tg.listen(event_tx.clone()).await;
+        channels.insert("telegram".to_string(), tg);
+    }
+    if config.discord.enabled {
+        let dc = Arc::new(discord::DiscordGateway::new(config.discord.clone()));
+        let _ = dc.listen(event_tx.clone()).await;
+        channels.insert("discord".to_string(), dc);
+    }
+    if config.slack.enabled {
+        let sl = Arc::new(slack::SlackGateway::new(config.slack.clone()));
+        let _ = sl.listen(event_tx.clone()).await;
+        channels.insert("slack".to_string(), sl);
+    }
+    let channels = Arc::new(channels);
+
+    // Spawning Gateway Multiplexer router
+    let db_clone = db.clone();
+    let provider_clone = provider.clone();
+    let session_router_clone = session_router.clone();
+    let skills_registry_clone = skills_registry.clone();
+    let mcp_registry_clone = mcp_registry.clone();
+    let command_runner_clone = command_runner.clone();
+    let sandbox_clone = sandbox.clone();
+    let config_clone = Arc::new(config.clone());
+    let disabled_skills_clone = disabled_skills.clone();
+    let ws_tx_clone = ws_tx.clone();
+    let active_agent_name_clone = active_agent_name.clone();
+    let channels_clone = channels.clone();
+
+    tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            let session_id = format!("{}:{}", event.channel_type, event.session_id);
+            let db = db_clone.clone();
+            let provider = provider_clone.clone();
+            let session_router = session_router_clone.clone();
+            let skills_registry = skills_registry_clone.clone();
+            let mcp_registry = mcp_registry_clone.clone();
+            let command_runner = command_runner_clone.clone();
+            let sandbox = sandbox_clone.clone();
+            let config = config_clone.clone();
+            let disabled_skills = disabled_skills_clone.clone();
+            let ws_tx = ws_tx_clone.clone();
+            let active_agent_name = active_agent_name_clone.clone();
+            
+            let channel = channels_clone.get(&event.channel_type).cloned();
+            let channel_session_id = event.session_id.clone();
+            let text = event.text.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = crate::engine::run_agent_turn(
+                    &session_id,
+                    &text,
+                    db,
+                    provider,
+                    session_router,
+                    skills_registry,
+                    mcp_registry,
+                    command_runner,
+                    sandbox,
+                    &config,
+                    disabled_skills,
+                    ws_tx,
+                    active_agent_name,
+                    channel,
+                    &channel_session_id,
+                ).await {
+                    tracing::error!("Error executing agent turn for session {}: {}", session_id, e);
+                }
+            });
+        }
+    });
 
     // Spawn local Web UI dashboard server (Port 8080)
     let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
-    let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
-    let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
     let web_addr = "127.0.0.1:8080".parse().unwrap();
     web::start_web_server(
         web_addr,
@@ -275,8 +262,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Approximate character-to-token ratio (1 token = 4 chars)
-    let context_chars_limit = config.ollama.context_window * 4;
 
     // Channel for Async Stdin Multiplexing
     let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
@@ -412,344 +397,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        // Save User Message
-        let start_embed = Instant::now();
-        let _ = db.add_message_with_vector("user", input, &provider).await;
-
-        // Query RAG match context
-        let query_vector = provider.get_embeddings(input).await.unwrap_or_default();
-        tracing::info!("Local embedding generation took {:?}", start_embed.elapsed());
-
-        let start_db = Instant::now();
-        let rag_matches = if !query_vector.is_empty() {
-            db.search_vector_rag(&query_vector, 3)?
-        } else {
-            db.search_rag_history(input, 3)?
-        };
-        tracing::info!("Vector database retrieval took {:?}", start_db.elapsed());
-        let mut rag_context = String::new();
-        if !rag_matches.is_empty() {
-            rag_context.push_str("\n--- Relevant historical memory context ---\n");
-            for m in rag_matches {
-                rag_context.push_str(&format!("{}: {}\n", m.role, m.content));
-            }
-            rag_context.push_str("------------------------------------------\n");
+        // Run agent turn
+        if let Err(e) = crate::engine::run_agent_turn(
+            "terminal",
+            input,
+            db.clone(),
+            provider.clone(),
+            session_router.clone(),
+            skills_registry.clone(),
+            mcp_registry.clone(),
+            command_runner.clone(),
+            sandbox.clone(),
+            &config,
+            disabled_skills.clone(),
+            ws_tx.clone(),
+            active_agent_name.clone(),
+            None,
+            "",
+        ).await {
+            eprintln!("Error: {}", e);
         }
-
-        let mut loop_turn = 0;
-        let max_loop_turns = 5;
-
-        while loop_turn < max_loop_turns {
-            loop_turn += 1;
-            
-            let active_agent = router.get_active_agent()
-                .ok_or_else(|| "No active agent found".to_string())?;
-
-            // Generate dynamic skills descriptors list
-            let mut dynamic_skills_str = String::new();
-            if !skills_registry.skills.is_empty() {
-                dynamic_skills_str.push_str("\nYou can also execute the following dynamic skills by outputting XML tags format:\n");
-                for skill in &skills_registry.skills {
-                    dynamic_skills_str.push_str(&format!(
-                        "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
-                        skill.name,
-                        if skill.schema.is_empty() { "JSON_ARGS" } else { &skill.schema },
-                        skill.description
-                    ));
-                }
-            }
-
-            let system_prompt = format!(
-                "{}\nHand-off Rule: {}\n\nAllowed Tools: {:?}\n\nAll paths must be relative to the workspace. No absolute paths or '..' allowed.\nTo run a built-in file tool, you MUST output the request exactly using XML tags:\n- To read a file: <read_file>path/to/file</read_file>\n- To write/overwrite a file: <write_file path=\"path/to/file\">file content</write_file>\n{}\n\n{}",
-                active_agent.prompt,
-                active_agent.hand_off,
-                active_agent.allowed_tools,
-                dynamic_skills_str,
-                rag_context
-            );
-
-            // Get context (sliding window)
-            let history = db.get_context(context_chars_limit)?;
-            
-            print!("\nAssistant [{}]: ", router.active_agent);
-            io::stdout().flush()?;
-
-            let start_time = Instant::now();
-            let mut first_token = true;
-            let mut full_response = String::new();
-
-            match provider.chat_stream(&system_prompt, history).await {
-                Ok(mut stream) => {
-                    while let Some(chunk_res) = stream.next().await {
-                        match chunk_res {
-                            Ok(text) => {
-                                if first_token {
-                                    let elapsed = start_time.elapsed();
-                                    eprintln!("\n[TTFT: {:.2?}]", elapsed);
-                                    first_token = false;
-                                }
-                                print!("{}", text);
-                                io::stdout().flush()?;
-                                full_response.push_str(&text);
-
-                                // Broadcast token chunk to WebSocket clients
-                                let ws_msg = serde_json::json!({
-                                    "type": "chat_chunk",
-                                    "role": "assistant",
-                                    "content": text
-                                });
-                                if let Ok(msg_str) = serde_json::to_string(&ws_msg) {
-                                    let _ = ws_tx.send(msg_str);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("\nStream Error: {}", e);
-                                break;
-                            }
-                        }
-                    }
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("\nFailed to get stream from provider: {}", e);
-                    break;
-                }
-            }
-
-            if full_response.is_empty() {
-                break;
-            }
-
-            // Save Assistant Message
-            let _ = db.add_message_with_vector("assistant", &full_response, &provider).await;
-
-            // Check if hand-off to another agent is triggered
-            if let Some(next_agent) = router.detect_handoff(&full_response) {
-                println!("\n[Handoff Route] Switching from {} to {}", router.active_agent, next_agent);
-                let ws_handoff = serde_json::json!({
-                    "type": "agent_shift",
-                    "from": router.active_agent.clone(),
-                    "to": next_agent.clone()
-                });
-                if let Ok(msg_str) = serde_json::to_string(&ws_handoff) {
-                    let _ = ws_tx.send(msg_str);
-                }
-                router.switch_agent(&next_agent);
-                let _ = session_router.update(session_id, router.clone());
-                {
-                    let mut guard = active_agent_name.lock().unwrap();
-                    *guard = router.active_agent.clone();
-                }
-                continue;
-            }
-
-            // Parse and execute tools if any
-            let tool_calls = parse_tool_calls(&full_response);
-            if tool_calls.is_empty() {
-                break;
-            }
-
-            for tool in tool_calls {
-                match tool {
-                    ToolCall::ReadFile { path } => {
-                        println!("\n>> Running Tool: read_file({})", path);
-                        if !active_agent.allowed_tools.contains(&"ReadFile".to_string()) {
-                            let err_msg = "Permission Denied: Active agent does not have permission to use ReadFile.";
-                            println!(">> {}", err_msg);
-                            db.add_message("user", err_msg)?;
-                            continue;
-                        }
-                        match sandbox.read_file(&path) {
-                            Ok(content) => {
-                                let result_msg = format!("File content of '{}':\n{}", path, content);
-                                db.add_message("user", &result_msg)?;
-                                println!(">> Tool output successfully saved.");
-                            }
-                            Err(e) => {
-                                let err_msg = format!("Failed to read file '{}': {}", path, e);
-                                db.add_message("user", &err_msg)?;
-                                println!(">> Tool failed: {}", e);
-                            }
-                        }
-                    }
-                    ToolCall::WriteFile { path, content } => {
-                        println!("\n>> Running Tool: write_file({})", path);
-                        if !active_agent.allowed_tools.contains(&"WriteFile".to_string()) {
-                            let err_msg = "Permission Denied: Active agent does not have permission to use WriteFile.";
-                            println!(">> {}", err_msg);
-                            db.add_message("user", err_msg)?;
-                            continue;
-                        }
-                        match sandbox.write_file(&path, &content) {
-                            Ok(_) => {
-                                let result_msg = format!("Successfully wrote file '{}'", path);
-                                db.add_message("user", &result_msg)?;
-                                println!(">> File written successfully.");
-                            }
-                            Err(e) => {
-                                let err_msg = format!("Failed to write file '{}': {}", path, e);
-                                db.add_message("user", &err_msg)?;
-                                println!(">> Tool failed: {}", e);
-                            }
-                        }
-                    }
-                    ToolCall::CallTool { name, json_args } => {
-                        println!("\n>> Running Tool: call_tool({}, {})", name, json_args);
-                        if disabled_skills.lock().unwrap().contains(&name) {
-                            let err_msg = format!("Permission Denied: Dynamic skill/binary '{}' has been disabled via the Web Dashboard.", name);
-                            println!(">> {}", err_msg);
-                            db.add_message("user", &err_msg)?;
-                            continue;
-                        }
-
-                        let has_permission = active_agent.allowed_tools.contains(&name)
-                            || (name.starts_with("mcp__") && active_agent.allowed_tools.contains(&"mcp".to_string()));
-                        if !has_permission {
-                            let err_msg = format!("Permission Denied: Active agent does not have permission to use dynamic skill/binary '{}'.", name);
-                            println!(">> {}", err_msg);
-                            db.add_message("user", &err_msg)?;
-                            continue;
-                        }
-
-                        if let Some(skill) = skills_registry.get_skill(&name) {
-                            let start_tool = Instant::now();
-                            if name.starts_with("mcp__") {
-                                let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
-                                let mcp_tool_name = &name[5..]; // Strip "mcp__"
-                                match mcp_registry.execute_tool(mcp_tool_name, args_val).await {
-                                    Ok(output) => {
-                                        tracing::info!("MCP tool execution '{}' took {:?}", name, start_tool.elapsed());
-                                        let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
-                                        let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
-                                        println!(">> MCP Tool executed successfully.");
-
-                                        // Extract and broadcast screenshot if any
-                                        if output.contains("[SCREENSHOT]:") || output.contains("data:image/png;base64,") {
-                                            let base64_data = if let Some(pos) = output.find("[SCREENSHOT]:") {
-                                                output[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                            } else if let Some(pos) = output.find("data:image/png;base64,") {
-                                                output[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                            } else {
-                                                String::new()
-                                            };
-                                            if !base64_data.is_empty() {
-                                                let ws_img = serde_json::json!({
-                                                    "type": "screenshot",
-                                                    "image": base64_data
-                                                });
-                                                if let Ok(msg_str) = serde_json::to_string(&ws_img) {
-                                                    let _ = ws_tx.send(msg_str);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("MCP tool execution '{}' failed after {:?}", name, start_tool.elapsed());
-                                        let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
-                                        db.add_message("user", &err_msg)?;
-                                        println!(">> MCP Tool failed: {}", e);
-                                    }
-                                }
-                            } else {
-                                match skill.run_ipc(&json_args, &workspace_path).await {
-                                    Ok(stdout) => {
-                                        tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_tool.elapsed());
-                                        let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
-                                        let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
-                                        println!(">> Skill executed successfully.");
-
-                                        // Extract and broadcast screenshot if any
-                                        if stdout.contains("[SCREENSHOT]:") || stdout.contains("data:image/png;base64,") {
-                                            let base64_data = if let Some(pos) = stdout.find("[SCREENSHOT]:") {
-                                                stdout[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                            } else if let Some(pos) = stdout.find("data:image/png;base64,") {
-                                                stdout[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                            } else {
-                                                String::new()
-                                            };
-                                            if !base64_data.is_empty() {
-                                                let ws_img = serde_json::json!({
-                                                    "type": "screenshot",
-                                                    "image": base64_data
-                                                });
-                                                if let Ok(msg_str) = serde_json::to_string(&ws_img) {
-                                                    let _ = ws_tx.send(msg_str);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_tool.elapsed());
-                                        let err_msg = format!("Skill '{}' execution failed: {}", name, e);
-                                        db.add_message("user", &err_msg)?;
-                                        println!(">> Skill failed: {}", e);
-                                    }
-                                }
-                            }
-                        } else if mcp_registry.clients.keys().any(|k| name.starts_with(&(k.to_owned() + "__"))) {
-                            let start_mcp = Instant::now();
-                            let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
-                            match mcp_registry.execute_tool(&name, args_val).await {
-                                Ok(output) => {
-                                    tracing::info!("MCP tool execution '{}' took {:?}", name, start_mcp.elapsed());
-                                    let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
-                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
-                                    println!(">> MCP Tool executed successfully.");
-
-                                    // Extract and broadcast screenshot if any
-                                    if output.contains("[SCREENSHOT]:") || output.contains("data:image/png;base64,") {
-                                        let base64_data = if let Some(pos) = output.find("[SCREENSHOT]:") {
-                                            output[pos + 13..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                        } else if let Some(pos) = output.find("data:image/png;base64,") {
-                                            output[pos + 22..].trim().split_whitespace().next().unwrap_or("").to_string()
-                                        } else {
-                                            String::new()
-                                        };
-                                        if !base64_data.is_empty() {
-                                            let ws_img = serde_json::json!({
-                                                "type": "screenshot",
-                                                "image": base64_data
-                                            });
-                                            if let Ok(msg_str) = serde_json::to_string(&ws_img) {
-                                                let _ = ws_tx.send(msg_str);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!("MCP tool execution '{}' failed after {:?}", name, start_mcp.elapsed());
-                                    let err_msg = format!("MCP Tool '{}' execution failed: {}", name, e);
-                                    db.add_message("user", &err_msg)?;
-                                    println!(">> MCP Tool failed: {}", e);
-                                }
-                            }
-                        } else if config.security.allowed_binaries.contains(&name) {
-                            let cmd_line = format!("{} {}", name, json_args.trim_matches('"'));
-                            let start_cmd = Instant::now();
-                            match command_runner.run_command(&cmd_line).await {
-                                Ok(stdout) => {
-                                    tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_cmd.elapsed());
-                                    let result_msg = format!("Command '{}' execution output:\n{}", name, stdout);
-                                    let _ = db.add_message_with_vector("user", &result_msg, &provider).await;
-                                    println!(">> Command executed successfully.");
-                                }
-                                Err(e) => {
-                                    tracing::error!("Subprocess tool execution '{}' failed after {:?}", name, start_cmd.elapsed());
-                                    let err_msg = format!("Command '{}' execution failed: {}", name, e);
-                                    db.add_message("user", &err_msg)?;
-                                    println!(">> Command failed: {}", e);
-                                }
-                            }
-                        } else {
-                            let err_msg = format!("Execution Error: Tool/Skill '{}' is neither registered as a dynamic skill nor whitelisted as an allowed system binary.", name);
-                            db.add_message("user", &err_msg)?;
-                            println!(">> {}", err_msg);
-                        }
-                    }
-                }
-            }
-        }
-        let _ = session_router.update(session_id, router.clone());
     }
 
     // Graceful Shutdown Cascade

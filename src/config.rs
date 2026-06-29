@@ -46,6 +46,40 @@ pub struct TelegramConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiscordConfig {
+    pub token: String,
+    pub enabled: bool,
+    pub allowed_channels: Vec<String>,
+}
+
+impl Default for DiscordConfig {
+    fn default() -> Self {
+        Self {
+            token: "YOUR_DISCORD_BOT_TOKEN_HERE".to_string(),
+            enabled: false,
+            allowed_channels: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SlackConfig {
+    pub bot_token: String,
+    pub app_token: String,
+    pub enabled: bool,
+}
+
+impl Default for SlackConfig {
+    fn default() -> Self {
+        Self {
+            bot_token: "xoxb-YOUR_BOT_TOKEN_HERE".to_string(),
+            app_token: "xapp-YOUR_APP_TOKEN_HERE".to_string(),
+            enabled: false,
+        }
+    }
+}
+
 impl Default for TelegramConfig {
     fn default() -> Self {
         Self {
@@ -98,6 +132,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub telegram: TelegramConfig,
     #[serde(default)]
+    pub discord: DiscordConfig,
+    #[serde(default)]
+    pub slack: SlackConfig,
+    #[serde(default)]
     pub cron: CronConfig,
     #[serde(default)]
     pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
@@ -123,6 +161,8 @@ impl Default for AppConfig {
                 allowed_binaries: default_allowed_binaries(),
             },
             telegram: TelegramConfig::default(),
+            discord: DiscordConfig::default(),
+            slack: SlackConfig::default(),
             cron: CronConfig::default(),
             mcp_servers: std::collections::HashMap::new(),
         }
@@ -179,12 +219,14 @@ pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf,
             .map_err(|e| format!("Failed to parse config.toml: {}", e))?;
             
         let has_telegram = content.contains("[telegram]");
+        let has_discord = content.contains("[discord]");
+        let has_slack = content.contains("[slack]");
         let has_cron = content.contains("[cron]") || content.contains("[[cron.tasks]]");
         let has_allowed_binaries = content.contains("allowed_binaries");
         let has_embedding_model = content.contains("embedding_model");
         let has_mcp = content.contains("mcp_servers");
         
-        (parsed, !has_telegram || !has_cron || !has_allowed_binaries || !has_embedding_model || !has_mcp)
+        (parsed, !has_telegram || !has_discord || !has_slack || !has_cron || !has_allowed_binaries || !has_embedding_model || !has_mcp)
     } else {
         let parsed = crate::onboard::run_onboarding_wizard(&config_path).await?;
         (parsed, false)
@@ -361,6 +403,88 @@ def main():
         print(f"Task '{name}' synced.")
     except Exception as e:
         print(f"Error: {e}")
+if __name__ == '__main__': main()
+"#).map_err(|e| e.to_string())?;
+    }
+
+    // 5. web_search
+    let search_dir = skills_dir.join("web_search");
+    if !search_dir.exists() {
+        fs::create_dir_all(&search_dir).map_err(|e| e.to_string())?;
+        fs::write(search_dir.join("SKILL.md"), r#"---
+name: web_search
+description: "Queries search engines and fetches matching page titles, snippets, and links."
+schema: '{ "query": "string" }'
+---
+# Web Search
+Allows Hiroshi to query search engines and find information.
+"#).map_err(|e| e.to_string())?;
+        fs::write(search_dir.join("web_search.py"), r#"import sys, json, urllib.request, urllib.parse
+from html.parser import HTMLParser
+
+class DDGParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self.in_result = False
+        self.current_title = ""
+        self.current_snippet = ""
+        self.current_link = ""
+        self.in_title = False
+        self.in_snippet = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        if tag == "div" and "result__body" in attrs_dict.get("class", ""):
+            self.in_result = True
+        elif self.in_result and tag == "a" and "result__url" in attrs_dict.get("class", ""):
+            self.in_title = True
+            self.current_link = attrs_dict.get("href", "")
+        elif self.in_result and tag == "a" and "result__snippet" in attrs_dict.get("class", ""):
+            self.in_snippet = True
+
+    def handle_endtag(self, tag):
+        if tag == "div" and self.in_result:
+            self.results.append({
+                "title": self.current_title.strip(),
+                "snippet": self.current_snippet.strip(),
+                "link": self.current_link.strip()
+            })
+            self.current_title = ""
+            self.current_snippet = ""
+            self.current_link = ""
+            self.in_result = False
+        elif tag == "a":
+            self.in_title = False
+            self.in_snippet = False
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.current_title += data
+        elif self.in_snippet:
+            self.current_snippet += data
+
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        query = args.get("query", "")
+        if not query:
+            print("No query provided.")
+            return
+        url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+        parser = DDGParser()
+        parser.feed(html)
+        if parser.results:
+            for i, r in enumerate(parser.results[:5], 1):
+                print(f"{i}. {r['title']}\n   URL: {r['link']}\n   Snippet: {r['snippet']}\n")
+        else:
+            print("No search results found.")
+    except Exception as e:
+        print(f"Error: {e}")
+
 if __name__ == '__main__': main()
 "#).map_err(|e| e.to_string())?;
     }

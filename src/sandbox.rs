@@ -10,6 +10,10 @@ impl WorkspaceSandbox {
         Self { base_dir }
     }
 
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
     pub fn sanitize_path(&self, user_path: &str) -> Result<PathBuf, String> {
         // Reject path traversal
         if user_path.contains("..") {
