@@ -1,5 +1,5 @@
 use crate::config::TelegramConfig;
-use crate::channel::{CommunicationChannel, IncomingEvent};
+use crate::channel::{CommunicationChannel, ChannelMessage, ChannelOrigin, ChatType};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -56,7 +56,7 @@ impl TelegramGateway {
 
 #[async_trait]
 impl CommunicationChannel for TelegramGateway {
-    async fn listen(&self, tx: Sender<IncomingEvent>) -> Result<(), String> {
+    async fn listen(&self, tx: Sender<ChannelMessage>) -> Result<(), String> {
         if !self.config.enabled {
             tracing::info!("Telegram Gateway is disabled in config.");
             return Ok(());
@@ -94,10 +94,18 @@ impl CommunicationChannel for TelegramGateway {
                                             }
 
                                             if let Some(text) = msg.text {
-                                                let event = IncomingEvent {
-                                                    channel_type: "telegram".to_string(),
-                                                    session_id: msg.chat.id.to_string(),
+                                                let event = ChannelMessage {
+                                                    origin: ChannelOrigin::Telegram,
+                                                    chat_type: ChatType::Direct,
+                                                    sender_id: from_id.to_string(),
+                                                    display_name: None,
+                                                    session_key: ChannelMessage::build_session_key(
+                                                        "default", &ChannelOrigin::Telegram, &ChatType::Direct, &msg.chat.id.to_string()
+                                                    ),
                                                     text,
+                                                    attachments: vec![],
+                                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                                    is_bot: false,
                                                 };
                                                 if tx.send(event).await.is_err() {
                                                     break;

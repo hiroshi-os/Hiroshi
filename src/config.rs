@@ -22,6 +22,10 @@ pub struct OllamaConfig {
     pub embedding_model: String,
 }
 
+fn default_allowed_senders() -> Vec<String> {
+    vec![]
+}
+
 fn default_allowed_binaries() -> Vec<String> {
     vec![
         "cargo".to_string(),
@@ -37,6 +41,9 @@ pub struct SecurityConfig {
     pub allow_shell_commands: bool,
     #[serde(default = "default_allowed_binaries")]
     pub allowed_binaries: Vec<String>,
+    /// Network IDs permitted to send messages. Empty = allow all (open mode).
+    #[serde(default = "default_allowed_senders")]
+    pub allowed_senders: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -157,6 +164,21 @@ pub struct McpServerConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TailscaleConfig {
+    pub enabled: bool,
+    pub interface_fallback: Option<String>,
+}
+
+impl Default for TailscaleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interface_fallback: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub engine: EngineConfig,
     pub ollama: OllamaConfig,
@@ -171,6 +193,8 @@ pub struct AppConfig {
     pub cron: CronConfig,
     #[serde(default)]
     pub sop: SopConfig,
+    #[serde(default)]
+    pub tailscale: TailscaleConfig,
     #[serde(default)]
     pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
 }
@@ -193,12 +217,14 @@ impl Default for AppConfig {
                 sandbox_path: "~/.hiroshi/workspace".to_string(),
                 allow_shell_commands: false,
                 allowed_binaries: default_allowed_binaries(),
+                allowed_senders: default_allowed_senders(),
             },
             telegram: TelegramConfig::default(),
             discord: DiscordConfig::default(),
             slack: SlackConfig::default(),
             cron: CronConfig::default(),
             sop: SopConfig::default(),
+            tailscale: TailscaleConfig::default(),
             mcp_servers: std::collections::HashMap::new(),
         }
     }

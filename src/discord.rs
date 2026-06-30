@@ -1,5 +1,5 @@
 use crate::config::DiscordConfig;
-use crate::channel::{CommunicationChannel, IncomingEvent};
+use crate::channel::{CommunicationChannel, ChannelMessage, ChannelOrigin, ChatType};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -24,7 +24,7 @@ impl DiscordGateway {
 
 #[async_trait]
 impl CommunicationChannel for DiscordGateway {
-    async fn listen(&self, tx: Sender<IncomingEvent>) -> Result<(), String> {
+    async fn listen(&self, tx: Sender<ChannelMessage>) -> Result<(), String> {
         if !self.config.enabled {
             tracing::info!("Discord Gateway is disabled in config.");
             return Ok(());
@@ -122,10 +122,20 @@ impl CommunicationChannel for DiscordGateway {
 
                                                 let allowed = allowed_channels.is_empty() || allowed_channels.contains(&channel_id);
                                                 if allowed && !content.is_empty() {
-                                                    let event = IncomingEvent {
-                                                        channel_type: "discord".to_string(),
-                                                        session_id: channel_id,
+                                                    let author_id = v["d"]["author"]["id"].as_str().unwrap_or("").to_string();
+                                                    let author_name = v["d"]["author"]["username"].as_str().map(|s| s.to_string());
+                                                    let event = ChannelMessage {
+                                                        origin: ChannelOrigin::Discord,
+                                                        chat_type: ChatType::Group,
+                                                        sender_id: author_id,
+                                                        display_name: author_name,
+                                                        session_key: ChannelMessage::build_session_key(
+                                                            "default", &ChannelOrigin::Discord, &ChatType::Group, &channel_id
+                                                        ),
                                                         text: content,
+                                                        attachments: vec![],
+                                                        timestamp: chrono::Utc::now().timestamp_millis(),
+                                                        is_bot: false,
                                                     };
                                                     if tx.send(event).await.is_err() {
                                                         break;

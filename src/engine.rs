@@ -180,25 +180,23 @@ pub async fn run_agent_turn(
     // Save User Message
     let start_embed = Instant::now();
     let _ = db.add_message_with_vector(session_id, "user", input, &provider).await;
+    tracing::info!("[{}] Message embedding took {:?}", session_id, start_embed.elapsed());
 
-    // Query RAG match context
-    let query_vector = provider.get_embeddings(input).await.unwrap_or_default();
-    tracing::info!("[{}] Local embedding generation took {:?}", session_id, start_embed.elapsed());
-
+    // Hybrid 70/30 RAG retrieval (Vector 70% + FTS5 30% via RRF)
     let start_db = Instant::now();
-    let rag_matches = if !query_vector.is_empty() {
-        db.search_vector_rag(session_id, &query_vector, 3)?
-    } else {
-        db.search_rag_history(session_id, input, 3)?
-    };
-    tracing::info!("[{}] Vector database retrieval took {:?}", session_id, start_db.elapsed());
+    let hybrid_results = crate::memory::search::hybrid_search(
+        &db, &provider, session_id, input, 3
+    ).await?;
+    tracing::info!("[{}] Hybrid search retrieval took {:?}", session_id, start_db.elapsed());
+
+    let rag_matches = crate::memory::search::scored_to_chat_messages(hybrid_results);
     let mut rag_context = String::new();
     if !rag_matches.is_empty() {
-        rag_context.push_str("\n--- Relevant historical memory context ---\n");
-        for m in rag_matches {
+        rag_context.push_str("\n--- Relevant historical memory context (Hybrid 70/30 RRF) ---\n");
+        for m in &rag_matches {
             rag_context.push_str(&format!("{}: {}\n", m.role, m.content));
         }
-        rag_context.push_str("------------------------------------------\n");
+        rag_context.push_str("--------------------------------------------------------------\n");
     }
 
     let context_chars_limit = config.ollama.context_window * 4;

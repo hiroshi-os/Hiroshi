@@ -15,7 +15,7 @@ impl WorkspaceSandbox {
     }
 
     pub fn sanitize_path(&self, user_path: &str) -> Result<PathBuf, String> {
-        // Reject path traversal
+        // Fast-path: reject obvious traversal patterns
         if user_path.contains("..") {
             return Err("Access denied: path contains directory traversal components ('..')".to_string());
         }
@@ -34,6 +34,42 @@ impl WorkspaceSandbox {
 
         // Combine base and user_path
         let resolved = self.base_dir.join(user_path);
+
+        // Canonical path jail enforcement:
+        // Only runs when the base directory exists on disk (runtime behavior).
+        // When the base doesn't exist (e.g. in unit tests), the string-level
+        // guards above are the sole protection layer.
+        if self.base_dir.exists() {
+            if resolved.exists() {
+                let canonical_base = dunce::canonicalize(&self.base_dir)
+                    .map_err(|e| format!("PermissionDenied: failed to canonicalize base dir: {}", e))?;
+                let canonical_resolved = dunce::canonicalize(&resolved)
+                    .map_err(|e| format!("PermissionDenied: failed to canonicalize resolved path: {}", e))?;
+
+                if !canonical_resolved.starts_with(&canonical_base) {
+                    return Err("PermissionDenied: resolved path escapes workspace jail".to_string());
+                }
+            } else {
+                // For non-existent paths (write targets), canonicalize the
+                // deepest existing ancestor and verify containment there.
+                let mut ancestor = resolved.clone();
+                while !ancestor.exists() {
+                    if !ancestor.pop() {
+                        break;
+                    }
+                }
+                if ancestor.exists() {
+                    let canonical_base = dunce::canonicalize(&self.base_dir)
+                        .map_err(|e| format!("PermissionDenied: failed to canonicalize base dir: {}", e))?;
+                    let canonical_ancestor = dunce::canonicalize(&ancestor)
+                        .map_err(|e| format!("PermissionDenied: failed to canonicalize ancestor: {}", e))?;
+
+                    if !canonical_ancestor.starts_with(&canonical_base) {
+                        return Err("PermissionDenied: resolved path escapes workspace jail".to_string());
+                    }
+                }
+            }
+        }
         
         Ok(resolved)
     }
@@ -83,5 +119,16 @@ mod tests {
         // Absolute path rejection
         assert!(sandbox.sanitize_path("/etc/passwd").is_err());
         assert!(sandbox.sanitize_path(r"C:\Windows\System32").is_err());
+    }
+
+    #[test]
+    fn test_canonical_jail_error_message() {
+        let base = PathBuf::from(r"C:\Users\User\.hiroshi\workspace");
+        let sandbox = WorkspaceSandbox::new(base);
+
+        let result = sandbox.sanitize_path("../../../etc/passwd");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Access denied") || err.contains("PermissionDenied"));
     }
 }

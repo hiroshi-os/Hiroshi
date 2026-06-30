@@ -19,6 +19,10 @@ mod web;
 mod channel;
 mod engine;
 mod sop;
+mod gateway;
+mod memory;
+mod service;
+mod doctor;
 
 use clap::{Parser, Subcommand};
 
@@ -52,6 +56,27 @@ enum Commands {
     Agent,
     /// Boot background services daemon (Gateways, Dashboard, SOP)
     Daemon,
+    /// Cross-platform daemon service management installer
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// Run diagnostic environment health checks
+    Doctor,
+}
+
+#[derive(Subcommand, Clone, Debug)]
+pub enum ServiceAction {
+    /// Install the daemon service
+    Install,
+    /// Uninstall the daemon service
+    Uninstall,
+    /// Start the daemon service
+    Start,
+    /// Stop the daemon service
+    Stop,
+    /// Check daemon service status
+    Status,
 }
 
 #[tokio::main]
@@ -274,8 +299,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Daemon => {
+            // Advisory gateway lock: prevent parallel daemon instances
+            let hiroshi_dir = dirs::home_dir().ok_or("Could not determine home directory")?.join(".hiroshi");
+            let lock_path = hiroshi_dir.join(".gateway.lock");
+            let lock_file = std::fs::File::create(&lock_path)
+                .map_err(|e| format!("Failed to create gateway lock file: {}", e))?;
+            use fs2::FileExt;
+            if lock_file.try_lock_exclusive().is_err() {
+                eprintln!("ERROR: Another Hiroshi daemon instance is already running.");
+                eprintln!("Lock file: {}", lock_path.display());
+                std::process::exit(1);
+            }
+            // Hold the lock handle for the process lifetime
+            let _gateway_lock = lock_file;
+            tracing::info!("Advisory gateway lock acquired: {}", lock_path.display());
+
             println!("Background Daemon Mode started.");
             let shutdown_token = tokio_util::sync::CancellationToken::new();
+
+            // Initialize Allowlist Engine
+            let allowlist = gateway::allow_from::AllowlistEngine::new(
+                config.security.allowed_senders.clone(),
+            );
+            let allowlist = Arc::new(allowlist);
 
             // Spawn Background Scheduler
             let scheduler = CronScheduler::new(
@@ -292,7 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
 
             // Initialize gateways channel multiplexer
-            let (_event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::IncomingEvent>(100);
+            let (_event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::ChannelMessage>(100);
             #[allow(unused_mut)]
             let mut channels: std::collections::HashMap<String, Arc<dyn channel::CommunicationChannel>> = std::collections::HashMap::new();
 
@@ -336,9 +382,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let active_agent_name_clone = active_agent_name.clone();
             let channels_clone = channels.clone();
 
+            let allowlist_clone = allowlist.clone();
+
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
-                    let session_id = format!("{}:{}", event.channel_type, event.session_id);
+                    // Enforce allowlist gating
+                    if !allowlist_clone.is_allowed(&event) {
+                        tracing::warn!("Allowlist blocked message from sender_id: {}", event.sender_id);
+                        continue;
+                    }
+
+                    let session_id = event.session_key.clone();
                     let db = db_clone.clone();
                     let provider = provider_clone.clone();
                     let session_router = session_router_clone.clone();
@@ -350,9 +404,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let disabled_skills = disabled_skills_clone.clone();
                     let ws_tx = ws_tx_clone.clone();
                     let active_agent_name = active_agent_name_clone.clone();
-                    
-                    let channel = channels_clone.get(&event.channel_type).cloned();
-                    let channel_session_id = event.session_id.clone();
+
+                    let origin_str = event.origin.to_string();
+                    let channel = channels_clone.get(&origin_str).cloned();
+                    let channel_session_id = event.sender_id.clone();
                     let text = event.text.clone();
 
                     tokio::spawn(async move {
@@ -397,7 +452,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "gateway-ui")]
             {
                 let (web_input_tx, mut web_input_rx) = tokio::sync::mpsc::channel::<String>(100);
-                let web_addr = "127.0.0.1:8080".parse().unwrap();
+                let mut bind_ip = "127.0.0.1".to_string();
+                if config.tailscale.enabled {
+                    match gateway::tailscale::resolve_tailscale_ip() {
+                        Ok(ip) => {
+                            tracing::info!("Tailscale enabled. Resolved Tailnet IP: {}", ip);
+                            bind_ip = ip;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Tailscale enabled but resolution failed: {}. Falling back.", e);
+                            if let Some(ref fallback) = config.tailscale.interface_fallback {
+                                bind_ip = fallback.clone();
+                            }
+                        }
+                    }
+                }
+                let web_addr: std::net::SocketAddr = format!("{}:8080", bind_ip).parse()
+                    .unwrap_or_else(|_| "127.0.0.1:8080".parse().unwrap());
+                
                 web::start_web_server(
                     web_addr,
                     web_input_tx,
@@ -470,6 +542,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("Ctrl+C received. Gracefully stopping daemon...");
             shutdown_token.cancel();
             tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        Commands::Service { action } => {
+            service::handle_service_cmd(action)?;
+        }
+        Commands::Doctor => {
+            doctor::run_diagnostics(&config, &db_path, &workspace_path).await?;
         }
     }
 
