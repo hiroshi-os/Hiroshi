@@ -64,9 +64,15 @@ To give an agent access to these tools, you use a clean, predictable naming form
 
 ---
 
-## 🛠️ 3. Your Custom Polyglot Skills
+## 🛠️ 3. Dynamic Skill Laboratory & Custom Skills
 
-Whenever you drop a brand-new automation script into your `~/.hiroshi/skills/` directory, **the folder name becomes the exact tool string** you use in `AGENTS.md`.
+### The Dynamic Skill Creator (`create_skill`)
+* **What it does:** Allows the agent to programmatically generate and install new custom python skills on the fly. 
+* **Self-Healing Loop:** When `<create_skill name="...">` is invoked, the engine writes files to a temporary test folder and compiles them via `python -m py_compile` to catch syntax errors. It then spawns the script under a 3-second timeout and feeds `{}` to stdin to catch import crashes. If it fails, errors are sent back to the agent for self-correction. If it passes, the skill is promoted.
+* **Hot-Reloading:** Once verified, the skills registry dynamically registers the new script via a thread-safe mutex reload call without needing a system reboot.
+
+### Your Custom Polyglot Skills
+Whenever you drop a brand-new automation script into your `~/.hiroshi/skills/` directory (or generate it using `create_skill`), **the folder name becomes the exact tool string** you use in `AGENTS.md`.
 
 * **Example:** If you create a custom Python script folder named `check_weather`, your tool configuration looks like this:
 ```markdown
@@ -74,6 +80,13 @@ Whenever you drop a brand-new automation script into your `~/.hiroshi/skills/` d
 - Prompt: "Alert me about local forecasts."
 - Allowed Tools: [check_weather]
 ```
+
+### Soft-Reloading Command
+You can reload the registry at any time without ending your session by running:
+```bash
+/reload
+```
+in the interactive console mode. This instantly scans and registers new or updated skills on the fly.
 
 ---
 

@@ -1,0 +1,69 @@
+---
+title: Background Service Installer
+description: Learn how to configure Hiroshi as an always-on background OS service.
+---
+
+Instead of keeping an open terminal shell active to run Hiroshi's daemon, you can register Hiroshi as an always-on background daemon service that boots up automatically on system startup.
+
+Hiroshi includes a native, cross-platform service helper subcommand:
+
+```bash
+hiroshi service [ACTION]
+```
+
+### 📋 Supported Actions
+
+*   `install` - Register Hiroshi as an OS daemon service.
+*   `uninstall` - Remove the Hiroshi service from your operating system.
+*   `start` - Start the registered background service.
+*   `stop` - Stop the active background service.
+*   `status` - Check the running status of the background daemon.
+
+---
+
+### 💻 Platform Setup Instructions
+
+Depending on your host operating system, Hiroshi configures the service utilizing standard local platform managers.
+
+#### 🪟 Windows Setup (sc.exe)
+On Windows, Hiroshi registers itself as a native system service using the Windows Service Control Manager.
+1. Run PowerShell or Command Prompt **as Administrator**.
+2. Run the installation command:
+   ```powershell
+   hiroshi service install
+   ```
+3. Start the background service:
+   ```powershell
+   hiroshi service start
+   ```
+4. Query status:
+   ```powershell
+   hiroshi service status
+   ```
+
+#### 🐧 Linux Setup (systemd)
+On Linux, Hiroshi generates and loads a clean systemd service unit file at `/etc/systemd/system/hiroshi.service`.
+1. Run the service installer using `sudo`:
+   ```bash
+   sudo hiroshi service install
+   ```
+2. Start and enable the service:
+   ```bash
+   sudo systemctl start hiroshi
+   ```
+3. Check daemon logs and status:
+   ```bash
+   sudo systemctl status hiroshi
+   ```
+
+#### 🍏 macOS Setup (launchd)
+On macOS, Hiroshi registers a LaunchAgent configuration file under your user profile: `~/Library/LaunchAgents/com.hiroshi.daemon.plist`.
+1. Run the service installer:
+   ```bash
+   hiroshi service install
+   ```
+2. The agent is loaded and running under the active user session immediately.
+3. Check status:
+   ```bash
+   hiroshi service status
+   ```

@@ -4,6 +4,7 @@
     "multi-agent",
     "tools-registry",
     "memory",
+    "hybrid-search",
     "sop-engine"
   ]
 }
