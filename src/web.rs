@@ -117,7 +117,7 @@ async fn handle_get_skills(
         Err(_) => return Json(serde_json::json!([])),
     };
     let disabled = state.disabled_skills.lock().unwrap();
-    let list: Vec<serde_json::Value> = registry.skills.iter().map(|s| {
+    let list: Vec<serde_json::Value> = registry.list_skills().iter().map(|s| {
         serde_json::json!({
             "name": s.name,
             "description": s.description,

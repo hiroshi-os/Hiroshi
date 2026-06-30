@@ -287,7 +287,7 @@ pub async fn init_hiroshi_dir() -> Result<(AppConfig, PathBuf, PathBuf, PathBuf,
 
 ## Developer
 - Prompt: "You are Hiroshi's Systems Programmer. Write clean, idiomatic Rust code."
-- Allowed Tools: [WriteFile]
+- Allowed Tools: [WriteFile, create_skill]
 - Hand-off: "Yield back to Architect upon task completion using [HANDOFF: Architect]."
 "#;
         fs::write(&agents_path, default_agents)

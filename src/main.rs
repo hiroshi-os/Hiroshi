@@ -146,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Dynamic Skills Registry
     let skills_registry = Arc::new(SkillsRegistry::scan_dir(&skills_dir)?);
-    tracing::info!("Discovered {} dynamic skill(s) in registry.", skills_registry.skills.len());
+    tracing::info!("Discovered {} dynamic skill(s) in registry.", skills_registry.list_skills().len());
 
     // Safe Command Runner
     let command_runner = Arc::new(SafeCommandRunner::new(
@@ -223,7 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         "/skills" => {
                             println!("Discovered Skills:");
-                            for skill in &skills_registry.skills {
+                            for skill in skills_registry.list_skills() {
                                 println!("  - {}: {}", skill.name, skill.description);
                             }
                         }

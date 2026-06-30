@@ -15,17 +15,29 @@ pub struct Skill {
 }
 
 pub struct SkillsRegistry {
-    pub skills: Vec<Skill>,
+    pub skills: std::sync::Mutex<Vec<Skill>>,
+    pub skills_dir: PathBuf,
 }
 
 impl SkillsRegistry {
     pub fn scan_dir(skills_dir: &Path) -> Result<Self, String> {
+        let registry = Self {
+            skills: std::sync::Mutex::new(Vec::new()),
+            skills_dir: skills_dir.to_path_buf(),
+        };
+        registry.reload()?;
+        Ok(registry)
+    }
+
+    pub fn reload(&self) -> Result<(), String> {
         let mut skills = Vec::new();
-        if !skills_dir.exists() {
-            return Ok(Self { skills });
+        if !self.skills_dir.exists() {
+            let mut guard = self.skills.lock().unwrap();
+            *guard = skills;
+            return Ok(());
         }
 
-        let entries = fs::read_dir(skills_dir)
+        let entries = fs::read_dir(&self.skills_dir)
             .map_err(|e| format!("Failed to read skills directory: {}", e))?;
 
         for entry in entries {
@@ -39,11 +51,18 @@ impl SkillsRegistry {
             }
         }
 
-        Ok(Self { skills })
+        let mut guard = self.skills.lock().unwrap();
+        *guard = skills;
+        Ok(())
     }
 
-    pub fn get_skill(&self, name: &str) -> Option<&Skill> {
-        self.skills.iter().find(|s| s.name == name)
+    pub fn list_skills(&self) -> Vec<Skill> {
+        self.skills.lock().unwrap().clone()
+    }
+
+    pub fn get_skill(&self, name: &str) -> Option<Skill> {
+        let guard = self.skills.lock().unwrap();
+        guard.iter().find(|s| s.name == name).cloned()
     }
 }
 
@@ -218,7 +237,7 @@ Adds a and b.
         fs::File::create(&exe_file).unwrap().write_all(b"print('hello')").unwrap();
 
         let registry = SkillsRegistry::scan_dir(dir.path()).unwrap();
-        assert_eq!(registry.skills.len(), 1);
+        assert_eq!(registry.list_skills().len(), 1);
 
         let skill = registry.get_skill("calculate_sum").unwrap();
         assert_eq!(skill.description, "Sums up two numeric parameters");

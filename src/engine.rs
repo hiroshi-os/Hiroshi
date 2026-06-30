@@ -17,6 +17,7 @@ enum ToolCall {
     ReadFile { path: String },
     WriteFile { path: String, content: String },
     CallTool { name: String, json_args: String },
+    CreateSkill { name: String, description: String, schema: String, code: String },
 }
 
 fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
@@ -91,6 +92,65 @@ fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
         }
     }
 
+    // Parse <create_skill name="name">...</create_skill>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<create_skill") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</create_skill>") {
+            let header_end = content[abs_start..].find(">").unwrap_or(0);
+            let header = &content[abs_start..abs_start + header_end];
+            let name = if let Some(p_start) = header.find("name=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let block = &content[abs_start + header_end + 1..abs_start + end];
+            
+            let description = if let Some(d_start) = block.find("<description>") {
+                if let Some(d_end) = block[d_start..].find("</description>") {
+                    block[d_start + 13..d_start + d_end].trim().to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let schema = if let Some(s_start) = block.find("<schema>") {
+                if let Some(s_end) = block[s_start..].find("</schema>") {
+                    block[s_start + 8..s_start + s_end].trim().to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let code = if let Some(c_start) = block.find("<code>") {
+                if let Some(c_end) = block[c_start..].find("</code>") {
+                    block[c_start + 6..c_start + c_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            if !name.is_empty() {
+                calls.push(ToolCall::CreateSkill { name, description, schema, code });
+            }
+            last_idx = abs_start + end + 15;
+        } else {
+            break;
+        }
+    }
+
     calls
 }
 
@@ -154,9 +214,10 @@ pub async fn run_agent_turn(
 
         // Generate dynamic skills descriptors list
         let mut dynamic_skills_str = String::new();
-        if !skills_registry.skills.is_empty() {
+        let skills_list = skills_registry.list_skills();
+        if !skills_list.is_empty() {
             dynamic_skills_str.push_str("\nYou can also execute the following dynamic skills by outputting XML tags format:\n");
-            for skill in &skills_registry.skills {
+            for skill in &skills_list {
                 dynamic_skills_str.push_str(&format!(
                     "- <call_tool name=\"{}\">{}</call_tool>: {}\n",
                     skill.name,
@@ -309,6 +370,144 @@ pub async fn run_agent_turn(
                             db.add_message(session_id, "user", &err_msg)?;
                             println!(">> Tool failed: {}", e);
                         }
+                    }
+                }
+                ToolCall::CreateSkill { name, description, schema, code } => {
+                    use tokio::io::AsyncWriteExt;
+                    println!("\n>> Running Tool: create_skill({})", name);
+                    if !active_agent.allowed_tools.contains(&"create_skill".to_string()) {
+                        let err_msg = "Permission Denied: Active agent does not have permission to use create_skill.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
+
+                    let skills_dir = &skills_registry.skills_dir;
+                    let test_dir = skills_dir.join(format!("test__{}", name));
+                    if let Err(e) = std::fs::create_dir_all(&test_dir) {
+                        let err_msg = format!("Failed to create temporary test directory: {}", e);
+                        db.add_message(session_id, "user", &err_msg)?;
+                        continue;
+                    }
+
+                    let skill_md_content = format!(
+                        "---\nname: {}\ndescription: \"{}\"\nschema: '{}'\n---\n# {}\n{}",
+                        name, description, schema, name, description
+                    );
+
+                    let md_path = test_dir.join("SKILL.md");
+                    let script_path = test_dir.join(format!("{}.py", name));
+
+                    let write_res = std::fs::write(&md_path, skill_md_content)
+                        .and_then(|_| std::fs::write(&script_path, &code));
+
+                    if let Err(e) = write_res {
+                        let err_msg = format!("Failed to write skill test files: {}", e);
+                        db.add_message(session_id, "user", &err_msg)?;
+                        let _ = std::fs::remove_dir_all(&test_dir);
+                        continue;
+                    }
+
+                    // Run syntax check
+                    println!(">> Testing skill compilation/syntax check...");
+                    let syntax_check = tokio::process::Command::new("python")
+                        .arg("-m")
+                        .arg("py_compile")
+                        .arg(&script_path)
+                        .output()
+                        .await;
+
+                    match syntax_check {
+                        Ok(output) if !output.status.success() => {
+                            let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+                            let err_msg = format!("Verification Failed: Python syntax check failed on compilation.\nStderr:\n{}", stderr_str);
+                            println!(">> {}", err_msg);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            let _ = std::fs::remove_dir_all(&test_dir);
+                            continue;
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Verification Failed: Python binary execution failed: {}", e);
+                            println!(">> {}", err_msg);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            let _ = std::fs::remove_dir_all(&test_dir);
+                            continue;
+                        }
+                        _ => {}
+                    }
+
+                    // Run test execution with empty json input
+                    println!(">> Running test execution with empty JSON input...");
+                    let test_run = tokio::process::Command::new("python")
+                        .arg(&script_path)
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn();
+
+                    let mut verified = false;
+                    let mut err_detail = String::new();
+
+                    match test_run {
+                        Ok(mut child) => {
+                            if let Some(mut stdin) = child.stdin.take() {
+                                let _ = stdin.write_all(b"{}").await;
+                            }
+                            let duration = std::time::Duration::from_secs(3);
+                            match tokio::time::timeout(duration, child.wait()).await {
+                                Ok(Ok(status)) => {
+                                    let output = child.wait_with_output().await;
+                                    match output {
+                                        Ok(out) => {
+                                            let stderr_str = String::from_utf8_lossy(&out.stderr).to_string();
+                                            if !status.success() || stderr_str.contains("Traceback (most recent call last)") {
+                                                err_detail = format!("Execution exited with code: {}\nStderr:\n{}", status, stderr_str);
+                                            } else {
+                                                verified = true;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            err_detail = format!("Failed to read process output: {}", e);
+                                        }
+                                    }
+                                }
+                                Ok(Err(e)) => {
+                                    err_detail = format!("Execution status check error: {}", e);
+                                }
+                                Err(_) => {
+                                    let _ = child.kill().await;
+                                    err_detail = "Execution timeout: Script did not finish within 3 seconds when fed empty JSON input.".to_string();
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            err_detail = format!("Failed to spawn test execution: {}", e);
+                        }
+                    }
+
+                    if verified {
+                        let target_dir = skills_dir.join(&name);
+                        if target_dir.exists() {
+                            let _ = std::fs::remove_dir_all(&target_dir);
+                        }
+                        if let Err(e) = std::fs::rename(&test_dir, &target_dir) {
+                            let err_msg = format!("Verification passed, but failed to move skill to permanent directory: {}", e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                        } else {
+                            if let Err(e) = skills_registry.reload() {
+                                let err_msg = format!("Verification passed, but skills registry reload failed: {}", e);
+                                db.add_message(session_id, "user", &err_msg)?;
+                            } else {
+                                let success_msg = format!("Verification Passed: Dynamic skill '{}' has been created, tested, and hot-swapped into the active registry successfully. It is now active and ready to use.", name);
+                                println!(">> {}", success_msg);
+                                db.add_message(session_id, "user", &success_msg)?;
+                            }
+                        }
+                    } else {
+                        let err_msg = format!("Verification Failed: Dynamic skill '{}' failed during test execution.\nDetails:\n{}", name, err_detail);
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", &err_msg)?;
+                        let _ = std::fs::remove_dir_all(&test_dir);
                     }
                 }
                 ToolCall::CallTool { name, json_args } => {
