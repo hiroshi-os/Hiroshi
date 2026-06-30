@@ -65,6 +65,92 @@ impl SopEngine {
         let config = self.config.clone();
         let channels = self.channels.clone();
 
+        // Spawn Background Dreaming Loop
+        let db_dream = self.db.clone();
+        let provider_dream = self.provider.clone();
+        let shutdown_token_dream = shutdown_token.clone();
+        tokio::spawn(async move {
+            tracing::info!("Autonomous Memory Consolidation (Dreaming Sweep) loop started.");
+            let memory_dir = dirs::home_dir().unwrap_or_default().join(".hiroshi").join("memory");
+            let _ = std::fs::create_dir_all(&memory_dir);
+
+            // Run dreaming sweep every 12 hours
+            let mut interval = tokio::time::interval(Duration::from_secs(12 * 3600));
+            // Trigger first tick after 10 seconds to not block startup
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            loop {
+                tokio::select! {
+                    _ = shutdown_token_dream.cancelled() => {
+                        tracing::info!("Dreaming Sweep shutting down...");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        tracing::info!("Dreaming Sweep: Consolidating memory...");
+                        
+                        // Retrieve recent history logs to process
+                        if let Ok(history) = db_dream.get_context("global", 16000) {
+                            if history.is_empty() {
+                                continue;
+                            }
+                            
+                            let mut history_text = String::new();
+                            for msg in &history {
+                                history_text.push_str(&format!("{}: {}\n", msg.role, msg.content));
+                            }
+                            
+                            let prompt = format!(
+                                "You are Hiroshi Memory Compactor. Analyze these recent interactions, resolve contradictions, deduplicate information, and output a refined markdown profile summary of learnings, configurations, and decisions:\n\n{}",
+                                history_text
+                            );
+
+                            let system_prompt = "Consolidate short-term conversation logs into a refined, high-level profile summary card. Keep it concise.";
+                            
+                            if let Ok(ref mut stream) = provider_dream.chat_stream(system_prompt, vec![crate::db::ChatMessage {
+                                role: "user".to_string(),
+                                content: prompt,
+                            }]).await {
+                                use futures_util::StreamExt;
+                                let mut summary = String::new();
+                                while let Some(chunk_res) = stream.next().await {
+                                    if let Ok(text) = chunk_res {
+                                        summary.push_str(&text);
+                                    }
+                                }
+                                
+                                if !summary.trim().is_empty() {
+                                    // Write to MEMORY.md
+                                    let memory_file = memory_dir.join("MEMORY.md");
+                                    let mut existing = if memory_file.exists() {
+                                        std::fs::read_to_string(&memory_file).unwrap_or_default()
+                                    } else {
+                                        "# Hiroshi Master Profile Memory\n\n".to_string()
+                                    };
+                                    existing.push_str(&format!("\n## Learnings Sweep - {}\n{}\n", chrono::Local::now().format("%Y-%m-%d"), summary));
+                                    let _ = std::fs::write(&memory_file, existing);
+
+                                    // Write reasoning to DREAMS.md
+                                    let dreams_file = memory_dir.join("DREAMS.md");
+                                    let mut dreams_log = if dreams_file.exists() {
+                                        std::fs::read_to_string(&dreams_file).unwrap_or_default()
+                                    } else {
+                                        "# Hiroshi Dream Logs (Reasoning & Consolidation)\n\n".to_string()
+                                    };
+                                    dreams_log.push_str(&format!(
+                                        "## Consolidation Cycle [{}]\n- Processed {} interaction records.\n- Resolved duplicate context parameters.\n- Status: Memory consolidated successfully.\n\n",
+                                        chrono::Local::now().to_rfc3339(),
+                                        history.len()
+                                    ));
+                                    let _ = std::fs::write(&dreams_file, dreams_log);
+                                    tracing::info!("Dreaming Sweep: Memory consolidation write complete.");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
         tokio::spawn(async move {
             tracing::info!("Proactive SOP scheduler loop service started.");
             let mut interval = tokio::time::interval(Duration::from_secs(config.sop.interval_minutes * 60));

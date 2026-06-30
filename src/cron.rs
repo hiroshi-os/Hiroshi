@@ -13,6 +13,7 @@ pub struct CronScheduler {
     provider: Arc<OllamaProvider>,
     sandbox: Arc<WorkspaceSandbox>,
     memory_dir: PathBuf,
+    ws_tx: tokio::sync::broadcast::Sender<String>,
 }
 
 impl CronScheduler {
@@ -22,6 +23,7 @@ impl CronScheduler {
         provider: Arc<OllamaProvider>,
         sandbox: Arc<WorkspaceSandbox>,
         memory_dir: PathBuf,
+        ws_tx: tokio::sync::broadcast::Sender<String>,
     ) -> Self {
         Self {
             tasks,
@@ -29,6 +31,7 @@ impl CronScheduler {
             provider,
             sandbox,
             memory_dir,
+            ws_tx,
         }
     }
 
@@ -38,6 +41,7 @@ impl CronScheduler {
         let provider = self.provider;
         let sandbox = self.sandbox;
         let memory_dir = self.memory_dir;
+        let ws_tx = self.ws_tx;
 
         tokio::spawn(async move {
             tracing::info!("Scheduler service started in the background.");
@@ -84,6 +88,7 @@ impl CronScheduler {
                         let provider_clone = provider.clone();
                         let sandbox_clone = sandbox.clone();
                         let memory_dir_clone = memory_dir.clone();
+                        let ws_tx_clone = ws_tx.clone();
 
                         tokio::spawn(async move {
                             if let Err(e) = execute_cron_task(
@@ -92,6 +97,7 @@ impl CronScheduler {
                                 provider_clone,
                                 sandbox_clone,
                                 memory_dir_clone,
+                                ws_tx_clone,
                             ).await {
                                 tracing::error!("Failed to run task '{}': {}", task_name, e);
                             }
@@ -139,12 +145,23 @@ async fn execute_cron_task(
     provider: Arc<OllamaProvider>,
     sandbox: Arc<WorkspaceSandbox>,
     memory_dir: PathBuf,
+    ws_tx: tokio::sync::broadcast::Sender<String>,
 ) -> Result<(), String> {
     // 1. Export daily log
     db.export_daily_log("terminal", &memory_dir)?;
 
     // 2. Perform memory compaction
     db.compact_memory("terminal", &memory_dir, &provider).await?;
+
+    // Broadcast state_version event for hot-reload on dashboard
+    let ws_msg = serde_json::json!({
+        "type": "state_version",
+        "changed_file": "MEMORY.md",
+        "timestamp": chrono::Utc::now().timestamp_millis()
+    });
+    if let Ok(msg_str) = serde_json::to_string(&ws_msg) {
+        let _ = ws_tx.send(msg_str);
+    }
 
     // 3. Run LLM task prompt
     let system_prompt = format!(

@@ -23,6 +23,7 @@ mod gateway;
 mod memory;
 mod service;
 mod doctor;
+mod migration;
 
 use clap::{Parser, Subcommand};
 
@@ -63,6 +64,12 @@ enum Commands {
     },
     /// Run diagnostic environment health checks
     Doctor,
+    /// Migrate settings and identity documents from other agent platforms
+    Migrate {
+        /// The platform source to migrate from (e.g. openclaw, zeroclaw)
+        #[arg(short, long, default_value = "openclaw")]
+        source: String,
+    },
 }
 
 #[derive(Subcommand, Clone, Debug)]
@@ -184,6 +191,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Agent => {
+            let hiroshi_dir = dirs::home_dir().ok_or("Could not determine home directory")?.join(".hiroshi");
+            let lock_path = hiroshi_dir.join(".gateway.lock");
+            let lock_file = std::fs::File::create(&lock_path)
+                .map_err(|e| format!("Failed to create gateway lock file: {}", e))?;
+            use fs2::FileExt;
+            let mut _agent_lock = None;
+            if lock_file.try_lock_exclusive().is_err() {
+                println!("WARNING: Another Hiroshi daemon or agent instance is already running.");
+                println!("Entering READ-ONLY mode. Database writes and file modifications will be disabled.\n");
+                db.set_read_only(true);
+            } else {
+                _agent_lock = Some(lock_file);
+            }
+
             println!("Interactive Agent Terminal Mode started.");
             println!("Type /help to see available commands or type /exit to quit.\n");
 
@@ -323,6 +344,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             let allowlist = Arc::new(allowlist);
 
+            let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+            let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
+            let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+
             // Spawn Background Scheduler
             let scheduler = CronScheduler::new(
                 config.cron.tasks.clone(),
@@ -330,12 +355,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 provider.clone(),
                 sandbox.clone(),
                 memory_dir.clone(),
+                ws_tx.clone(),
             );
             scheduler.start(shutdown_token.clone());
-
-            let (ws_tx, _) = tokio::sync::broadcast::channel::<String>(100);
-            let active_agent_name = Arc::new(std::sync::Mutex::new("Architect".to_string()));
-            let disabled_skills = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
 
             // Initialize gateways channel multiplexer
             let (_event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::ChannelMessage>(100);
@@ -548,6 +570,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Doctor => {
             doctor::run_diagnostics(&config, &db_path, &workspace_path).await?;
+        }
+        Commands::Migrate { source } => {
+            migration::migrate_configs(&source)?;
         }
     }
 

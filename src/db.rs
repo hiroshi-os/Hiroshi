@@ -11,8 +11,12 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 pub struct MemoryEngine {
     conn: Mutex<Connection>,
+    read_only: AtomicBool,
+    transient_history: Mutex<std::collections::HashMap<String, Vec<ChatMessage>>>,
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -52,7 +56,7 @@ impl MemoryEngine {
                 session_id TEXT NOT NULL DEFAULT 'global',
                 role TEXT NOT NULL,
                 content TEXT NOT NULL
-             )",
+              )",
             [],
         ).map_err(|e| format!("Failed to create history table: {}", e))?;
 
@@ -64,7 +68,7 @@ impl MemoryEngine {
             "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
                 role,
                 content
-             )",
+              )",
             [],
         ).map_err(|e| format!("Failed to create history_fts virtual table: {}", e))?;
         
@@ -74,14 +78,36 @@ impl MemoryEngine {
                 message_id INTEGER PRIMARY KEY,
                 vector BLOB NOT NULL,
                 FOREIGN KEY(message_id) REFERENCES history(id) ON DELETE CASCADE
-             )",
+              )",
             [],
         ).map_err(|e| format!("Failed to create history_vectors table: {}", e))?;
         
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+            read_only: AtomicBool::new(false),
+            transient_history: Mutex::new(std::collections::HashMap::new()),
+        })
+    }
+
+    pub fn set_read_only(&self, read_only: bool) {
+        self.read_only.store(read_only, Ordering::SeqCst);
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.read_only.load(Ordering::SeqCst)
     }
 
     pub fn add_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64, String> {
+        if self.is_read_only() {
+            let mut transient = self.transient_history.lock().map_err(|e| format!("Transient lock poison error: {}", e))?;
+            let list = transient.entry(session_id.to_string()).or_insert_with(Vec::new);
+            list.push(ChatMessage {
+                role: role.to_string(),
+                content: content.to_string(),
+            });
+            return Ok(0);
+        }
+
         let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
         
         conn.execute(
@@ -102,6 +128,10 @@ impl MemoryEngine {
     pub async fn add_message_with_vector(&self, session_id: &str, role: &str, content: &str, provider: &OllamaProvider) -> Result<(), String> {
         let id = self.add_message(session_id, role, content)?;
         
+        if self.is_read_only() {
+            return Ok(());
+        }
+
         // Generate embeddings asynchronously
         if let Ok(vector) = provider.get_embeddings(content).await {
             if let Ok(blob) = serde_json::to_vec(&vector) {
@@ -144,6 +174,17 @@ impl MemoryEngine {
         }
         
         messages.reverse();
+
+        if self.is_read_only() {
+            if let Ok(transient) = self.transient_history.lock() {
+                if let Some(transient_msgs) = transient.get(session_id) {
+                    for msg in transient_msgs {
+                        messages.push(msg.clone());
+                    }
+                }
+            }
+        }
+
         Ok(messages)
     }
 

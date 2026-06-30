@@ -351,6 +351,12 @@ pub async fn run_agent_turn(
                 }
                 ToolCall::WriteFile { path, content } => {
                     println!("\n>> Running Tool: write_file({})", path);
+                    if db.is_read_only() {
+                        let err_msg = "Permission Denied: Running in read-only mode to prevent workspace and database collisions.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
                     if !active_agent.allowed_tools.contains(&"WriteFile".to_string()) {
                         let err_msg = "Permission Denied: Active agent does not have permission to use WriteFile.";
                         println!(">> {}", err_msg);
@@ -373,6 +379,12 @@ pub async fn run_agent_turn(
                 ToolCall::CreateSkill { name, description, schema, code } => {
                     use tokio::io::AsyncWriteExt;
                     println!("\n>> Running Tool: create_skill({})", name);
+                    if db.is_read_only() {
+                        let err_msg = "Permission Denied: Running in read-only mode to prevent workspace and database collisions.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
                     if !active_agent.allowed_tools.contains(&"create_skill".to_string()) {
                         let err_msg = "Permission Denied: Active agent does not have permission to use create_skill.";
                         println!(">> {}", err_msg);

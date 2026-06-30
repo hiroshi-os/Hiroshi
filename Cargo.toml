@@ -34,3 +34,10 @@ gateway-ui = ["dep:axum", "dep:tower-http"]
 channel-telegram = []
 channel-discord = ["dep:tokio-tungstenite"]
 channel-slack = ["dep:tokio-tungstenite"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

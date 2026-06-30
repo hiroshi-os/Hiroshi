@@ -502,6 +502,10 @@
                         checkbox.checked = data.enabled;
                     }
                 }
+                else if (data.type === 'state_version') {
+                    appendLog(`State reload triggered by memory change (${data.changed_file})`);
+                    fetchSkills();
+                }
                 else if (data.type === 'screenshot') {
                     appendLog('Viewport update received');
                     document.getElementById('canvas-status').classList.add('hidden');

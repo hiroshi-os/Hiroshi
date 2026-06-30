@@ -44,13 +44,30 @@ pub async fn hybrid_search(
     // Spawn both retrieval branches concurrently
     let query_vector = provider.get_embeddings(query).await.unwrap_or_default();
 
-    let vector_results = if !query_vector.is_empty() {
-        db.search_vector_rag(session_id, &query_vector, fetch_limit)?
-    } else {
-        Vec::new()
-    };
+    let db_clone1 = db.clone();
+    let session_id_clone1 = session_id.to_string();
+    let query_vector_clone = query_vector.clone();
+    let vector_handle = tokio::task::spawn_blocking(move || {
+        if !query_vector_clone.is_empty() {
+            db_clone1.search_vector_rag(&session_id_clone1, &query_vector_clone, fetch_limit)
+        } else {
+            Ok(Vec::new())
+        }
+    });
 
-    let fts5_results = db.search_rag_history(session_id, query, fetch_limit)?;
+    let db_clone2 = db.clone();
+    let session_id_clone2 = session_id.to_string();
+    let query_clone = query.to_string();
+    let fts5_handle = tokio::task::spawn_blocking(move || {
+        db_clone2.search_rag_history(&session_id_clone2, &query_clone, fetch_limit)
+    });
+
+    let (vector_res, fts5_res) = tokio::join!(vector_handle, fts5_handle);
+
+    let vector_results = vector_res
+        .map_err(|e| format!("Vector search task join error: {}", e))??;
+    let fts5_results = fts5_res
+        .map_err(|e| format!("FTS5 search task join error: {}", e))??;
 
     // Build RRF score maps keyed by content hash
     let mut score_map: HashMap<String, (String, String, f64)> = HashMap::new();
