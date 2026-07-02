@@ -1,0 +1,15 @@
+---
+title: Headless Browser Operations
+description: Orchestrating sandboxed browser instances via Chrome DevTools Protocol (CDP).
+---
+
+Hiroshi features a modular headless browser controller that allows agents to programmatically navigate websites, capture DOM elements, and extract text data.
+
+### 🍪 1. Sandbox Cookie & Session Isolation
+To prevent cross-domain state leaks and protect operator identities:
+* Every browser session initializes an independent user data directory containing fully isolated cookie jars and local storage databases.
+* Ephemeral profiles are automatically purged on agent run shutdown.
+
+### 🌐 2. CDP Socket Integration
+The browser engine communicates with the underlying Chromium subprocess over local websocket loops using the **Chrome DevTools Protocol (CDP)**.
+* Remote debugging sockets are restricted to local interface bindings (`127.0.0.1`) to prevent external exposure.

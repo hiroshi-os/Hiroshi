@@ -1,0 +1,30 @@
+---
+title: Plugin Manifest Specification
+description: Defining structural parameters for dynamic extension packages.
+---
+
+Hiroshi plugins are packaged extensions containing dynamic capabilities and code logic that run in isolated subprocess sandboxes.
+
+### 📄 1. The `manifest.json` Structure
+Every plugin published to HiroshiHub must declare a root `manifest.json` using the following schema:
+
+```json
+{
+  "name": "workspace-linter",
+  "version": "1.0.4",
+  "description": "Dynamic workspace static analyzer capability.",
+  "entrypoint": "node dist/index.js",
+  "permissions": [
+    "fs_read",
+    "network"
+  ],
+  "dependencies": {
+    "node": ">=18.0.0"
+  }
+}
+```
+
+### ⚙️ 2. Subprocess RPC Bridge
+When a plugin tool is triggered:
+1. Hiroshi boots the configured `entrypoint` script inside a sandboxed container.
+2. Communications are routed via standard I/O (stdin/stdout) pipelines using standard JSON-RPC 2.0 frames.
