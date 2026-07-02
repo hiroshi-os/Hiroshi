@@ -1,5 +1,5 @@
 ---
-title: Codex Computer Use
+title: Codex Computer Use & Vision
 description: Vision screenshot captures, mouse click mapping coordinates, and OS interactions.
 ---
 
@@ -9,5 +9,10 @@ Hiroshi features a modular vision engine (`DesktopVisionEngine`) that lets multi
 The `desktop_screenshot` tool takes a snapshot of the primary display context, compressing it to memory as a `.png` file. Under isolated sandbox environments, the engine returns simulated offline mock buffers.
 
 ### 🖱️ 2. Absolute Screen Coordinates Click
-* **Interactive Clicking:** Using coordinate scaling grids `(X, Y)` mapped fromvision observations, the agent executes programmatic cursor positioning via `desktop_click`.
+* **Interactive Clicking:** Using coordinate scaling grids `(X, Y)` mapped from vision observations, the agent executes programmatic cursor positioning via `desktop_click`.
 * **Keyboard Ingestion:** The `desktop_type` command maps textual sequences into raw keystrokes directly on the active operating system container interface.
+
+### ⚙️ 3. Cross-Platform OS Requirements
+* **macOS:** Requires enabling Accessibility and Screen Recording permissions for the parent terminal or IDE hosting the Hiroshi binary.
+* **Linux:** Requires an active display server context. For **X11**, ensure `DISPLAY` env variable is set; for **Wayland**, utilize compatible pipewire screenshot portals.
+* **Windows:** Operates natively via the standard Win32 API window hooks.
