@@ -1,0 +1,19 @@
+---
+title: Predictive Context Compaction
+description: Algorithmic token-tracking and context trimming loops.
+---
+
+Hiroshi utilizes a predictive character-to-token estimator to monitor active session history files and trigger context rotations before hit limits.
+
+### 📉 1. The Compaction Pipeline
+If a conversation's total token count exceeds the configured safety threshold (e.g. 70% of model context):
+1. Runs an asynchronous evaluation turn using the `NO_REPLY` protocol.
+2. Prompts the model to synthesize a dense, semantic summary of all previous thread turns.
+3. Overwrites the history database with the generated summary, rolling forward the context state cleanly.
+
+```rust
+// Character-to-token safety boundary checking
+if char_count * 3 / 4 > threshold_tokens {
+    run_compaction().await;
+}
+```

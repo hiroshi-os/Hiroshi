@@ -1,0 +1,12 @@
+---
+title: Audio Ingestion & Transcription Filters
+description: Intercepting inbound voice note payloads.
+---
+
+Hiroshi supports automatic inbound voice note transponding using deep acoustic pipelines.
+
+### 🎙️ 1. Message Ingestion Pass
+When a user transmits an audio note containing a supported MIME type (`audio/ogg`, `audio/mp3`, `audio/wav`), the ingestion layer:
+1. Captures the binary stream buffer.
+2. Dispatches it to Whisper/Deepgram endpoints.
+3. Automatically replaces the raw audio file attachment with the generated text transcription before forwarding the message block to the prompt assembly engine.

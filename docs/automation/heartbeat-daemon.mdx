@@ -1,0 +1,12 @@
+---
+title: Proactive Heartbeat Daemon
+description: Non-blocking background supervisor loop.
+---
+
+The Heartbeat daemon executes background supervisor task lists independent of inbound chat requests.
+
+### 💓 1. Execution Heartbeats
+Every 5 minutes, the heartbeat daemon waking loop scans the `~/.hiroshi/workspace/HEARTBEAT.md` checklist file. The checklist items are mapped into a system validation prompt and dispatched for analysis.
+
+### 🤫 2. Token Suppression (`HEARTBEAT_OK`)
+To protect user screen space and clean logs, if the reasoning model returns the `HEARTBEAT_OK` token sequence, the daemon suppresses notifications and returns to sleep without serialization.

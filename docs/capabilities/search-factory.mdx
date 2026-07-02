@@ -1,0 +1,15 @@
+---
+title: Pluggable Search Provider Factory
+description: Enterprise discovery engine matrices.
+---
+
+Hiroshi features a modular `SearchProvider` trait that decouples raw search implementations from the core agent execution loops.
+
+### 🌐 1. Available Provider Adapters
+* **Brave Search:** Native web discovery via standard cognitive indexers.
+* **Tavily:** Search optimization tailored for LLM reasoning ingestion.
+* **Firecrawl:** URL scraping and semantic markdown conversion.
+* **Perplexity:** Direct conversational answers using external web searches.
+
+### 🔄 2. Cascading Failover Engine
+If a search provider raises an HTTP `429` (Rate Limited) or is offline, the failover wrapper automatically routes the query to the next configured search engine in the cascade chain.

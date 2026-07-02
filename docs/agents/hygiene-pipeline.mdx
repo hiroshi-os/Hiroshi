@@ -1,0 +1,15 @@
+---
+title: History Hygiene Pipeline
+description: Cleaning cross-provider conversational history.
+---
+
+Hiroshi implements a robust history hygiene pipeline that intercepts incoming and outgoing messages to maintain perfect structural compatibility across distinct LLM providers.
+
+### 🧹 1. Empty Record Pruning
+Many providers fail to deserialize blank or whitespace-only messages. The hygiene pipeline automatically prunes empty assistant or user records, preventing structural schema validation failures.
+
+### 🔗 2. Orphaned Tool Corrections
+When a provider outputs a tool call but the execution fails or gets aborted, we inject synthetic success/failure markers matching the required transaction UUIDs to guarantee structural safety.
+
+### 🧠 3. Thinking Signature Transpositions
+Converts complex thinking signatures (e.g. Anthropic's `<thinking>` XML sections) into plain-text annotations or system prompts when calling model providers that do not natively support dual-stage thinking payloads.
