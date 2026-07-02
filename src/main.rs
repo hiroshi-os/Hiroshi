@@ -476,6 +476,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut text = event.text.clone();
 
                     if let Some(ref media_list) = event.media {
+                        let stt_engine = crate::gateway::voice::AudioTranscriptionEngine::new(
+                            &std::env::var("OPENAI_API_KEY").unwrap_or_default()
+                        );
+                        for asset in media_list {
+                            if asset.mime_type.starts_with("audio/") {
+                                if let Ok(transcript) = stt_engine.transcribe_media(asset).await {
+                                    text.push_str(&format!("\n\n*Voice Transcript:*\n{}", transcript));
+                                }
+                            }
+                        }
                         let summary = crate::gateway::media::MediaAsset::degrade_assets(media_list);
                         text.push_str(&summary);
                     }
