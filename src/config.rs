@@ -181,6 +181,25 @@ impl Default for TailscaleConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MattermostConfig {
+    pub enabled: bool,
+    pub server_url: String,
+    pub bot_token: String,
+    pub allowed_channels: Vec<String>,
+}
+
+impl Default for MattermostConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            server_url: String::new(),
+            bot_token: String::new(),
+            allowed_channels: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub engine: EngineConfig,
     pub ollama: OllamaConfig,
@@ -199,6 +218,8 @@ pub struct AppConfig {
     pub tailscale: TailscaleConfig,
     #[serde(default)]
     pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
+    #[serde(default)]
+    pub mattermost: MattermostConfig,
 }
 
 impl Default for AppConfig {
@@ -229,6 +250,7 @@ impl Default for AppConfig {
             sop: SopConfig::default(),
             tailscale: TailscaleConfig::default(),
             mcp_servers: std::collections::HashMap::new(),
+            mattermost: MattermostConfig::default(),
         }
     }
 }
