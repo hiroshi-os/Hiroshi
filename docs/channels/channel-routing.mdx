@@ -1,0 +1,15 @@
+---
+title: Pluggable Channel Routing
+description: Unified multi-channel driver factory.
+---
+
+Hiroshi leverages an asynchronous `ChannelDriver` factory model to dynamically spin up communication adapters from TOML configs.
+
+### 🔌 1. The ChannelDriver Lifecycle
+Pluggable drivers declare a central interface mapping:
+* **`channel_id`**: Returns the unique adapter string identifier.
+* **`run`**: Spawns a dedicated connection listener loop.
+* **`send_message`**: Dispatches outbound posts to target API interfaces.
+
+### 🌐 2. Future Integrations
+Because the system is fully decoupled via traits, expanding to other networks (e.g. WhatsApp, Matrix, MS Teams) requires creating a single driver module and adding matching keys to the factory registration dictionary.

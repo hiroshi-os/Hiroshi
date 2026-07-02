@@ -1,0 +1,20 @@
+---
+title: Mattermost Integration
+description: Connecting Mattermost workspaces to the pluggable channel driver engine.
+---
+
+Hiroshi supports Mattermost workspace integration using the polymorphic channel driver interface.
+
+### 🔑 1. Setup Instructions
+To connect your Mattermost server:
+1. Create a Bot Account in **System Console > Integrations > Bot Accounts**.
+2. Assign post and channel permissions to the Bot token.
+3. Configure the `server_url` and `bot_token` variables inside `config.toml`:
+
+```toml
+[channels.mattermost]
+enabled = true
+server_url = "https://mattermost.example.com"
+bot_token = "your-bot-token"
+allowed_channels = ["town-square", "off-topic"]
+```
