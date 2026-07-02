@@ -1,4 +1,0 @@
-Hiroshi
--------
-
-Hiroshi is an agentic AI developer assistant designed as a multi-modal agent loop, running locally and integrating with Ollama, SQLite (with vector search and FTS5), MCP servers, custom skills, web dashboards, cron tasks, and chat platforms like Telegram.
