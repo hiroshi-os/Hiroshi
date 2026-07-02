@@ -1,0 +1,52 @@
+---
+title: Background Service Installer
+description: Learn how to configure Hiroshi as an always-on background OS service.
+---
+
+Instead of keeping a terminal session open, you can register Hiroshi as a background service that boots automatically on system startup.
+
+```bash
+hiroshi service [ACTION]
+```
+
+### 📋 Actions
+*   `install` - Register Hiroshi as an OS daemon service.
+*   `uninstall` - Remove the Hiroshi service from your system.
+*   `start` - Start the registered background service.
+*   `stop` - Stop the active background service.
+*   `status` - Query the running status of the background daemon.
+
+---
+
+### 💻 Platform Setup Instructions
+
+#### 🪟 Windows Setup (sc.exe)
+On Windows, Hiroshi registers itself as a native system service using the Windows Service Control Manager.
+1. Run PowerShell or Command Prompt **as Administrator**.
+2. Run:
+   ```powershell
+   hiroshi service install
+   ```
+3. Start the service:
+   ```powershell
+   hiroshi service start
+   ```
+
+#### 🐧 Linux Setup (systemd)
+On Linux, Hiroshi writes a systemd service unit file at `/etc/systemd/system/hiroshi.service`.
+1. Run the service installer:
+   ```bash
+   sudo hiroshi service install
+   ```
+2. Start and enable the service:
+   ```bash
+   sudo systemctl start hiroshi
+   ```
+
+#### 🍏 macOS Setup (launchd)
+On macOS, Hiroshi registers a LaunchAgent configuration file at `~/Library/LaunchAgents/com.hiroshi.daemon.plist`.
+1. Run the service installer:
+   ```bash
+   hiroshi service install
+   ```
+2. The agent loads and starts running under the active user session immediately.

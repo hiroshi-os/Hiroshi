@@ -1,0 +1,17 @@
+---
+title: Slack Integration
+description: Configure a Slack Socket Mode connection.
+---
+
+Hiroshi utilizes Slack Socket Mode to establish gateway links without exposing port boundaries.
+
+### Configuration
+Update the `[slack]` block in `~/.hiroshi/config.toml`:
+
+```toml
+[slack]
+enabled = true
+bot_token = "xoxb-BOT-TOKEN"
+app_token = "xapp-APP-TOKEN"
+```
+Socket Mode handles websocket polling, protecting the local node interface.

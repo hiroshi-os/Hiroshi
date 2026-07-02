@@ -1,0 +1,20 @@
+---
+title: Sandbox Path Containment
+description: Deep-dive into Hiroshi's directory jail checks and zero-trust security perimeters.
+---
+
+To safeguard your host machine from malicious file operations, directory traversals, or symbolic link escapes, Hiroshi wraps all file operations inside a strict sandbox path validator.
+
+### 🛡️ Path Jail Security Checks
+
+When an agent or custom skill requests reading or writing a file path, the sandbox runs validation sequences:
+
+1.  **Fast Path string filter**: Instantly rejects any path containing relative traversal directories (`..`).
+2.  **Prefix checks**: Rejects absolute prefixes or drive letters (e.g. `C:\`, `/etc/`) to ensure targets are relative to the sandbox root.
+3.  **Canonical Resolution**: If the path exists, Hiroshi calls `dunce::canonicalize()` on both the base directory and the target resolved path, enforcing:
+    ```rust
+    canonical_target.starts_with(canonical_base)
+    ```
+4.  **Ancestor Containment**: If the file does not exist (write target), Hiroshi canonicalizes the deepest existing parent directory and verifies containment.
+
+If any check fails, the operation is blocked, returning a strict `PermissionDenied` error.

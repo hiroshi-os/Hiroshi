@@ -1,0 +1,13 @@
+---
+title: Dreaming Sweeps
+description: Learn how Hiroshi consolidates memories autonomously during idle periods.
+---
+
+Hiroshi triggers autonomous background "Dreaming Sweeps" to consolidate short-term conversational context.
+
+### Memory Consolidation Workflow
+
+1.  **Idle Triggers**: The SOP scheduler tracks system idle boundaries.
+2.  **Context Aggregation**: Collects interaction records from the SQLite database.
+3.  **Synthesis**: Prompts the LLM provider to deduplicate parameters and resolve contradictions.
+4.  **Consolidation updates**: Saves high-level learnings to `~/.hiroshi/memory/MEMORY.md` and outputs reasoning details to `~/.hiroshi/memory/DREAMS.md`.

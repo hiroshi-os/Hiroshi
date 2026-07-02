@@ -1,0 +1,18 @@
+---
+title: Gateway Architecture
+description: Learn about the internal session multiplexing and multi-tenant isolation routing.
+---
+
+Hiroshi daemon functions as a sovereign gateway node, multiplexing inbound chat streams into concurrent agent turns.
+
+### Session Lifecycle & Multiplexing
+
+```text
+ [ Slack Ingress ] ──┐
+ [ Discord Ingress ] ┼─> [ Inbound Queue ] ─> [ Session Router ] ─> [ Isolated Sandbox ]
+ [ Telegram Ingress ] ┘
+```
+
+1.  **Ingress Enveloping**: Inbound network packets are normalized into platform-agnostic `ChannelMessage` envelopes.
+2.  **Session Routing**: The `SessionRouter` uses the compound lookup key (`agent:channel:chat_type:peer_id`) to load state ledgers.
+3.  **Isolation**: Runs the ReAct execution thread in a dedicated, sandboxed workspace directory.

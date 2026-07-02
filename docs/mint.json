@@ -1,0 +1,68 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Hiroshi OS",
+  "logo": {
+    "dark": "/logo/dark.png",
+    "light": "/logo/light.png"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#FF4500",
+    "light": "#FF6347",
+    "dark": "#0D0D0C",
+    "background": "#0D0D0C"
+  },
+  "topbarLinks": [
+    { "name": "Repository", "url": "https://github.com/tomlin7/hiroshi" }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "get-started/overview",
+        "get-started/features",
+        "get-started/quickstart"
+      ]
+    },
+    {
+      "group": "Install & Maintenance",
+      "pages": [
+        "install/installation",
+        "install/service-management",
+        "install/migration-guide"
+      ]
+    },
+    {
+      "group": "Channels",
+      "pages": [
+        "channels/overview",
+        "channels/telegram",
+        "channels/discord",
+        "channels/slack"
+      ]
+    },
+    {
+      "group": "Agents & Cognitive Architecture",
+      "pages": [
+        "agents/gateway-architecture",
+        "agents/system-prompt",
+        "agents/session-isolation"
+      ]
+    },
+    {
+      "group": "Memory & Search Systems",
+      "pages": [
+        "memory/hybrid-search",
+        "memory/dreaming-sweeps"
+      ]
+    },
+    {
+      "group": "Capabilities & Sandboxing",
+      "pages": [
+        "capabilities/tool-authorization",
+        "capabilities/self-healing-skills",
+        "capabilities/path-containment"
+      ]
+    }
+  ]
+}

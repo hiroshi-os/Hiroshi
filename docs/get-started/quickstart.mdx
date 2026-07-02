@@ -1,0 +1,21 @@
+---
+title: Quickstart Guide
+description: Get up and running with Hiroshi in less than 5 minutes.
+---
+
+Get your personal agent runtime set up with this quick guide.
+
+### 1. Compile the Binary
+```bash
+cargo build --release
+```
+
+### 2. Configure Your Core Settings
+Open `~/.hiroshi/config.toml` to customize allowed binaries and provider configurations.
+
+### 3. Run Your First Turn
+Launch the interactive shell:
+```bash
+./target/release/hiroshi agent
+```
+Type `/help` to see list of available commands.

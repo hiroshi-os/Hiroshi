@@ -1,0 +1,16 @@
+---
+title: Installation Guide
+description: Build the static Hiroshi executable from source.
+---
+
+Hiroshi compiles down to a single release binary that embeds all dashboard assets, database drivers, and RAG search libraries.
+
+### Requirements
+*   **Rust / Cargo**: 1.75+ (tokio support)
+*   **C/C++ Compiler**: For compiling the local SQLite SQLite3 bindings.
+
+### Building
+```bash
+cargo build --release
+```
+The compiled static executable will be generated at `target/release/hiroshi` (or `hiroshi.exe` on Windows).

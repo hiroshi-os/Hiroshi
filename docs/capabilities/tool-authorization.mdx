@@ -1,0 +1,12 @@
+---
+title: Tool Authorization
+description: Securely restricting agent capabilities and command execution.
+---
+
+To enforce strict security baselines, Hiroshi verifies tool calls against the agent's authorization matrix defined in `AGENTS.md`.
+
+### Authorization Logic
+
+*   **Explicit lists**: Agents can only execute tools explicitly enumerated in their profile.
+*   **Allowed Binaries**: Shell executions are limited to programs matching lists in `allowed_binaries` (e.g. `cargo`, `git`, `python`).
+*   **Handoffs validation**: The router intercepts handoff syntax to prevent cross-agent privilege escalations.

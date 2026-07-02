@@ -1,0 +1,17 @@
+---
+title: Discord Integration
+description: Configure a Discord bot gateway connection.
+---
+
+Hiroshi interfaces directly with Discord's gateway servers over WebSockets.
+
+### Configuration
+Update the `[discord]` block in `~/.hiroshi/config.toml`:
+
+```toml
+[discord]
+enabled = true
+token = "YOUR_DISCORD_BOT_TOKEN"
+allowed_channels = ["123456789012345678"]
+```
+Ensure you provide the allowed channel ID values to restrict conversation scopes.

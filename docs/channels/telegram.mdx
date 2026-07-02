@@ -1,0 +1,17 @@
+---
+title: Telegram Integration
+description: Hook Hiroshi up to a secure Telegram bot.
+---
+
+Hiroshi features a native Telegram integration wrapper.
+
+### Configuration
+Update the `[telegram]` block in `~/.hiroshi/config.toml`:
+
+```toml
+[telegram]
+enabled = true
+token = "YOUR_TELEGRAM_BOT_TOKEN"
+allowed_user_ids = [12345678]
+```
+Ensure `allowed_user_ids` contains your numeric Telegram profile ID to secure the chat gateway interface.

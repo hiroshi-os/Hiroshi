@@ -1,0 +1,13 @@
+---
+title: Session Isolation
+description: Deep-dive into database sandboxing and workspace isolation.
+---
+
+Hiroshi ensures robust multi-tenant security by isolating all conversation threads.
+
+### Sandbox Isolation Perimeters
+
+*   **Database Isolation**: Each session stores its history records inside the common SQLite database keyed strictly by the session identifier.
+*   **Workspace Sandbox**: Each agent executes its tools and filesystem actions inside dedicated workspace folders:
+    *   No cross-sandbox lookups are permitted.
+    *   Allowed subprocess calls are run under restricted environments.

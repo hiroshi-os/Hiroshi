@@ -1,0 +1,20 @@
+---
+title: Config Migration Guide
+description: Programmatically import configurations and identity cards from other agent platforms.
+---
+
+Hiroshi provides a built-in migration tool to seamlessly transfer settings and agent personas from legacy environments:
+
+```bash
+hiroshi migrate --source <platform>
+```
+
+### 📋 Supported Sources
+*   `openclaw` - Scans user folders for `~/.openclaw` settings.
+*   `zeroclaw` - Scans user folders for `~/.zeroclaw` settings.
+
+### ⚙️ Migration Mechanism
+
+1.  **Identity Porting**: The tool reads `IDENTITY.md` or `SOUL.md` files from the source directories and extracts system prompt guidelines.
+2.  **Config Remapping**: Remaps configuration variables into `~/.hiroshi/AGENTS.md` and `~/.hiroshi/config.toml`.
+3.  **Workspace Content Sync**: Synchronizes all existing code and document items inside the source workspace sandbox into your new Hiroshi sandbox at `~/.hiroshi/workspace/`.

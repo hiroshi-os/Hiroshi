@@ -1,0 +1,30 @@
+---
+title: System Overview
+description: Learn about Hiroshi's native Rust execution architecture, sub-10ms startup latency, and memory footprints.
+---
+
+Hiroshi is built from the ground up as a native, single-tenant personal agent runtime. Unlike heavy Electron-based frameworks or Python monoliths, Hiroshi is written entirely in **pure, type-safe Rust**.
+
+### ⚡ Architectural Performance Metrics
+
+*   **Sub-10ms Startup Latency**: Hiroshi boots its complete ReAct loop, checks advisory locks, and restores SQLite connections in under **10ms**.
+*   **Minimal RAM Footprint**: Idle memory allocations sit comfortably at **< 40MB RAM** (and under **< 5MB RAM** when compiled with the `kernel-only` feature flag).
+*   **Static Compilation**: The runtime packages the SQLite engine, RRF search compilers, Axum servers, and dashboard visual interfaces into a single zero-dependency release binary.
+
+---
+
+### 📂 Directory & Workspace Layout
+
+On first execution, Hiroshi bootstraps its configuration and state ledger within your user profile home folder at `~/.hiroshi/`:
+
+```text
+~/.hiroshi/
+├── hiroshi.db       # SQLite WAL database (stores chat history & FTS5 indexes)
+├── config.toml      # Master system configuration file
+├── AGENTS.md        # Declared agent personas and allowed capabilities
+├── .gateway.lock    # Cross-process advisory lock file to prevent write crashes
+├── workspace/       # Active isolated agent workspace sandbox
+└── memory/
+    ├── MEMORY.md    # Master profile card (consolidated long-term memory)
+    └── DREAMS.md    # Reasoning records from background dreaming sweeps
+```

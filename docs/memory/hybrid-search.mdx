@@ -1,0 +1,26 @@
+---
+title: Reciprocal Rank Fusion Memory
+description: Under-the-hood details of Hiroshi's 70/30 concurrent keyword and semantic vector memory.
+---
+
+Hiroshi utilizes a concurrent **Reciprocal Rank Fusion (RRF)** memory retrieval pipeline to achieve robust context matching across both semantic concepts and exact code symbols.
+
+### 📊 The Fusion Formula
+
+When a memory retrieval sweep is triggered, Hiroshi queries the vector similarity indexing and FTS5 keyword indexes concurrently, scoring matching records using reciprocal ranks:
+
+$$\text{RRF Score}(d) = \sum_{m \in M} \frac{w_m}{k + r_m(d)}$$
+
+Where:
+*   \(M\) represents the retrieval models (Vector Cosine Similarity & SQLite FTS5).
+*   \(w_m\) represents the model weight: **0.70** for Vector and **0.30** for FTS5.
+*   \(r_m(d)\) is the 1-based rank index of document \(d\) within model \(m\).
+*   \(k\) is a smoothing constant set to **60.0**.
+
+```text
+                     ┌──> Concurrent Vector Search (70% Weight) ──┐
+[ Memory Query ] ────┤                                            ├──> [ Reciprocal Rank Fusion ] ──> Top-N Context
+                     └──> Concurrent SQLite FTS5 (30% Weight) ────┘
+```
+
+This hybrid model guarantees that if your embedding server goes offline or has connection drops, the FTS5 keyword engine acts as an automatic fallback, keeping your memory layer functional.

@@ -1,0 +1,19 @@
+---
+title: System Prompt Customization
+description: How system prompts are compiled and assigned to agents dynamically.
+---
+
+Agents are defined inside `~/.hiroshi/AGENTS.md` and load their instructions dynamically on session creation.
+
+### AGENTS.md Layout Structure
+
+```markdown
+## Developer
+- Prompt: "You are a systems programmer. Write zero-warning Rust code."
+- Allowed Tools: [cargo_check, git_manager]
+```
+
+Hiroshi parses the markdown file on startup:
+*   **System Prompts**: The prompt string is loaded into the model's system context.
+*   **Allowed Tools validation**: Pre-compiled list of allowed commands prevents authorization leaks.
+*   **Handoff parameters**: Rules specifying when to yield control to other agents.
