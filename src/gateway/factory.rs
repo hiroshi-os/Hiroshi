@@ -76,4 +76,14 @@ mod tests {
         assert_eq!(drivers.len(), 1);
         assert_eq!(drivers[0].channel_id(), "teams");
     }
+
+    #[test]
+    fn test_load_channel_drivers_slack_webhook_active() {
+        let mut config = AppConfig::default();
+        config.slack_webhook.enabled = true;
+
+        let drivers = load_channel_drivers(&config);
+        assert_eq!(drivers.len(), 1);
+        assert_eq!(drivers[0].channel_id(), "slack_webhook");
+    }
 }
