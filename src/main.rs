@@ -397,6 +397,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             scheduler.start(shutdown_token.clone());
 
+            // Spawn Background Scriptable Cron Scheduler
+            crate::cron::start_cron_scriptable_scheduler(
+                config.cron_jobs.clone(),
+                config.security.sandbox_path.clone(),
+            ).await;
+
             // Spawn Background Heartbeat Loop
             crate::heartbeat::start_heartbeat_loop(
                 db.clone(),

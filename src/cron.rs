@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use crate::config::CronTask;
 use crate::db::MemoryEngine;
 use crate::providers::ModelProvider;
@@ -231,6 +232,71 @@ fn parse_cron_tool_calls(content: &str) -> Vec<CronToolCall> {
         }
     }
     calls
+}
+
+pub async fn start_cron_scriptable_scheduler(jobs: Vec<crate::config::CronJobConfig>, sandbox_path: String) {
+    if jobs.is_empty() {
+        return;
+    }
+
+    tracing::info!("Starting background Scriptable Cron Engine with {} registered jobs...", jobs.len());
+
+    for job in jobs {
+        let sandbox = sandbox_path.clone();
+        tokio::spawn(async move {
+            let parsed_schedule = match cron::Schedule::from_str(&job.schedule) {
+                Ok(s) => s,
+                Err(_) => {
+                    let adjusted = format!("0 {}", job.schedule);
+                    match cron::Schedule::from_str(&adjusted) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!("Invalid cron expression '{}' for job '{}': {}", job.schedule, job.name, e);
+                            return;
+                        }
+                    }
+                }
+            };
+
+            loop {
+                let now = chrono::Utc::now();
+                if let Some(next) = parsed_schedule.upcoming(chrono::Utc).next() {
+                    let duration_to_wait = next.signed_duration_since(now).to_std().unwrap_or(Duration::from_secs(1));
+                    tokio::time::sleep(duration_to_wait).await;
+
+                    tracing::info!("Executing scriptable cron job '{}': '{}'", job.name, job.command);
+
+                    let mut cmd = if cfg!(target_os = "windows") {
+                        let mut c = tokio::process::Command::new("powershell");
+                        c.args(["-Command", &job.command]);
+                        c.current_dir(&sandbox);
+                        c
+                    } else {
+                        let mut c = tokio::process::Command::new("sh");
+                        c.args(["-c", &job.command]);
+                        c.current_dir(&sandbox);
+                        c
+                    };
+
+                    match cmd.output().await {
+                        Ok(output) => {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            tracing::info!(
+                                "Scriptable cron job '{}' status: {}. Output target: {}. Stdout: {}, Stderr: {}",
+                                job.name, output.status, job.target_channel, stdout.trim(), stderr.trim()
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to execute command for scriptable cron job '{}': {}", job.name, e);
+                        }
+                    }
+                } else {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]
