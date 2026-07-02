@@ -27,6 +27,7 @@ mod migration;
 mod providers;
 mod hygiene;
 mod compactor;
+mod hub_client;
 
 use clap::{Parser, Subcommand};
 
@@ -73,6 +74,27 @@ enum Commands {
         #[arg(short, long, default_value = "openclaw")]
         source: String,
     },
+    /// Capability registry package manager commands (search, install, publish, list, remove, pin)
+    Hub {
+        #[command(subcommand)]
+        action: HubAction,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug)]
+pub enum HubAction {
+    /// Search for packages in the remote registry
+    Search { query: String },
+    /// Install a package from the remote registry (name[@version])
+    Install { package: String },
+    /// Publish a package directory to the remote registry
+    Publish { path: String },
+    /// List all currently installed registry packages
+    List,
+    /// Remove an installed package
+    Remove { name: String },
+    /// Pin an installed package version to lock it from auto-updates
+    Pin { name: String },
 }
 
 #[derive(Subcommand, Clone, Debug)]
@@ -579,6 +601,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Migrate { source } => {
             migration::migrate_configs(&source)?;
+        }
+        Commands::Hub { action } => {
+            hub_client::handle_hub_cmd(action).await?;
         }
     }
 
