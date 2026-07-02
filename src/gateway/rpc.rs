@@ -124,3 +124,30 @@ async fn handle_message_dispatch(
         message_id: format!("msg_{}", chrono::Utc::now().timestamp_millis()),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_auth_middleware_blocked() {
+        let state = RpcState {
+            config: RpcConfig {
+                enabled: true,
+                port: 3999,
+                secret_token: "secret_123".to_string(),
+            },
+        };
+        let req = axum::http::Request::builder()
+            .header("Authorization", "Bearer invalid")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let next = axum::middleware::Next::from_fn(|_req| async {
+            axum::response::Response::builder().status(200).body(axum::body::Body::empty()).unwrap()
+        });
+
+        let resp = auth_middleware(State(state), req, next).await;
+        assert_eq!(resp.unwrap_err(), axum::http::StatusCode::UNAUTHORIZED);
+    }
+}
