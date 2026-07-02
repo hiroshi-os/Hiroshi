@@ -23,6 +23,12 @@ pub fn load_channel_drivers(config: &AppConfig) -> Vec<Box<dyn ChannelDriver>> {
         )));
     }
 
+    if config.slack_webhook.enabled {
+        drivers.push(Box::new(crate::gateway::slack_webhook::SlackWebhookDriver::new(
+            config.slack_webhook.clone()
+        )));
+    }
+
     // We can scale to other dynamic drivers (e.g. WhatsApp config matching) here cleanly
     drivers
 }

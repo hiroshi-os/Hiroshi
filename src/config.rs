@@ -202,6 +202,23 @@ impl Default for MatrixConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SlackWebhookConfig {
+    pub enabled: bool,
+    pub webhook_url: String,
+    pub allowed_channels: Option<Vec<String>>,
+}
+
+impl Default for SlackWebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            webhook_url: String::new(),
+            allowed_channels: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TeamsConfig {
     pub enabled: bool,
     pub workflow_url: String,
@@ -262,6 +279,8 @@ pub struct AppConfig {
     pub matrix: MatrixConfig,
     #[serde(default)]
     pub teams: TeamsConfig,
+    #[serde(default)]
+    pub slack_webhook: SlackWebhookConfig,
 }
 
 impl Default for AppConfig {
@@ -295,6 +314,7 @@ impl Default for AppConfig {
             mattermost: MattermostConfig::default(),
             matrix: MatrixConfig::default(),
             teams: TeamsConfig::default(),
+            slack_webhook: SlackWebhookConfig::default(),
         }
     }
 }

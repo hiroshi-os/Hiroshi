@@ -8,3 +8,4 @@ pub mod factory;
 pub mod mattermost;
 pub mod matrix;
 pub mod teams;
+pub mod slack_webhook;
