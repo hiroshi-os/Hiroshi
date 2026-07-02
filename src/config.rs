@@ -219,6 +219,25 @@ impl Default for SlackWebhookConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CronJobConfig {
+    pub name: String,
+    pub schedule: String,
+    pub command: String,
+    pub target_channel: String,
+}
+
+impl Default for CronJobConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            schedule: String::new(),
+            command: String::new(),
+            target_channel: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TeamsConfig {
     pub enabled: bool,
     pub workflow_url: String,
@@ -281,6 +300,8 @@ pub struct AppConfig {
     pub teams: TeamsConfig,
     #[serde(default)]
     pub slack_webhook: SlackWebhookConfig,
+    #[serde(default)]
+    pub cron_jobs: Vec<CronJobConfig>,
 }
 
 impl Default for AppConfig {
@@ -315,6 +336,7 @@ impl Default for AppConfig {
             matrix: MatrixConfig::default(),
             teams: TeamsConfig::default(),
             slack_webhook: SlackWebhookConfig::default(),
+            cron_jobs: vec![],
         }
     }
 }

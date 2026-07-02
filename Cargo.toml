@@ -29,6 +29,7 @@ fs2 = "0.4"
 dunce = "1.0"
 tar = "0.4"
 flate2 = "1.0"
+cron = "0.12"
 
 [features]
 default = ["gateway-ui", "channel-telegram", "channel-discord", "channel-slack"]
