@@ -107,3 +107,23 @@ impl VoiceSynthesisEngine {
         Ok(bytes.to_vec())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_whisper_offline_fallback() {
+        let engine = AudioTranscriptionEngine::new("");
+        let asset = MediaAsset::new("voice1", "audio/mp3", "/vault/voice.mp3", 2400);
+        let text = engine.transcribe_media(&asset).await.unwrap();
+        assert!(text.contains("Hello Hiroshi"));
+    }
+
+    #[tokio::test]
+    async fn test_tts_offline_fallback() {
+        let engine = VoiceSynthesisEngine::new("");
+        let bytes = engine.synthesize_speech("Test speech synthesis").await.unwrap();
+        assert_eq!(bytes, b"MOCK_MP3_AUDIO_PAYLOAD_BYTES");
+    }
+}

@@ -542,6 +542,28 @@ pub async fn run_agent_turn(
                         continue;
                     }
 
+                    if name == "speak_response" {
+                        let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                        let text_input = args_val["text"].as_str().unwrap_or(&json_args);
+                        
+                        println!(">> Synthesizing speech for response: '{}'", text_input);
+                        let tts_engine = crate::gateway::voice::VoiceSynthesisEngine::new(
+                            &std::env::var("OPENAI_API_KEY").unwrap_or_default()
+                        );
+                        match tts_engine.synthesize_speech(text_input).await {
+                            Ok(audio_bytes) => {
+                                println!(">> Speech synthesized successfully ({} bytes).", audio_bytes.len());
+                                let result_msg = format!("System Notification: Speech synthesized and attached successfully ({} bytes).", audio_bytes.len());
+                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Speech synthesis failed: {}", e);
+                                db.add_message(session_id, "user", &err_msg)?;
+                            }
+                        }
+                        continue;
+                    }
+
                     if let Some(skill) = skills_registry.get_skill(&name) {
                         let start_tool = Instant::now();
                         if name.starts_with("mcp__") {
