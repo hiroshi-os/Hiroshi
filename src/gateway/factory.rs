@@ -11,6 +11,12 @@ pub fn load_channel_drivers(config: &AppConfig) -> Vec<Box<dyn ChannelDriver>> {
         )));
     }
 
+    if config.matrix.enabled {
+        drivers.push(Box::new(crate::gateway::matrix::MatrixDriver::new(
+            config.matrix.clone()
+        )));
+    }
+
     // We can scale to other dynamic drivers (e.g. WhatsApp config matching) here cleanly
     drivers
 }

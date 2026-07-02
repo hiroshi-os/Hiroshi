@@ -181,6 +181,27 @@ impl Default for TailscaleConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatrixConfig {
+    pub enabled: bool,
+    pub homeserver_url: String,
+    pub user_id: String,
+    pub access_token: String,
+    pub allowed_rooms: Option<Vec<String>>,
+}
+
+impl Default for MatrixConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            homeserver_url: String::new(),
+            user_id: String::new(),
+            access_token: String::new(),
+            allowed_rooms: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MattermostConfig {
     pub enabled: bool,
     pub server_url: String,
@@ -220,6 +241,8 @@ pub struct AppConfig {
     pub mcp_servers: std::collections::HashMap<String, McpServerConfig>,
     #[serde(default)]
     pub mattermost: MattermostConfig,
+    #[serde(default)]
+    pub matrix: MatrixConfig,
 }
 
 impl Default for AppConfig {
@@ -251,6 +274,7 @@ impl Default for AppConfig {
             tailscale: TailscaleConfig::default(),
             mcp_servers: std::collections::HashMap::new(),
             mattermost: MattermostConfig::default(),
+            matrix: MatrixConfig::default(),
         }
     }
 }

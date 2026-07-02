@@ -6,3 +6,4 @@ pub mod voice;
 pub mod traits;
 pub mod factory;
 pub mod mattermost;
+pub mod matrix;
