@@ -1,0 +1,20 @@
+---
+title: Slack Webhook Integration
+description: Dispatching outbound notification alerts via Slack Webhooks.
+---
+
+Hiroshi supports one-way notification routing using standard Slack incoming webhooks.
+
+### 🔑 1. Setup Instructions
+To create a Slack webhook:
+1. Log in to the **Slack API console** and create a new App in your workspace.
+2. Under Features, select **Incoming Webhooks** and activate it.
+3. Click **Add New Webhook to Workspace**, select the target channel, and authorize.
+4. Copy the webhook URL and paste it inside the `config.toml` structure:
+
+```toml
+[channels.slack_webhook]
+enabled = true
+webhook_url = "https://hooks.slack.com/services/..."
+allowed_channels = ["heartbeat-logs"]
+```
