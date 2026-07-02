@@ -131,6 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_middleware_blocked() {
+        use tower::ServiceExt;
         let state = RpcState {
             config: RpcConfig {
                 enabled: true,
@@ -138,16 +139,22 @@ mod tests {
                 secret_token: "secret_123".to_string(),
             },
         };
-        let req = axum::http::Request::builder()
-            .header("Authorization", "Bearer invalid")
-            .body(axum::body::Body::empty())
+        let app = Router::new()
+            .route("/", get(|| async { "ok" }))
+            .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+            .with_state(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .header("Authorization", "Bearer invalid")
+                    .uri("/")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
             .unwrap();
 
-        let next = axum::middleware::Next::from_fn(|_req| async {
-            axum::response::Response::builder().status(200).body(axum::body::Body::empty()).unwrap()
-        });
-
-        let resp = auth_middleware(State(state), req, next).await;
-        assert_eq!(resp.unwrap_err(), axum::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
     }
 }
