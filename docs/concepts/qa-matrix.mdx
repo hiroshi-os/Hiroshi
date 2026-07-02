@@ -1,0 +1,16 @@
+---
+title: E2E Automated QA Matrix
+description: Deterministic evaluation and localized regression testing frameworks.
+---
+
+Hiroshi provides native evaluation tools to verify the accuracy of prompt schemas and tool routing across provider switches.
+
+### 🧪 1. Deterministic E2E Tests
+The integration test suite programmatically simulates multi-turn conversations against mock tools:
+* Verifies that the model outputs matching tool-call signatures under standard validation prompts.
+* Asserts proper serialization of parameters and clean sandbox isolation bounds.
+
+### 📊 2. Local Regression Benchmarking
+Operators can run continuous benchmarking suits using local testing datasets:
+* Run `cargo test` to execute all unit and integration checkpoints.
+* Validates that software updates or prompts changes do not degrade core tool routing accuracy before pushing to production servers.

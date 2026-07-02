@@ -1,13 +1,16 @@
 ---
-title: Dreaming Sweeps
-description: Learn how Hiroshi consolidates memories autonomously during idle periods.
+title: Memory Dreaming Sweeps
+description: Background memory consolidation and long-term context updates.
 ---
 
-Hiroshi triggers autonomous background "Dreaming Sweeps" to consolidate short-term conversational context.
+Hiroshi features an offline memory dreaming routine that runs during idle intervals to consolidate short-term interactive histories into long-term structures.
 
-### Memory Consolidation Workflow
+### 💤 1. The Dreaming Consolidation Loop
+During low-activity windows, background worker threads analyze the session's raw SQLite transaction logs:
+1. Synthesizes key milestones, learned preferences, and facts.
+2. Appends or updates the master long-term memory card at `~/.hiroshi/memory/MEMORY.md`.
 
-1.  **Idle Triggers**: The SOP scheduler tracks system idle boundaries.
-2.  **Context Aggregation**: Collects interaction records from the SQLite database.
-3.  **Synthesis**: Prompts the LLM provider to deduplicate parameters and resolve contradictions.
-4.  **Consolidation updates**: Saves high-level learnings to `~/.hiroshi/memory/MEMORY.md` and outputs reasoning details to `~/.hiroshi/memory/DREAMS.md`.
+### 🧹 2. Log Pruning & Hygiene
+Once transactions are consolidated into the long-term card:
+* Raw historical message vectors are pruned to compress the local SQLite WAL footprint.
+* Baseline context remains dense and relevant, protecting prompt space for future execution turns.
