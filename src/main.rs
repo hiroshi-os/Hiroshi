@@ -29,6 +29,7 @@ mod hygiene;
 mod compactor;
 mod hub_client;
 mod tools;
+mod heartbeat;
 
 use clap::{Parser, Subcommand};
 
@@ -392,6 +393,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ws_tx.clone(),
             );
             scheduler.start(shutdown_token.clone());
+
+            // Spawn Background Heartbeat Loop
+            crate::heartbeat::start_heartbeat_loop(
+                db.clone(),
+                provider.clone(),
+                &config,
+                workspace_path.clone(),
+            );
 
             // Initialize gateways channel multiplexer
             let (_event_tx, mut event_rx) = tokio::sync::mpsc::channel::<channel::ChannelMessage>(100);
