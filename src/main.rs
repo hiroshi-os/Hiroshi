@@ -28,6 +28,7 @@ mod providers;
 mod hygiene;
 mod compactor;
 mod hub_client;
+mod tools;
 
 use clap::{Parser, Subcommand};
 
@@ -59,6 +60,8 @@ struct Cli {
 enum Commands {
     /// Start interactive agent terminal chat mode
     Agent,
+    /// Launch interactive onboarding wizard setup assistant
+    Onboard,
     /// Boot background services daemon (Gateways, Dashboard, SOP)
     Daemon,
     /// Cross-platform daemon service management installer
@@ -218,6 +221,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_router = Arc::new(SessionRouter::new(agents_path.clone()));
 
     match cli.command {
+        Commands::Onboard => {
+            onboard::run_onboarding().await?;
+        }
         Commands::Agent => {
             let hiroshi_dir = dirs::home_dir().ok_or("Could not determine home directory")?.join(".hiroshi");
             let lock_path = hiroshi_dir.join(".gateway.lock");
