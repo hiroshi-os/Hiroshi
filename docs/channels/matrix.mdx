@@ -1,0 +1,20 @@
+---
+title: Matrix Integration
+description: Connecting decentralized Matrix homeservers to the pluggable driver registry.
+---
+
+Hiroshi supports Matrix room integration utilizing standard client sync long-polling and POST endpoints.
+
+### 🔑 1. Setup Instructions
+To connect your Matrix homeserver:
+1. Log in to your homeserver and generate a client Access Token.
+2. Configure the homeserver URL, user ID, and access token variables inside `config.toml`:
+
+```toml
+[channels.matrix]
+enabled = true
+homeserver_url = "https://matrix.org"
+user_id = "@hiroshi_agent:matrix.org"
+access_token = "your-access-token"
+allowed_rooms = ["!room_id:matrix.org"]
+```
