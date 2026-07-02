@@ -236,6 +236,23 @@ impl Default for RpcConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WikiConfig {
+    pub enabled: bool,
+    pub wiki_dir: String,
+    pub similarity_threshold: f32,
+}
+
+impl Default for WikiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wiki_dir: "~/.hiroshi/workspace/wiki".to_string(),
+            similarity_threshold: 0.75,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CronJobConfig {
     pub name: String,
     pub schedule: String,
@@ -321,6 +338,8 @@ pub struct AppConfig {
     pub cron_jobs: Vec<CronJobConfig>,
     #[serde(default)]
     pub rpc: RpcConfig,
+    #[serde(default)]
+    pub wiki: WikiConfig,
 }
 
 impl Default for AppConfig {
@@ -357,6 +376,7 @@ impl Default for AppConfig {
             slack_webhook: SlackWebhookConfig::default(),
             cron_jobs: vec![],
             rpc: RpcConfig::default(),
+            wiki: WikiConfig::default(),
         }
     }
 }
