@@ -219,6 +219,23 @@ impl Default for SlackWebhookConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RpcConfig {
+    pub enabled: bool,
+    pub port: u16,
+    pub secret_token: String,
+}
+
+impl Default for RpcConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 3999,
+            secret_token: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CronJobConfig {
     pub name: String,
     pub schedule: String,
@@ -302,6 +319,8 @@ pub struct AppConfig {
     pub slack_webhook: SlackWebhookConfig,
     #[serde(default)]
     pub cron_jobs: Vec<CronJobConfig>,
+    #[serde(default)]
+    pub rpc: RpcConfig,
 }
 
 impl Default for AppConfig {
@@ -337,6 +356,7 @@ impl Default for AppConfig {
             teams: TeamsConfig::default(),
             slack_webhook: SlackWebhookConfig::default(),
             cron_jobs: vec![],
+            rpc: RpcConfig::default(),
         }
     }
 }
