@@ -403,6 +403,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config.security.sandbox_path.clone(),
             ).await;
 
+            // Spawn Background Administrative HTTP RPC Server
+            crate::gateway::rpc::start_admin_rpc_server(config.rpc.clone());
+
             // Spawn Background Heartbeat Loop
             crate::heartbeat::start_heartbeat_loop(
                 db.clone(),

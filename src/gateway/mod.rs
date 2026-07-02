@@ -9,3 +9,4 @@ pub mod mattermost;
 pub mod matrix;
 pub mod teams;
 pub mod slack_webhook;
+pub mod rpc;
