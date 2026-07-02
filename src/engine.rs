@@ -564,6 +564,46 @@ pub async fn run_agent_turn(
                         continue;
                     }
 
+                    if name == "fs_list" || name == "fs_read" || name == "fs_write" || name == "fs_move" {
+                        let workspace_path = sandbox.base_dir().to_path_buf();
+                        let fs_sandbox = crate::tools::fs::FilesystemSandbox::new(&workspace_path);
+                        let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+                        
+                        let result = match name.as_str() {
+                            "fs_list" => {
+                                let path = args_val["path"].as_str().unwrap_or(".");
+                                fs_sandbox.fs_list(path).map(|v| format!("{:?}", v))
+                            }
+                            "fs_read" => {
+                                let path = args_val["path"].as_str().unwrap_or("");
+                                fs_sandbox.fs_read(path)
+                            }
+                            "fs_write" => {
+                                let path = args_val["path"].as_str().unwrap_or("");
+                                let content = args_val["content"].as_str().unwrap_or("");
+                                fs_sandbox.fs_write(path, content).map(|_| "File written successfully".to_string())
+                            }
+                            "fs_move" => {
+                                let src = args_val["src"].as_str().unwrap_or("");
+                                let dest = args_val["dest"].as_str().unwrap_or("");
+                                fs_sandbox.fs_move(src, dest).map(|_| "File moved successfully".to_string())
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        match result {
+                            Ok(output) => {
+                                let result_msg = format!("Tool '{}' output:\n{}", name, output);
+                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Tool '{}' error: {}", name, e);
+                                db.add_message(session_id, "user", &err_msg)?;
+                            }
+                        }
+                        continue;
+                    }
+
                     if let Some(skill) = skills_registry.get_skill(&name) {
                         let start_tool = Instant::now();
                         if name.starts_with("mcp__") {

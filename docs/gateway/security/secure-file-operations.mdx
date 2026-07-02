@@ -1,0 +1,14 @@
+---
+title: Secure File Operations
+description: Sandboxed filesystem explorer jails and dunce canonicalization checks.
+---
+
+Hiroshi exposes a secure filesystem explorer engine that allows active agent personae to safely read, write, list, and move workspace directories without risking host directory traversal.
+
+### 🛡️ 1. Security Architecture
+All target paths submitted by model toolcalls (`fs_list`, `fs_read`, `fs_write`, `fs_move`) must resolve against `dunce::canonicalize` and stay strictly inside user-approved root directories.
+
+### 🚫 2. Boundary Verification Flow
+1. **Canonical Base Resolution:** Fully canonicalizes the core `~/workspace/` folder.
+2. **Absolute Resolution:** Converts the relative parameter input path into an absolute file structure location.
+3. **Traversals Validation:** If the absolute path attempts escaping via parent references (`../../`) or symlinks loops, the engine blocks the turn and triggers a `PermissionDenied` error.
