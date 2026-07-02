@@ -1,0 +1,31 @@
+---
+title: Cloud & Infrastructure Hosting
+description: Deploying the compiled Hiroshi binary to Render, Railway, and Fly.io.
+---
+
+Hiroshi is designed to run as a lightweight, persistent background daemon. This guide details how to deploy the compiled production release binary to headless cloud environments.
+
+### 💾 1. Persistent Storage (Crucial)
+Hiroshi stores conversational memory states, SQLite WAL databases, and active system configurations inside `~/.hiroshi/`.
+* When deploying to container-based hosts, you **must** mount a persistent disk volume to `/root/.hiroshi/` (or the home directory configured for the container user) to prevent memory loss during service redeployments.
+
+### 🌐 2. Platform Blueprints
+
+#### Render (Web Service)
+1. **Environment:** Choose `Docker` or `Web Service` with native binary configuration.
+2. **Build Command:** `cargo build --release` (or precompile and upload to reduce build runtime).
+3. **Start Command:** `./target/release/hiroshi daemon`
+4. **Disk:** Mount a Persistent Volume at `/root/.hiroshi/`.
+
+#### Railway
+1. **Volume:** Attach a Persistent Volume to your service.
+2. **Mount Path:** `/root/.hiroshi/`
+3. **Execution Command:** `./target/release/hiroshi daemon`
+
+#### Fly.io (`fly.toml`)
+Define the mounts section to link persistent volumes:
+```toml
+[mounts]
+  source = "hiroshi_data"
+  destination = "/root/.hiroshi"
+```

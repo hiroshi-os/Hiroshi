@@ -1,0 +1,16 @@
+---
+title: Enterprise Channel Routing
+description: Configuring Mattermost, Microsoft Teams, and Nextcloud Talk enterprise interfaces.
+---
+
+Hiroshi supports enterprise messaging platform integration using standardized incoming webhook and REST routing adapters.
+
+### 💼 1. Supported Interfaces
+* **Mattermost:** Binds incoming slash commands to Hiroshi REST ingress points.
+* **Microsoft Teams:** Utilizes the Teams Bot Framework schema translation layers.
+* **Nextcloud Talk:** Direct chat event loop streaming.
+
+### 🛡️ 2. Multi-Tenant Allowlists & Access Groups
+For enterprise security compliance:
+1. Enable `allowed_user_ids` allowlists inside the config file.
+2. Group permissions restrict access by tenant ID or channel identifier, verifying signature tokens before the core engine processes the turn.
