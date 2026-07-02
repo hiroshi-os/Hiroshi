@@ -134,6 +134,7 @@ impl CommunicationChannel for DiscordGateway {
                                                         ),
                                                         text: content,
                                                         attachments: vec![],
+                                                        media: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         is_bot: false,
                                                     };

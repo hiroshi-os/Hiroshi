@@ -76,6 +76,9 @@ pub struct ChannelMessage {
     pub text: String,
     /// Structured media attachments.
     pub attachments: Vec<Attachment>,
+    /// Strongly-typed normalized media assets.
+    #[serde(default)]
+    pub media: Option<Vec<crate::gateway::media::MediaAsset>>,
     /// Unix epoch milliseconds.
     pub timestamp: i64,
     /// Whether this message was sent by a bot (blocks feedback loops).

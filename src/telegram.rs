@@ -104,6 +104,7 @@ impl CommunicationChannel for TelegramGateway {
                                                     ),
                                                     text,
                                                     attachments: vec![],
+                                                    media: None,
                                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                                     is_bot: false,
                                                 };

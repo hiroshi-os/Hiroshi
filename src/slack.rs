@@ -99,6 +99,7 @@ impl CommunicationChannel for SlackGateway {
                                                                 ),
                                                                 text,
                                                                 attachments: vec![],
+                                                                media: None,
                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                 is_bot: false,
                                                             };
