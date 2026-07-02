@@ -82,3 +82,28 @@ impl FilesystemSandbox {
             .map_err(|e| format!("Failed to move file: {}", e))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_filesystem_sandbox_gating() {
+        let dir = tempdir().unwrap();
+        let sandbox = FilesystemSandbox::new(dir.path());
+
+        // Test normal write & read
+        sandbox.fs_write("test.txt", "hello sandbox").unwrap();
+        let content = sandbox.fs_read("test.txt").unwrap();
+        assert_eq!(content, "hello sandbox");
+
+        // Test list directory
+        let files = sandbox.fs_list(".").unwrap();
+        assert!(files.contains(&"test.txt".to_string()));
+
+        // Test traversal breakout attempts
+        let breakout_err = sandbox.fs_read("../escape_attempt.txt");
+        assert!(breakout_err.is_err());
+    }
+}
