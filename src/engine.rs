@@ -564,6 +564,42 @@ pub async fn run_agent_turn(
                         continue;
                     }
 
+                    if name == "desktop_screenshot" || name == "desktop_click" || name == "desktop_type" {
+                        let vision_vault = sandbox.base_dir().to_path_buf();
+                        let vision = crate::tools::vision::DesktopVisionEngine::new(&vision_vault);
+                        let args_val: serde_json::Value = serde_json::from_str(&json_args).unwrap_or(serde_json::json!({}));
+
+                        let result = match name.as_str() {
+                            "desktop_screenshot" => {
+                                vision.desktop_screenshot().map(|bytes| {
+                                    format!("Screenshot captured successfully ({} bytes).", bytes.len())
+                                })
+                            }
+                            "desktop_click" => {
+                                let x = args_val["x"].as_u64().unwrap_or(0) as u32;
+                                let y = args_val["y"].as_u64().unwrap_or(0) as u32;
+                                vision.desktop_click(x, y)
+                            }
+                            "desktop_type" => {
+                                let text = args_val["text"].as_str().unwrap_or("");
+                                vision.desktop_type(text)
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        match result {
+                            Ok(output) => {
+                                let result_msg = format!("Tool '{}' output:\n{}", name, output);
+                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Tool '{}' error: {}", name, e);
+                                db.add_message(session_id, "user", &err_msg)?;
+                            }
+                        }
+                        continue;
+                    }
+
                     if name == "fs_list" || name == "fs_read" || name == "fs_write" || name == "fs_move" {
                         let workspace_path = sandbox.base_dir().to_path_buf();
                         let fs_sandbox = crate::tools::fs::FilesystemSandbox::new(&workspace_path);

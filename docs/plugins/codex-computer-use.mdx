@@ -1,0 +1,13 @@
+---
+title: Codex Computer Use
+description: Vision screenshot captures, mouse click mapping coordinates, and OS interactions.
+---
+
+Hiroshi features a modular vision engine (`DesktopVisionEngine`) that lets multi-modal agent personae interact with active displays and input devices.
+
+### 🖼️ 1. Frame Buffer Capture
+The `desktop_screenshot` tool takes a snapshot of the primary display context, compressing it to memory as a `.png` file. Under isolated sandbox environments, the engine returns simulated offline mock buffers.
+
+### 🖱️ 2. Absolute Screen Coordinates Click
+* **Interactive Clicking:** Using coordinate scaling grids `(X, Y)` mapped fromvision observations, the agent executes programmatic cursor positioning via `desktop_click`.
+* **Keyboard Ingestion:** The `desktop_type` command maps textual sequences into raw keystrokes directly on the active operating system container interface.
