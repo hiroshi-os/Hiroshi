@@ -464,7 +464,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let origin_str = event.origin.to_string();
                     let channel = channels_clone.get(&origin_str).cloned();
                     let channel_session_id = event.sender_id.clone();
-                    let text = event.text.clone();
+                    let mut text = event.text.clone();
+
+                    if let Some(ref media_list) = event.media {
+                        let summary = crate::gateway::media::MediaAsset::degrade_assets(media_list);
+                        text.push_str(&summary);
+                    }
 
                     tokio::spawn(async move {
                         if let Err(e) = crate::engine::run_agent_turn(

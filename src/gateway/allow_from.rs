@@ -52,6 +52,7 @@ mod tests {
             session_key: "test:key".to_string(),
             text: "hello".to_string(),
             attachments: vec![],
+            media: None,
             timestamp: 0,
             is_bot,
         }

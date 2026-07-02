@@ -45,3 +45,30 @@ impl MediaAsset {
         format!("\n\n*System Annotation: Inbound media attachments degraded to text summaries:*\n{}", annotations.join("\n"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_media_degradation_fallback() {
+        let assets = vec![
+            MediaAsset::new("img1", "image/png", "/vault/img.png", 5048),
+            MediaAsset::new("aud1", "audio/mp3", "/vault/audio.mp3", 102400),
+            MediaAsset::new("doc1", "application/pdf", "/vault/doc.pdf", 89201),
+        ];
+
+        let summary = MediaAsset::degrade_assets(&assets);
+        assert!(summary.contains("IMAGE"));
+        assert!(summary.contains("AUDIO"));
+        assert!(summary.contains("FILE"));
+        assert!(summary.contains("/vault/img.png"));
+        assert!(summary.contains("5048 bytes"));
+    }
+
+    #[test]
+    fn test_media_degradation_empty() {
+        let summary = MediaAsset::degrade_assets(&[]);
+        assert_eq!(summary, "");
+    }
+}
