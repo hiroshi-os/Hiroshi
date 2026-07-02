@@ -30,6 +30,7 @@ mod compactor;
 mod hub_client;
 mod tools;
 mod heartbeat;
+mod protocols;
 
 use clap::{Parser, Subcommand};
 
@@ -474,6 +475,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let channel = channels_clone.get(&origin_str).cloned();
                     let channel_session_id = event.sender_id.clone();
                     let mut text = event.text.clone();
+
+                    if text.starts_with("/acp_bind") || text.starts_with("/cas_resume") {
+                        let response = if text.starts_with("/acp_bind") {
+                            let arg = text["/acp_bind".len()..].trim();
+                            crate::protocols::acp::handle_acp_bind(&session_id, arg)
+                        } else {
+                            crate::protocols::acp::handle_cas_resume(&session_id)
+                        };
+                        if let Some(chan) = channel {
+                            let _ = chan.send_message(&channel_session_id, &response).await;
+                        }
+                        continue;
+                    }
 
                     if let Some(ref media_list) = event.media {
                         let stt_engine = crate::gateway::voice::AudioTranscriptionEngine::new(
