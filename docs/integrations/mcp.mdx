@@ -1,0 +1,70 @@
+---
+title: "Add External MCP Tool Servers to Your Hiroshi Agent"
+sidebarTitle: "MCP Servers"
+description: "Connect external Model Context Protocol servers to Hiroshi to give the agent access to databases, APIs, and custom tools via JSON-RPC 2.0."
+---
+
+Hiroshi supports the Model Context Protocol (MCP), which lets you connect external tool servers to the agent. MCP servers run as child processes and communicate with Hiroshi over JSON-RPC 2.0 via stdin/stdout. Any MCP-compatible server can be plugged in — whether it targets a database, a cloud API, a local filesystem, or a custom tool you've written yourself.
+
+## Configuring an MCP server
+
+Add one `[mcp_servers.<name>]` block per server to your `~/.hiroshi/config.toml`. Each block names the executable to run and the arguments to pass it:
+
+```toml
+[mcp_servers.my_postgres]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+```
+
+### Fields
+
+<ParamField path="command" type="string" required>
+  The executable to run. This can be any program that speaks JSON-RPC 2.0 over stdin/stdout — for example `npx`, `python`, or `uvx`.
+</ParamField>
+
+<ParamField path="args" type="array of strings" required>
+  Arguments passed directly to `command` when the child process is spawned.
+</ParamField>
+
+## How MCP tools become available
+
+When the Hiroshi daemon starts, it works through every entry in `mcp_servers` in sequence:
+
+1. **Spawn** — Hiroshi spawns the server process with `stdin`, `stdout`, and `stderr` all piped.
+2. **Handshake** — Hiroshi sends an `initialize` request (protocol version `2024-11-05`) and waits for acknowledgement.
+3. **Discovery** — Hiroshi calls `tools/list` and collects every tool the server advertises.
+4. **Skill reflection** — Each discovered tool is automatically materialised as a skill folder at `~/.hiroshi/skills/<server>__<tool>/`.
+5. **Execution** — The agent can call any MCP tool just like any other skill. Hiroshi routes the call back to the correct server using the namespaced name.
+
+## Namespaced tool names
+
+To prevent name collisions between servers, Hiroshi prefixes every MCP tool name with the server key you defined in `config.toml`:
+
+```
+<server_name>__<tool_name>
+```
+
+For example, a tool called `query` on the `my_postgres` server becomes `my_postgres__query`. This namespaced form is what you will see in skill folders and in the agent's tool list.
+
+## Popular MCP servers
+
+| Server | npm package | What it provides |
+|---|---|---|
+| Filesystem | `@modelcontextprotocol/server-filesystem` | Read/write access to local directories |
+| PostgreSQL | `@modelcontextprotocol/server-postgres` | SQL query and schema inspection |
+| GitHub | `@modelcontextprotocol/server-github` | Repo, PR, and issue management |
+| Brave Search | `@modelcontextprotocol/server-brave-search` | Web search via the Brave API |
+| Fetch | `@modelcontextprotocol/server-fetch` | HTTP fetch and web scraping |
+| SQLite | `@modelcontextprotocol/server-sqlite` | Local SQLite database access |
+
+<Note>
+  MCP server processes are kept running in the background for the entire lifetime of the Hiroshi daemon. They are not restarted between requests — the same long-lived child process handles all calls to that server.
+</Note>
+
+<Tip>
+  After adding a server to `config.toml`, start (or restart) the daemon with `hiroshi daemon` and then inspect `~/.hiroshi/skills/` to confirm the auto-generated MCP skill folders have appeared. Each folder name follows the `<server_name>__<tool_name>` pattern.
+</Tip>

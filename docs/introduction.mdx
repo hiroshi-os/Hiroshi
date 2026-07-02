@@ -1,0 +1,69 @@
+---
+title: "Introduction to Hiroshi: Agents, Skills, and Memory"
+sidebarTitle: "Introduction"
+description: "Learn what Hiroshi is, how its multi-agent loop works, and what you can build with custom skills, MCP servers, and chat integrations."
+---
+
+<blockquote>
+  *"Silence is the loudest interface."* — Hiroshi
+</blockquote>
+
+**A local-first, agentic AI assistant for Linux, macOS, and Windows. Runs entirely on your machine via [Ollama](https://ollama.ai) — no cloud, no telemetry, no network required.**
+
+Hiroshi is a local-first agentic AI assistant built in Rust and designed for software developers. It runs on top of [Ollama](https://ollama.ai) for fully offline LLM inference, which means your prompts, code, and conversation history never leave your machine. The entire binary is lightweight by design — Hiroshi consumes under 40 MB of idle RAM, making it practical to leave running in the background alongside your normal development workflow.
+
+<Note>
+  Hiroshi runs fully locally. There is no cloud backend, no telemetry, and no requirement for an internet connection once your Ollama model is pulled.
+</Note>
+
+## What Hiroshi does
+
+Hiroshi operates in three primary modes, each suited to a different workflow:
+
+**Interactive terminal (`hiroshi agent`)** opens a streaming chat session in your terminal. You type a message, the active agent processes it using its configured system prompt, optionally executes tools or skills, and streams the response back token by token. This is the main mode for direct, real-time collaboration.
+
+**Background daemon (`hiroshi daemon`)** starts the full service stack as a long-running process: chat gateways for Telegram, Discord, and Slack; the local web dashboard at `http://127.0.0.1:8080`; the SOP (standard operating procedure) engine; and the cron scheduler. The daemon handles multiple concurrent sessions from different channels simultaneously.
+
+**OS service management (`hiroshi service`)** wraps the daemon as a platform-native service so it starts automatically at boot. It provides `install`, `uninstall`, `start`, `stop`, and `status` subcommands that work on Linux (systemd), macOS (launchd), and Windows (Service Control Manager).
+
+## Core concepts
+
+Understanding these five building blocks helps you get the most out of Hiroshi.
+
+**Agents** are role-specific personas defined in `~/.hiroshi/AGENTS.md`. Each agent has a `Prompt` (its system instruction), an `Allowed Tools` list (which capabilities it can invoke), and a `Hand-off` rule (when and how to yield control to another agent). Hiroshi ships with two default agents — **Architect** for task design and high-level reasoning, and **Developer** for writing and editing code.
+
+**Skills** are polyglot script extensions stored as folders under `~/.hiroshi/skills/`. Each skill folder contains a `SKILL.md` manifest (with `name`, `description`, and `schema` frontmatter) and an executable script in any supported language — Python (`.py`), Bash (`.sh`), PowerShell (`.ps1`), or a native binary. Hiroshi communicates with skills via stdin/stdout using JSON. Skills can also be created dynamically at runtime by agents themselves.
+
+**MCP servers** are external tool hosts that communicate over JSON-RPC 2.0. You register an MCP server in `config.toml` with a `command` and `args`, and Hiroshi spawns it as a subprocess. At startup, Hiroshi queries each server for its tool list and reflects those tools into the skills registry as `mcp__<server>__<tool>` entries, making them available to agents without any manual wiring.
+
+**Memory** is a hybrid SQLite store that combines vector embeddings with FTS5 full-text search. Every user and assistant message is embedded using the configured Ollama embedding model (default: `nomic-embed-text`) and stored with its vector. On each agent turn, Hiroshi runs a 70/30 Reciprocal Rank Fusion (RRF) retrieval — 70% vector similarity and 30% FTS5 keyword match — and injects the top results as context so the agent can reason over past conversations.
+
+**Channels** are chat gateway integrations that let external platforms route messages into the same agent loop. Hiroshi supports Telegram, Discord, and Slack. Each channel is enabled in `config.toml` and starts listening when you run `hiroshi daemon`. Messages from all channels are multiplexed into a single event stream, then dispatched to per-sender agent sessions.
+
+## How it works
+
+The agentic loop follows a predictable sequence on every turn:
+
+1. **User sends a message.** In terminal mode this is a line of text you type at the `Hiroshi [AgentName] > ` prompt. In daemon mode it arrives from a chat gateway.
+2. **Message is embedded and stored.** The input is vectorised using the embedding model and saved to the SQLite memory store, then a hybrid RAG retrieval pulls the most relevant historical context.
+3. **Active agent processes the input.** The agent's system prompt, allowed tools list, hand-off rules, and retrieved memory context are assembled into a single system message sent to Ollama. The response streams back token by token.
+4. **Tool calls are detected and executed.** Hiroshi parses the response for XML tool tags (`<read_file>`, `<write_file>`, `<call_tool>`, `<create_skill>`). If any are found, Hiroshi executes them and feeds the results back into the conversation as a new user message, then re-runs the agent turn.
+5. **Hand-offs switch the active agent.** If the response contains a `[HANDOFF: AgentName]` token and `AgentName` is registered in `AGENTS.md`, Hiroshi switches the active agent mid-conversation and continues the loop with the new agent's persona.
+
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/installation">
+    Install Hiroshi and bring up the agent in minutes.
+  </Card>
+
+  <Card title="Run the Daemon" icon="sparkles" href="/cli/daemon">
+    Boot the background service stack with `hiroshi daemon`.
+  </Card>
+
+  <Card title="Open the Dashboard" icon="grid-2" href="/dashboard/overview">
+    Launch the browser dashboard for chat, skills, and metrics.
+  </Card>
+
+  <Card title="Configure Hiroshi" icon="gear" href="/configuration/config-file">
+    Tune every aspect of Hiroshi's behaviour in `config.toml`.
+  </Card>
+</CardGroup>

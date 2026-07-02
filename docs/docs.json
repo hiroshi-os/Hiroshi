@@ -1,0 +1,104 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Hiroshi",
+  "theme": "mint",
+  "colors": {
+    "primary": "#5B6AF0",
+    "light": "#EEF0FF",
+    "dark": "#1A1D3B"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/hiroshi-os/Hiroshi"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Get Started",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "installation", "quickstart"]
+          }
+        ]
+      },
+      {
+        "tab": "Configuration",
+        "groups": [
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/config-file",
+              "configuration/agents",
+              "configuration/soul-and-user"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/agent.mdx",
+              "cli/daemon.mdx",
+              "cli/service.mdx",
+              "cli/doctor.mdx",
+              "cli/migrate.mdx"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Skills",
+        "groups": [
+          {
+            "group": "Skills",
+            "pages": ["skills/overview", "skills/built-in", "skills/custom"]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp",
+              "integrations/telegram",
+              "integrations/discord",
+              "integrations/slack",
+              "integrations/tailscale"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Automation",
+        "groups": [
+          {
+            "group": "Automation",
+            "pages": ["automation/cron", "automation/sop"]
+          }
+        ]
+      },
+      {
+        "tab": "Dashboard",
+        "groups": [
+          {
+            "group": "Dashboard & Memory",
+            "pages": ["dashboard/overview", "memory/overview"]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+---
+title: "Access the Hiroshi Dashboard Remotely via Tailscale"
+sidebarTitle: "Tailscale"
+description: "Use Tailscale to expose the Hiroshi web dashboard over your private Tailnet, enabling secure remote access from any device on your network."
+---
+
+By default, Hiroshi's web dashboard is accessible only on `127.0.0.1:8080`. With Tailscale enabled, the daemon binds the dashboard to your Tailscale IP address instead, making it reachable from any device on your private Tailnet — your laptop, phone, or any other machine you've enrolled — without opening any ports to the public internet.
+
+## Prerequisites
+
+- [Tailscale](https://tailscale.com) installed and authenticated on the machine running Hiroshi
+- The `tailscale` CLI available on `PATH` (it ships with the standard Tailscale install)
+
+## Setup
+
+Add the `[tailscale]` section to `~/.hiroshi/config.toml`:
+
+```toml
+[tailscale]
+enabled = true
+interface_fallback = "100.x.x.x"  # optional — replace with a real IP or remove this line
+```
+
+Then restart the daemon for the change to take effect:
+
+```bash
+hiroshi service restart
+```
+
+## How it works
+
+When `enabled = true`, the daemon runs `tailscale ip -4` at startup to resolve the local Tailnet IPv4 address. The web server then binds to that address on port `8080` instead of `127.0.0.1`.
+
+If the `tailscale ip -4` command fails — for example because Tailscale is not running or the CLI is not on `PATH` — Hiroshi falls back in order:
+
+1. Uses `interface_fallback` if you have set it to a non-empty string.
+2. Falls back to `127.0.0.1` if `interface_fallback` is not set.
+
+## Configuration fields
+
+<ParamField path="enabled" type="boolean" required>
+  Set to `true` to enable Tailscale binding. When `false` (the default), the dashboard binds to `127.0.0.1` only.
+</ParamField>
+
+<ParamField path="interface_fallback" type="string">
+  A hardcoded IPv4 address to bind to if automatic Tailscale IP detection fails. Optional — if omitted and detection fails, Hiroshi falls back to `127.0.0.1`. Set this to your known Tailscale IP (e.g. `100.64.0.1`) for a more predictable failure mode.
+</ParamField>
+
+## Accessing the dashboard
+
+Once the daemon is running with Tailscale enabled, open the following URL from any device enrolled in your Tailnet:
+
+```
+http://<your-tailscale-ip>:8080
+```
+
+You can find your machine's Tailscale IP by running `tailscale ip -4` in a terminal, or by checking the [Tailscale admin console](https://login.tailscale.com/admin/machines).
+
+<Note>
+  Your Tailnet acts as the access control boundary — only devices that have joined your Tailscale network and been approved in the admin console can reach the dashboard. No additional authentication is needed between trusted Tailnet devices.
+</Note>
+
+<Warning>
+  Do not expose port 8080 to the public internet. The Hiroshi dashboard currently has no authentication layer, so anyone who can reach that port can interact with your agent and access your configuration. Keep it behind Tailscale or another private network.
+</Warning>

@@ -1,0 +1,114 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Hiroshi",
+  "projectDescription": "Hiroshi is a local-first agentic AI developer assistant that runs on Ollama, supports multi-agent orchestration, custom skills, MCP servers, cron automation, and chat integrations with Telegram, Discord, and Slack.",
+  "theme": "luma",
+  "primaryColor": "#5B6AF0",
+  "lightColor": "#EEF0FF",
+  "darkColor": "#1A1D3B",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Docs",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/config-file",
+              "configuration/agents",
+              "configuration/soul-and-user"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/agent",
+              "cli/daemon",
+              "cli/service",
+              "cli/doctor",
+              "cli/migrate"
+            ]
+          },
+          {
+            "group": "Skills",
+            "pages": [
+              "skills/overview",
+              "skills/built-in",
+              "skills/custom"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp",
+              "integrations/telegram",
+              "integrations/discord",
+              "integrations/slack",
+              "integrations/tailscale"
+            ]
+          },
+          {
+            "group": "Automation",
+            "pages": [
+              "automation/cron",
+              "automation/sop"
+            ]
+          },
+          {
+            "group": "Dashboard & Memory",
+            "pages": [
+              "dashboard/overview",
+              "memory/overview"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Interactive terminal agent mode with multi-agent orchestration via AGENTS.md",
+    "Background daemon mode with web dashboard at localhost:8080",
+    "Local Ollama integration for fully offline AI inference",
+    "Hybrid semantic memory with SQLite vector search and FTS5 (< 15ms lookups)",
+    "Custom skills system supporting Python, Bash, and other polyglot scripts",
+    "Native MCP (Model Context Protocol) client host for JSON-RPC tool servers",
+    "Cron scheduler for scheduled agent tasks",
+    "Proactive SOP engine for autonomous background routines",
+    "Chat gateways for Telegram, Discord, and Slack",
+    "Tailscale overlay network support for remote dashboard access",
+    "System diagnostics via hiroshi doctor command",
+    "Config migration from openclaw / zeroclaw platforms"
+  ],
+  "publicApiSurface": [
+    "hiroshi agent — interactive terminal chat mode",
+    "hiroshi daemon — boot background services (gateways, dashboard, SOP)",
+    "hiroshi service install|uninstall|start|stop|status — OS service management",
+    "hiroshi doctor — environment health diagnostics",
+    "hiroshi migrate --source <platform> — migrate from other agent platforms",
+    "~/.hiroshi/config.toml — main configuration file",
+    "~/.hiroshi/AGENTS.md — agent role definitions and handoff rules",
+    "~/.hiroshi/SOUL.md — core behavioral directives",
+    "~/.hiroshi/USER.md — user context profile",
+    "~/.hiroshi/skills/<name>/SKILL.md — custom skill manifest",
+    "SKILL.md frontmatter: name, description, schema fields",
+    "[HANDOFF: <AgentName>] token — runtime agent switching",
+    "/agent, /agents, /skills, /clear, /help, /exit — terminal slash commands",
+    "config.toml [ollama] section: host, model, temperature, context_window, embedding_model",
+    "config.toml [security] section: sandbox_path, allow_shell_commands, allowed_binaries, allowed_senders",
+    "config.toml [telegram] section: token, allowed_user_ids, enabled",
+    "config.toml [discord] section: token, allowed_channels, enabled",
+    "config.toml [slack] section: bot_token, app_token, enabled",
+    "config.toml [[cron.tasks]] section: name, schedule, agent, prompt",
+    "config.toml [sop] section: enabled, agent, interval_minutes, routines, notify_channels",
+    "config.toml [tailscale] section: enabled, interface_fallback",
+    "config.toml [mcp_servers.<name>] section: command, args"
+  ]
+}

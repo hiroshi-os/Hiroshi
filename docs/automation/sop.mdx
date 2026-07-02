@@ -1,0 +1,88 @@
+---
+title: "Automate Proactive Agent Routines with the SOP Engine"
+sidebarTitle: "SOP Engine"
+description: "Configure Hiroshi's SOP engine to run autonomous agent routines on a fixed interval and push results to Telegram, Discord, or Slack."
+---
+
+The Standard Operating Procedure (SOP) engine runs a set of defined routines on a recurring interval and optionally sends results to your configured chat channels. Unlike cron tasks, SOP routines are designed to be short-lived proactive health checks and status updates — they fire on a simple minute-based interval rather than a calendar expression, and they can notify you directly in Telegram, Discord, or Slack when something noteworthy is found.
+
+## Enabling the SOP Engine
+
+Add the following section to `~/.hiroshi/config.toml`. The engine is disabled by default; set `enabled = true` to activate it.
+
+```toml
+[sop]
+enabled = true
+agent = "Architect"
+interval_minutes = 30
+notify_channels = ["telegram"]
+
+[[sop.routines]]
+name = "workspace_health"
+routine = "Check the workspace and compile status. If there are compilation errors or new files, write a short summary report."
+
+[[sop.routines]]
+name = "git_status"
+routine = "Run git status on the workspace and report any uncommitted changes."
+```
+
+When the daemon starts with SOP enabled, the first routine cycle fires after the configured interval has elapsed — it does not run immediately on startup.
+
+## Configuration Fields
+
+<ParamField path="enabled" type="boolean" default="false">
+  Activates the SOP engine. Set to `true` to start the routine loop when the daemon starts.
+</ParamField>
+
+<ParamField path="agent" type="string" default="Architect">
+  The agent that runs all SOP routines. This must match an agent name defined in `~/.hiroshi/AGENTS.md`.
+</ParamField>
+
+<ParamField path="interval_minutes" type="integer" default="30">
+  How often the routine loop fires, in minutes. Every cycle, all defined routines are executed in sequence.
+</ParamField>
+
+<ParamField path="notify_channels" type="array of strings">
+  The channel names to send routine results to. Valid values are `"telegram"`, `"discord"`, and `"slack"`. Each channel must also be configured and enabled in its own `[telegram]`, `[discord]`, or `[slack]` section. Results are formatted as `📢 [SOP Alert - <routine_name>]` followed by the agent's response.
+</ParamField>
+
+<ParamField path="[[sop.routines]]" type="array">
+  Each entry defines one routine the SOP engine runs each cycle.
+
+  <ParamField path="name" type="string" required>
+    A unique identifier for this routine. Used in log output and as the label in channel notifications.
+  </ParamField>
+
+  <ParamField path="routine" type="string" required>
+    The prompt sent to the agent each time this routine fires. Keep it focused and specific — SOP routines are most effective as targeted status queries rather than large generation tasks.
+  </ParamField>
+</ParamField>
+
+## Memory Consolidation (Dreaming)
+
+When SOP is enabled, Hiroshi also starts a background **memory consolidation sweep** — referred to as the dreaming loop. This sweep runs independently of your defined routines on a fixed **12-hour interval**.
+
+Each cycle, the dreaming loop:
+
+1. Reads the most recent conversation history from `~/.hiroshi/hiroshi.db`
+2. Sends the history to the LLM with a prompt asking it to de-duplicate, resolve contradictions, and produce a refined summary
+3. Appends the result as a new dated section in `~/.hiroshi/memory/MEMORY.md` under a `## Learnings Sweep - YYYY-MM-DD` heading
+4. Appends a consolidation cycle record to `~/.hiroshi/memory/DREAMS.md`, including how many interaction records were processed
+
+This gives Hiroshi a continuously updated long-term memory profile that persists across sessions and daemon restarts.
+
+## SOP vs. Cron
+
+Both automation systems run agent prompts on a schedule, but they serve different purposes. Use this table to decide which fits your use case.
+
+| | SOP Engine | Cron Tasks |
+|---|---|---|
+| **Trigger** | Fixed interval (minutes) | Cron expression (calendar-based) |
+| **Channel notifications** | Yes (`notify_channels`) | No |
+| **Memory consolidation** | Yes, every 12 hours when enabled | No |
+| **Session isolation** | Each routine runs in its own `sop:<name>` session | Each task runs in an ad-hoc session |
+| **Best for** | Health checks, status pings, continuous monitoring | Scheduled reports, workspace maintenance, timed file generation |
+
+<Tip>
+  Set `interval_minutes` to `60` or higher for routine health checks to avoid overwhelming your chat channels. For very frequent polling (under 10 minutes), consider whether a cron task writing to a log file would be less disruptive.
+</Tip>

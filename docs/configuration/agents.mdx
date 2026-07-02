@@ -1,0 +1,124 @@
+---
+title: "Define, Manage, and Switch Agent Roles in AGENTS.md"
+sidebarTitle: "Agents"
+description: "Learn how to define custom agent roles, system prompts, allowed tools, and automatic handoff rules in your ~/.hiroshi/AGENTS.md file."
+---
+
+`~/.hiroshi/AGENTS.md` defines the agent roles Hiroshi loads at startup. Each agent has a name, a system prompt, a list of allowed tools, and optional handoff instructions that tell it when to yield control to another agent. Hiroshi ships with two built-in roles — `Architect` and `Developer` — and you can add as many custom roles as your workflow requires.
+
+## Default AGENTS.md
+
+The following file is written automatically the first time Hiroshi initialises your `~/.hiroshi/` directory. It gives you a working two-agent setup out of the box.
+
+```markdown
+# Hiroshi Agents Directory
+
+## Architect
+- Prompt: "You are Hiroshi's Lead Architect. Deconstruct user tasks into discrete system designs."
+- Allowed Tools: [ReadFile, WriteFile]
+- Hand-off: "If execution code needs to be written, yield control to Developer using [HANDOFF: Developer]."
+
+## Developer
+- Prompt: "You are Hiroshi's Systems Programmer. Write clean, idiomatic Rust code."
+- Allowed Tools: [WriteFile, create_skill]
+- Hand-off: "Yield back to Architect upon task completion using [HANDOFF: Architect]."
+```
+
+---
+
+## AGENTS.md format
+
+Each agent is defined by a second-level Markdown heading followed by a short list of directives. All three directives are optional, but providing all of them gives the agent the clearest operating boundary.
+
+### `## AgentName`
+
+The heading text becomes the agent's identifier. This is the name you use in `/agent` commands, `[HANDOFF: ...]` tokens, and cron task `agent` fields. Use a single CamelCase word with no spaces.
+
+### `- Prompt: "..."`
+
+The system prompt injected into every conversation turn for this agent. Write it as a concise role description that tells the model what it is, what it knows, and what it should focus on. The prompt is prepended to every message the agent receives — keep it direct and specific.
+
+### `- Allowed Tools: [Tool1, Tool2]`
+
+A comma-separated list of skill names (inside square brackets) that this agent is permitted to call. Skill names must match the directory names under `~/.hiroshi/skills/`. If you omit this line the agent has no tool restrictions, which is fine for conversational-only roles.
+
+### `- Hand-off: "..."`
+
+Free-text instructions describing the conditions under which this agent should yield control to another agent. The agent includes the literal token `[HANDOFF: AgentName]` in its response text to trigger an automatic switch at runtime. The hand-off directive is guidance embedded in the system prompt — you describe the intent in plain English and the agent decides when the condition is met.
+
+---
+
+## Switching agents
+
+You can change the active agent at any point using two mechanisms.
+
+**Terminal slash command** — Type `/agent <name>` in the Hiroshi terminal to switch immediately:
+
+```bash
+/agent Developer
+```
+
+**Programmatic handoff** — When an agent determines it should pass a task on, it emits the `[HANDOFF: AgentName]` token anywhere in its response. Hiroshi detects this token, activates the named agent, and forwards the remaining context automatically.
+
+Here is an example of the Architect agent handing off to the Developer mid-response:
+
+```text
+The system design is complete. I have documented the module boundaries
+in workspace/DESIGN.md. The next step is to implement the parser.
+
+[HANDOFF: Developer]
+
+Please implement the `parse_config` function described in DESIGN.md
+using idiomatic Rust error handling.
+```
+
+Everything after the `[HANDOFF: Developer]` token is passed to the Developer agent as its opening prompt, so you can use the hand-off line as a natural transition in the agent's prose.
+
+---
+
+## Adding a new agent
+
+Follow these steps to add a custom `QA` agent to your `AGENTS.md`.
+
+<Steps>
+
+<Step title="Open AGENTS.md">
+  Open `~/.hiroshi/AGENTS.md` in your editor.
+</Step>
+
+<Step title="Append the new agent block">
+  Add a new `##` section at the bottom of the file. Give the agent a focused system prompt, restrict its tools to what it actually needs, and describe a clear handoff condition.
+
+  ```markdown
+  ## QA
+  - Prompt: "You are Hiroshi's Quality Assurance Engineer. Review code changes for correctness, edge cases, and test coverage. Write test cases in Rust using the standard #[test] attribute."
+  - Allowed Tools: [ReadFile, WriteFile, git_manager]
+  - Hand-off: "Once the review is complete and tests are written, yield control back to Developer using [HANDOFF: Developer] so fixes can be applied."
+  ```
+</Step>
+
+<Step title="Restart the Hiroshi daemon">
+  Hiroshi reads `AGENTS.md` once at startup. Restart the daemon for your new agent to become available.
+
+  ```bash
+  hiroshi restart
+  ```
+</Step>
+
+<Step title="Activate the QA agent">
+  Switch to your new agent in the terminal:
+
+  ```bash
+  /agent QA
+  ```
+</Step>
+
+</Steps>
+
+<Note>
+  AGENTS.md is read from disk at daemon startup. Any edits you make to the file take effect only after you restart the Hiroshi daemon. Running the daemon with `hiroshi restart` or stopping and re-launching it is sufficient.
+</Note>
+
+<Tip>
+  Keep each agent's `Prompt` directive under 200 tokens. The system prompt is prepended to every single conversation turn, so a bloated prompt increases latency on every request and eats into your context window. Precise, tightly-scoped prompts produce better results and faster responses.
+</Tip>

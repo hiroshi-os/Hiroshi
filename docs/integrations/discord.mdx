@@ -1,0 +1,76 @@
+---
+title: "Set Up a Discord Bot Gateway for Your Hiroshi Agent"
+sidebarTitle: "Discord"
+description: "Set up a Discord bot gateway to chat with Hiroshi in Discord channels — configure your bot token and specify which channel IDs to allow."
+---
+
+The Discord gateway routes messages from specified Discord channels to Hiroshi and sends responses back. You'll need a Discord bot application with the Message Content privileged intent enabled — without it, the bot cannot read the text of messages posted by other users. Hiroshi only responds in the channels you explicitly list, so you stay in full control of where the agent is active.
+
+## Prerequisites
+
+- A [Discord Developer Portal](https://discord.com/developers/applications) account
+- A Discord bot with the **Message Content** privileged intent enabled
+- Developer Mode turned on in Discord client settings (so you can copy channel IDs)
+
+## Setup
+
+<Steps>
+  <Step title="Create a Discord application and bot">
+    Go to [https://discord.com/developers/applications](https://discord.com/developers/applications) and click **New Application**. Give it a name, then navigate to the **Bot** tab and click **Add Bot**.
+  </Step>
+  <Step title="Enable the Message Content intent">
+    Still on the **Bot** tab, scroll down to **Privileged Gateway Intents** and enable **Message Content Intent**. Without this, Discord will not deliver message text to your bot.
+  </Step>
+  <Step title="Copy the bot token">
+    Under the **Bot** tab, click **Reset Token** (or **Copy** if one is already shown) and save the token securely.
+  </Step>
+  <Step title="Invite the bot to your server">
+    Navigate to **OAuth2 → URL Generator**. Select the `bot` scope and enable the **Send Messages** and **Read Message History** permissions. Copy the generated URL, paste it into your browser, and invite the bot to your server.
+  </Step>
+  <Step title="Copy the channel IDs">
+    In your Discord client, open **User Settings → Advanced** and enable **Developer Mode**. Then right-click any channel where you want Hiroshi to respond and choose **Copy Channel ID**.
+  </Step>
+  <Step title="Edit config.toml">
+    Open `~/.hiroshi/config.toml` and add (or update) the `[discord]` section:
+
+    ```toml
+    [discord]
+    enabled = true
+    token = "YOUR_DISCORD_BOT_TOKEN"
+    allowed_channels = ["1234567890123456789"]
+    ```
+
+    Replace the token and channel ID with your own values. Add more channel ID strings to `allowed_channels` to enable additional channels.
+  </Step>
+  <Step title="Restart the daemon">
+    Apply the new configuration:
+
+    ```bash
+    hiroshi service restart
+    ```
+
+    Or run directly:
+
+    ```bash
+    hiroshi daemon
+    ```
+  </Step>
+</Steps>
+
+## Configuration fields
+
+<ParamField path="enabled" type="boolean" required>
+  Set to `true` to activate the Discord gateway. Defaults to `false`.
+</ParamField>
+
+<ParamField path="token" type="string" required>
+  Your Discord bot token from the Developer Portal.
+</ParamField>
+
+<ParamField path="allowed_channels" type="array of strings" required>
+  Channel IDs (as strings) in which Hiroshi will read and respond to messages. Messages in any other channel are ignored. Defaults to an empty list.
+</ParamField>
+
+<Note>
+  The Discord gateway uses a persistent WebSocket connection to receive events from Discord in real time. This means no polling delay — messages are delivered to Hiroshi as soon as Discord dispatches them. If the connection drops, the daemon will automatically reconnect using exponential backoff.
+</Note>

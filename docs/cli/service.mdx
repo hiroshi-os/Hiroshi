@@ -1,0 +1,17 @@
+---
+title: "hiroshi service — Manage the Daemon as an OS Service"
+sidebarTitle: "service"
+description: "hiroshi service installs, starts, stops, and uninstalls the Hiroshi daemon as a persistent system service."
+---
+
+The `hiroshi service` command wraps the daemon as a platform-native service so it starts automatically at boot.
+
+```bash
+hiroshi service install
+hiroshi service start
+hiroshi service status
+hiroshi service stop
+hiroshi service uninstall
+```
+
+Works on Linux (systemd), macOS (launchd), and Windows (Service Control Manager).

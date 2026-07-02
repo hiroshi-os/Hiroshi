@@ -1,0 +1,14 @@
+---
+title: "Migrate from Other AI Agent Platforms to Hiroshi"
+sidebarTitle: "migrate"
+description: "hiroshi migrate imports your configuration and identity documents from openclaw or zeroclaw into ~/.hiroshi automatically."
+---
+
+The `hiroshi migrate` command imports configuration and identity documents from a previous agent platform into `~/.hiroshi`.
+
+```bash
+hiroshi migrate --from openclaw
+hiroshi migrate --from zeroclaw
+```
+
+The migrator copies `config.toml`, `AGENTS.md`, `SOUL.md`, `USER.md`, and existing skill folders into the Hiroshi workspace.

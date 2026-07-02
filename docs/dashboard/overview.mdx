@@ -1,0 +1,73 @@
+---
+title: "Hiroshi Web Dashboard — Visual Agent Workspace UI"
+sidebarTitle: "Dashboard"
+description: "The Hiroshi web dashboard streams real-time agent activity, shows system metrics, and lets you enable or disable skills from a browser UI at port 8080."
+---
+
+When the daemon is running, Hiroshi serves a local web dashboard at `http://127.0.0.1:8080`. The dashboard gives you a live view into agent activity, system metrics, and skill management — all from your browser, with no additional tools or extensions required.
+
+## Accessing the Dashboard
+
+<Steps>
+  <Step title="Start the daemon">
+    Run the following command in your terminal to start Hiroshi in daemon mode:
+
+    ```bash
+    hiroshi daemon
+    ```
+  </Step>
+  <Step title="Open the dashboard">
+    Navigate to `http://127.0.0.1:8080` in your browser. The dashboard connects automatically via WebSocket and begins streaming live data.
+  </Step>
+  <Step title="Remote access (optional)">
+    To access the dashboard from another device, see the [Tailscale integration guide](/integrations/tailscale) for setting up a private overlay network.
+  </Step>
+</Steps>
+
+## Dashboard Features
+
+<CardGroup cols={2}>
+  <Card title="Live Agent Output" icon="message-lines">
+    Agent responses stream into the chat canvas in real time over a WebSocket connection. Each message is labeled with the active agent name and role indicator. User messages and assistant responses are visually differentiated in the stream.
+  </Card>
+  <Card title="System Metrics" icon="gauge-high">
+    The status bar at the top of the canvas displays **RAM usage** (in MB), **CPU load** (as a percentage), and **tokens per second** — all updated live every 3 seconds via the same WebSocket feed.
+  </Card>
+  <Card title="Skill Management" icon="toggle-on">
+    The **Skill Permits Hub** panel (opened from the left toolbar) lists every registered skill and MCP tool. Use the toggle switch next to each skill to enable or disable it at runtime without restarting the daemon. Disabled skills are immediately excluded from the agent's available toolset.
+  </Card>
+  <Card title="Agent Theater" icon="users">
+    The **Agent Theater** panel shows all configured agents from `AGENTS.md`. The currently active agent is highlighted with a green indicator. When an agent handoff occurs (via `[HANDOFF: AgentName]`), the panel updates in real time and the event is logged to the console output.
+  </Card>
+</CardGroup>
+
+## Sending Messages from the Dashboard
+
+You can type messages directly into the input field at the bottom of the chat canvas and interact with the agent exactly as you would in terminal mode. Press **Enter** or click the send button to dispatch your message. Quick-action buttons above the input field let you run common commands — **Check Status**, **Run Tests**, and **Sync Memory** — with a single click.
+
+## Canvas Viewport and Console Logs
+
+The right panel contains two additional surfaces you can toggle open from the left toolbar:
+
+- **Canvas Viewport** — displays Base64-encoded screenshot images streamed from automation tasks (for example, from the `browser_automation` skill). When a screenshot arrives, the placeholder is replaced with the live image.
+- **Console Logs** — a timestamped terminal-style log feed showing WebSocket connection events, agent handoffs, skill toggle confirmations, and memory state reload signals.
+
+## Layout and Panels
+
+The dashboard uses a resizable three-column layout:
+
+| Panel | Default State | Contents |
+|---|---|---|
+| Left sidebar | Collapsed | Agent Theater, Skill Permits Hub |
+| Center canvas | Always visible | Chat stream, system metrics bar, message input |
+| Right sidebar | Collapsed | Canvas Viewport, Console Logs |
+
+Click the toolbar icons on the far left to expand or collapse either side panel. Drag the resize handle that appears between panels to adjust their width.
+
+<Note>
+  The dashboard uses WebSocket for all streaming — agent output, metrics, and skill toggle events all flow through a single persistent connection at `/api/ws`. You need a modern browser (Chrome, Firefox, Safari, or Edge) with WebSocket support enabled.
+</Note>
+
+<Warning>
+  The dashboard has no authentication. Anyone on your local network can access it at port 8080. Access the dashboard only from trusted networks, or use the [Tailscale overlay](/integrations/tailscale) to limit access to your personal devices.
+</Warning>

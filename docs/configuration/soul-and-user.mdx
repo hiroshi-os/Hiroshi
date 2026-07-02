@@ -1,0 +1,117 @@
+---
+title: "Personalizing Hiroshi's Behavior with SOUL.md and USER.md"
+sidebarTitle: "Soul & User"
+description: "Personalize Hiroshi's identity, tone, and behavior with SOUL.md, and give it your personal context with USER.md to improve every response."
+---
+
+Two optional files let you shape how Hiroshi behaves and how it understands your context. `SOUL.md` sets the assistant's core identity — its personality, tone, and hard constraints. `USER.md` gives it knowledge about you — your stack, your conventions, and how you work. Neither file is required, but filling both in dramatically improves the quality and relevance of every response.
+
+---
+
+## SOUL.md — Core identity
+
+`SOUL.md` lives at `~/.hiroshi/SOUL.md`. It is injected as a background system-level context layer on every conversation turn, before any agent-specific prompt. Think of it as the constitutional layer of your assistant: the values and operating principles that hold across all roles and sessions.
+
+Use `SOUL.md` to define:
+
+- **Personality directives** — the voice and character you want the assistant to project
+- **Tone guidelines** — formal vs. casual, brief vs. thorough, direct vs. exploratory
+- **Ethical constraints** — hard limits on what the assistant should never do or suggest
+- **Operating principles** — rules of thumb that should govern every decision (e.g. prefer clarity over cleverness, always validate inputs)
+
+Here is a concise example `SOUL.md`:
+
+```markdown
+# Hiroshi — Core Identity
+
+You are Hiroshi, a local-first AI developer assistant built for serious engineering work.
+
+## Personality
+- Direct and precise. Favour clarity over verbosity.
+- Confident but never dismissive. Acknowledge uncertainty honestly.
+- Pragmatic — recommend the simplest solution that actually solves the problem.
+
+## Tone
+- Technical and professional in code reviews and design discussions.
+- Conversational and brief in casual clarification exchanges.
+- Never use filler phrases like "Certainly!" or "Great question!".
+
+## Ethical Constraints
+- Never produce code that disables security controls or circumvents sandboxing.
+- Do not make irreversible file system changes without explicit user confirmation.
+- If a request is ambiguous, ask one clarifying question rather than guessing.
+
+## Operating Principles
+- Prefer idiomatic Rust over "clever" workarounds.
+- Always include error handling — no `.unwrap()` in production-path code.
+- When uncertain about a library API, say so and suggest checking the docs.
+```
+
+---
+
+## USER.md — Your personal context
+
+`USER.md` lives at `~/.hiroshi/USER.md`. While `SOUL.md` defines the assistant, `USER.md` defines you — the person the assistant is working with. This file is also injected as system-level context on every turn, giving Hiroshi a stable understanding of your environment without you having to repeat yourself in every conversation.
+
+Use `USER.md` to capture:
+
+- **Your primary tech stack** — languages, frameworks, build tools
+- **Preferred conventions** — code style, naming patterns, commit message format
+- **Project structure** — how your repositories are organised, where key files live
+- **Team context** — teammates' roles, shared services, deployment targets
+- **Operating boundaries** — what you own, what you should not touch, escalation paths
+
+Here is a practical example `USER.md`:
+
+```markdown
+# About Me
+
+## Stack
+- **Primary language:** Rust (2021 edition)
+- **Async runtime:** Tokio
+- **Database:** SQLite via sqlx, with WAL mode enabled
+- **Build tool:** Cargo with workspace layout
+- **Python:** Used for skill scripts only — not a primary language
+
+## Project Conventions
+- Crate names use `snake_case`; type names use `PascalCase`
+- All public functions must have doc comments (`///`)
+- Commits follow Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`
+- No `.unwrap()` or `.expect()` outside of test modules
+
+## Repository Layout
+- `/src/` — main binary crate
+- `/skills/` — polyglot skill scripts (Python/Bash)
+- `/docs/` — Mintlify documentation source
+- `AGENTS.md`, `SOUL.md`, `USER.md` — live at `~/.hiroshi/`
+
+## Team
+- Solo project — no shared deployment pipeline
+- Production target: single Raspberry Pi 5 running as home server
+- External services in use: Telegram bot, Tailscale overlay network
+
+## Boundaries
+- Do not modify `hiroshi.db` directly — let Hiroshi manage its own database
+- Do not commit secrets to version control — use environment variables
+```
+
+---
+
+## When to edit these files
+
+Knowing which file to reach for — and when — keeps your configuration focused and effective.
+
+**Edit SOUL.md when you want to:**
+- Change the assistant's communication style (more concise, more detailed, different tone)
+- Add or tighten ethical constraints after observing unwanted behaviour
+- Establish new operating principles for a phase of work (e.g. "prioritise performance over readability this sprint")
+
+**Edit USER.md when you:**
+- Start a new project and want Hiroshi to understand its structure from the beginning
+- Join a new team or change your primary tech stack
+- Adopt new tooling, conventions, or deployment targets
+- Notice the assistant making repeated incorrect assumptions about your environment
+
+<Tip>
+  Keep `USER.md` up to date. Stale context — like a stack entry pointing to a framework you migrated away from six months ago — can cause the agent to make incorrect assumptions about your codebase, recommend the wrong libraries, or generate incompatible code. A quick five-minute review whenever your environment changes saves hours of correction downstream.
+</Tip>

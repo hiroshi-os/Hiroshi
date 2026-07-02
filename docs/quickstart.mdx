@@ -1,0 +1,151 @@
+---
+title: "Get Started with Hiroshi: Install, Configure, and Chat"
+sidebarTitle: "Quickstart"
+description: "Launch your first Hiroshi agent session, send messages, switch agents, and explore skills — from install to first response in minutes."
+---
+
+This guide walks you from a fresh Hiroshi installation to a working agent conversation. By the end you will have sent your first message, used slash commands to inspect the runtime state, and seen how to switch between agents. Before continuing, make sure you have completed the [installation steps](/installation) and have Ollama running with at least one model pulled.
+
+<Tip>
+  If another Hiroshi instance (such as `hiroshi daemon`) is already running when you launch `hiroshi agent`, the terminal session automatically enters read-only mode. Database writes and workspace file modifications are disabled to prevent collisions, and a warning is printed at startup.
+</Tip>
+
+<Steps>
+  <Step title="Start Ollama">
+    Open a terminal and start the Ollama server if it is not already running.
+
+    ```bash
+    ollama serve
+    ```
+
+    In a separate terminal, verify that your model is available.
+
+    ```bash
+    ollama list
+    ```
+
+    If you haven't pulled a model yet, do so now:
+
+    ```bash
+    ollama pull qwen2.5-coder:1.5b
+    ```
+  </Step>
+  <Step title="Run the onboarding wizard">
+    Launch Hiroshi's interactive agent mode. On the very first run, Hiroshi detects that `~/.hiroshi/config.toml` is missing and starts the onboarding wizard automatically.
+
+    ```bash
+    hiroshi agent
+    ```
+
+    The wizard walks you through three prompts:
+
+    ```text
+    ==================================================
+          Welcome to the Hiroshi Onboarding Setup
+    ==================================================
+
+    ? What is your AI Companion's Name? › Hiroshi
+    Scanning for local Ollama models...
+    ? Choose an Ollama Model to pair with: › qwen2.5-coder:1.5b
+    ? Would you like to enable the Telegram Bot Gateway? › No
+    ```
+
+    After you answer the prompts, the wizard writes `~/.hiroshi/config.toml`, creates the default `AGENTS.md`, pre-populates the `~/.hiroshi/skills/` directory with bundled skills, and drops you straight into the interactive terminal.
+  </Step>
+  <Step title="Send your first message">
+    After the wizard completes (or on subsequent runs once config exists), you will see the Hiroshi prompt showing the active agent name in square brackets.
+
+    ```text
+    Interactive Agent Terminal Mode started.
+    Type /help to see available commands or type /exit to quit.
+
+    Hiroshi [Architect] >
+    ```
+
+    Type a message and press Enter. Hiroshi embeds your input, retrieves relevant memory context, and streams the response token by token.
+
+    ```text
+    Hiroshi [Architect] > Explain the project structure of a Rust CLI tool
+
+    Assistant [Architect] (terminal) >
+    A well-structured Rust CLI project typically follows this layout:
+
+    src/
+      main.rs       — entry point; parses CLI args with clap
+      config.rs     — configuration loading and defaults
+      ...
+
+    Cargo.toml defines your dependencies and feature flags...
+    ```
+
+    The response is also saved to the SQLite memory store so future turns can retrieve it as context.
+  </Step>
+  <Step title="Use slash commands">
+    Slash commands let you inspect and control the running session without sending a message to the model. Type `/help` to print all available commands.
+
+    ```text
+    Hiroshi [Architect] > /help
+    Available commands:
+      /agent <name> - Switch active agent
+      /agents       - List all registered agents
+      /skills       - List dynamic skills
+      /clear        - Clear history
+      /exit         - Quit
+    ```
+
+    | Command | Description |
+    |---|---|
+    | `/help` | Print all available slash commands |
+    | `/agents` | List every agent defined in `AGENTS.md` with its system prompt |
+    | `/skills` | List all registered dynamic skills and their descriptions |
+    | `/agent <name>` | Switch the active agent to `<name>` for this session |
+    | `/clear` | Clear the conversation history from the database |
+    | `/exit` | Quit the interactive terminal |
+  </Step>
+  <Step title="Switch agents">
+    Hiroshi starts with the **Architect** agent active by default. Use `/agent` to switch to a different agent defined in your `AGENTS.md`.
+
+    ```text
+    Hiroshi [Architect] > /agent Developer
+    Switched active agent to: Developer
+
+    Hiroshi [Developer] > Write a Rust function that reads a file and returns its lines as a Vec<String>
+    ```
+
+    You can also switch agents mid-conversation by including a `[HANDOFF: AgentName]` token in a message. The agent loop detects the token, switches automatically, and continues the turn with the new agent's system prompt — no slash command needed.
+  </Step>
+  <Step title="List available skills">
+    Run `/skills` to see all skills currently registered in `~/.hiroshi/skills/`. Hiroshi ships with five bundled skills created automatically at first run.
+
+    ```text
+    Hiroshi [Developer] > /skills
+    Discovered Skills:
+      - git_manager: Orchestrates Git repo state, runs diffs, commits code changes, and manages branches.
+      - browser_automation: Playwright headless browser scraping and viewport screenshots.
+      - file_janitor: Tracks file hashes, lists duplicate items, structures chaotic workspace directories, and updates README file indices.
+      - task_sync: Syncs project milestones, deadlines, and logs task completion states inside task markdown files.
+      - web_search: Queries search engines and fetches matching page titles, snippets, and links.
+    ```
+
+    Any MCP tools you have registered in `config.toml` also appear here, prefixed with `mcp__`. Agents invoke skills automatically by emitting `<call_tool name="skill_name">` XML tags in their responses.
+  </Step>
+</Steps>
+
+## Next steps
+
+Now that you have a working session, explore the rest of Hiroshi's capabilities.
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration/config-file">
+    Learn every field in `~/.hiroshi/config.toml`, including model settings, security options, cron tasks, and channel tokens.
+  </Card>
+  <Card title="Skills" icon="puzzle-piece" href="/skills/overview">
+    Write your own polyglot skills in Python, Bash, or PowerShell, or let an agent generate one for you at runtime.
+  </Card>
+  <Card title="Integrations" icon="plug" href="/integrations/mcp">
+    Connect MCP servers and enable the Telegram, Discord, or Slack gateways to chat with Hiroshi from anywhere.
+  </Card>
+  <Card title="Daemon mode" icon="bolt" href="/cli/daemon">
+    Run Hiroshi as a persistent background service with all gateways, the web dashboard, and the cron scheduler active simultaneously.
+  </Card>
+</CardGroup>

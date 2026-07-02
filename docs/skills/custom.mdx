@@ -1,0 +1,147 @@
+---
+title: "Custom Hiroshi Skills: Write, Register, and Run Scripts"
+sidebarTitle: "Custom Skills"
+description: "Build custom skills for Hiroshi using any scripting language — define a SKILL.md manifest and an executable script to add new agent capabilities."
+---
+
+You can extend Hiroshi with any capability by creating a custom skill folder under `~/.hiroshi/skills/`. Skills can be written in Python, Bash, PowerShell, or any language that reads from stdin and writes to stdout. Hiroshi picks them up automatically the next time it starts — no configuration changes required.
+
+<Warning>
+  Skills run with your user account's filesystem permissions. Review any third-party skill code carefully before adding it to your skills directory.
+</Warning>
+
+## Creating a skill
+
+<Steps>
+  <Step title="Create a skill folder">
+    Create a new directory inside `~/.hiroshi/skills/` using the name you want the agent to call:
+
+    ```bash
+    mkdir -p ~/.hiroshi/skills/my_skill
+    ```
+  </Step>
+
+  <Step title="Create a SKILL.md manifest">
+    Inside the folder, create a `SKILL.md` file with YAML frontmatter. Hiroshi parses this file to register the skill name, description, and expected input schema:
+
+    ```markdown
+    ---
+    name: my_skill
+    description: "What this skill does in one sentence"
+    schema: '{ "param1": "string", "param2": "number" }'
+    ---
+    # My Skill
+
+    Extended description of the skill for the agent.
+    ```
+
+    The body text below the frontmatter is available for additional context but the three frontmatter fields are what Hiroshi reads at registration time.
+  </Step>
+
+  <Step title="Create the executable script">
+    Add an executable script to the same folder. The filename can be anything — Hiroshi picks up the first non-`SKILL.md` file it finds. Give the file an extension that matches the runtime you want to use (`.py`, `.sh`, `.ps1`, `.bat`/`.cmd`), or place a compiled binary with no extension.
+
+    For example: `~/.hiroshi/skills/my_skill/my_skill.py`
+  </Step>
+
+  <Step title="Restart Hiroshi">
+    Skills are loaded at startup. Restart Hiroshi to pick up the new skill, and it will be available to the agent immediately.
+  </Step>
+</Steps>
+
+## SKILL.md format
+
+The `SKILL.md` frontmatter block must open and close with `---`. Hiroshi reads three fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | The identifier the agent uses to call the skill. Must match the folder name. |
+| `description` | Yes | Shown to the agent as the tool description. Write this carefully — the agent uses it to decide when to call the skill. Be specific about what the skill does and what it returns. |
+| `schema` | Yes | A JSON object (as a string) describing the input parameters the script expects. The agent uses this to construct valid arguments. |
+
+If `name` is missing or empty, Hiroshi falls back to the folder name as the skill name.
+
+## Script interface
+
+Your script communicates with Hiroshi through standard input and output:
+
+- **Input** — Hiroshi writes the arguments as a JSON object to the script's **stdin**. Read and parse it with `json.loads(sys.stdin.read())` (Python) or `jq` (Bash).
+- **Output** — Write results to **stdout**. Everything written to stdout is captured and returned to the agent.
+- **Exit codes** — A non-zero exit code is treated as an error. The agent will receive both the stdout and stderr output along with the error status.
+- **Timeout** — Scripts have a **10-second execution timeout**. If your script does not exit within 10 seconds, Hiroshi kills the process and reports a timeout error to the agent.
+- **Working directory** — The script's working directory is set to the `sandbox_path` defined in your config (`~/.hiroshi/workspace` by default).
+
+## Complete Python example
+
+The following skill counts the words in a text string. It demonstrates the full structure: a `SKILL.md` manifest paired with a Python script that reads JSON from stdin and writes a plain-text result to stdout.
+
+```markdown SKILL.md
+---
+name: word_count
+description: "Counts the number of words in a given text string."
+schema: '{ "text": "string" }'
+---
+# Word Count Skill
+
+Counts words in the provided text.
+```
+
+```python word_count.py
+import sys
+import json
+
+def main():
+    try:
+        args = json.loads(sys.stdin.read())
+        text = args.get("text", "")
+        count = len(text.split())
+        print(f"Word count: {count}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == '__main__':
+    main()
+```
+
+Place both files at:
+
+```text
+~/.hiroshi/skills/word_count/
+├── SKILL.md
+└── word_count.py
+```
+
+## Bash skill example
+
+Bash skills work identically — read JSON from stdin if you need parameters, or skip stdin entirely for skills that take no input.
+
+```markdown SKILL.md
+---
+name: disk_usage
+description: "Reports disk usage of the current workspace directory."
+schema: '{ }'
+---
+```
+
+```bash disk_usage.sh
+#!/bin/bash
+du -sh . 2>/dev/null || echo "Could not check disk usage"
+```
+
+## Tips
+
+<Tip>
+  Write descriptions that are specific and action-oriented. The agent reads your `description` field to decide when to call each skill — vague descriptions lead to missed or incorrect invocations.
+</Tip>
+
+<Tip>
+  Test your skills manually before relying on them inside a conversation. Pipe a sample JSON payload directly to the script:
+
+  ```bash
+  echo '{"text": "hello world"}' | python ~/.hiroshi/skills/word_count/word_count.py
+  ```
+</Tip>
+
+<Tip>
+  Keep scripts fast. Skills run synchronously during an agent turn, so a slow script blocks the entire response. Aim to complete well within the 10-second limit — consider offloading heavy work to a background process and having the skill return a job ID instead.
+</Tip>

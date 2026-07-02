@@ -1,0 +1,141 @@
+---
+title: "Hiroshi Built-In Skills: Five-Tool Reference Guide"
+sidebarTitle: "Built-In Skills"
+description: "Hiroshi ships with five built-in skills: git_manager, web_search, browser_automation, file_janitor, and task_sync — auto-generated on first run."
+---
+
+Hiroshi automatically generates five built-in skills in `~/.hiroshi/skills/` the first time it starts. These skills are ready to use immediately — the agent will call them whenever they are relevant to a task you describe.
+
+<Note>
+  Built-in skill scripts are stored at `~/.hiroshi/skills/<name>/` on your filesystem. You can open, read, and edit them at any time to customise their behaviour.
+</Note>
+
+## git_manager
+
+The `git_manager` skill orchestrates Git repository state, runs diffs, commits code changes, and manages branches. Hiroshi calls it whenever you ask about version control operations in your workspace.
+
+**Schema**
+
+```json
+{ "action": "string", "branch": "string", "commit_message": "string" }
+```
+
+**Available actions**
+
+| Action | What it does |
+|--------|-------------|
+| `status` | Runs `git status` and returns the output |
+| `diff` | Runs `git diff` and returns unstaged changes |
+| `commit` | Stages all changes with `git add .` then commits with the provided `commit_message` |
+| `branch` | Creates and checks out a new branch named by `branch` |
+
+**Example**
+
+Tell Hiroshi:
+
+```text
+Commit all changes with message 'fix: update config'
+```
+
+Hiroshi will call `git_manager` with `{ "action": "commit", "commit_message": "fix: update config" }` and report the result.
+
+---
+
+## web_search
+
+The `web_search` skill queries search engines and returns matching page titles, snippets, and links. Hiroshi calls it when you ask for up-to-date information it does not already know.
+
+**Schema**
+
+```json
+{ "query": "string" }
+```
+
+**Example**
+
+Tell Hiroshi:
+
+```text
+Search for 'Rust async best practices'
+```
+
+Hiroshi will call `web_search` with `{ "query": "Rust async best practices" }` and summarise the top results for you.
+
+---
+
+## browser_automation
+
+The `browser_automation` skill provides headless browser scraping and viewport screenshot capabilities. Use it when you need Hiroshi to retrieve or inspect the content of a URL.
+
+**Schema**
+
+```json
+{ "url": "string", "action": "string" }
+```
+
+**Example**
+
+Tell Hiroshi:
+
+```text
+Fetch the HTML from https://example.com
+```
+
+Hiroshi will call `browser_automation` with `{ "url": "https://example.com", "action": "fetch" }` and report back on the page content.
+
+---
+
+## file_janitor
+
+The `file_janitor` skill tracks file hashes, lists duplicate items, structures chaotic workspace directories, and updates README file indices. It walks the workspace tree, computes an MD5 hash for every file, and returns the full mapping so the agent can identify duplicates.
+
+**Schema**
+
+```json
+{ "action": "string" }
+```
+
+**Available actions**
+
+| Action | What it does |
+|--------|-------------|
+| `scan` | Recursively walks `.` (the workspace), hashes every file, and returns a JSON object mapping paths to MD5 digests |
+
+**Example**
+
+Tell Hiroshi:
+
+```text
+Scan the workspace for duplicate files
+```
+
+Hiroshi will call `file_janitor` with `{ "action": "scan" }` and analyse the results to surface any files that share an identical hash.
+
+---
+
+## task_sync
+
+The `task_sync` skill syncs project milestones, deadlines, and logs task completion states inside task markdown files. Use it to track progress directly from conversation.
+
+**Schema**
+
+```json
+{ "task_name": "string", "status": "string" }
+```
+
+**Status values**
+
+| Value | Meaning |
+|-------|---------|
+| `pending` | Task is outstanding — written as `[ ]` in `TODO.md` |
+| `done` | Task is complete — written as `[x]` in `TODO.md` |
+
+**Example**
+
+Tell Hiroshi:
+
+```text
+Mark 'Implement login page' as done
+```
+
+Hiroshi will call `task_sync` with `{ "task_name": "Implement login page", "status": "done" }` and append the checked entry to `TODO.md`.

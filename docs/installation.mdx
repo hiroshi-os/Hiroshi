@@ -1,0 +1,100 @@
+---
+title: "Install Hiroshi on Linux, macOS, or Windows from Source"
+sidebarTitle: "Installation"
+description: "Step-by-step guide to building and installing Hiroshi from source using Cargo, covering Ollama setup, feature flags, and first-run configuration."
+---
+
+Hiroshi is distributed as a Rust binary built with Cargo. There are no pre-built releases to download — you compile it directly from source on your target machine. The only runtime dependency is a running Ollama instance; everything else, including the SQLite database, is bundled into the binary at build time.
+
+<Warning>
+  Ollama must be running before you start Hiroshi. If Ollama is not reachable at `http://127.0.0.1:11434`, the onboarding wizard will be unable to list available models, and agent turns will fail with a connection error.
+</Warning>
+
+## Prerequisites
+
+Make sure the following are in place before building.
+
+- **Rust toolchain (stable)** — Install via [rustup](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`. Hiroshi requires the stable channel and the 2024 edition, which is included in Rust 1.85 and later.
+- **Ollama** — Download and install from [ollama.ai](https://ollama.ai), then start the server with `ollama serve`.
+- **A compatible model** — Pull at least one model before launching Hiroshi. The default recommended model is:
+
+  ```bash
+  ollama pull qwen2.5-coder:1.5b
+  ```
+
+  You can also use larger models such as `qwen2.5-coder:7b` or `llama3`. The onboarding wizard scans for locally available models and lets you choose.
+
+- **Embedding model** — Hiroshi uses `nomic-embed-text` for memory embeddings by default. Pull it with:
+
+  ```bash
+  ollama pull nomic-embed-text
+  ```
+
+## Build from source
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Hiroshi repository and change into the project directory.
+
+    ```bash
+    git clone https://github.com/hiroshi-os/Hiroshi && cd Hiroshi
+    ```
+  </Step>
+  <Step title="Build in release mode">
+    Compile a fully optimised binary. The release profile enables LTO, sets `opt-level = 3`, strips debug symbols, and uses a single codegen unit — the resulting binary is compact and fast.
+
+    ```bash
+    cargo build --release
+    ```
+
+    The binary is written to `target/release/Hiroshi` (or `target/release/Hiroshi.exe` on Windows).
+  </Step>
+  <Step title="Install to PATH (optional)">
+    Install the binary into your Cargo bin directory (`~/.cargo/bin`) so you can run `hiroshi` from anywhere.
+
+    ```bash
+    cargo install --path .
+    ```
+  </Step>
+  <Step title="Verify the installation">
+    Confirm the binary is accessible and print the built-in help text.
+
+    ```bash
+    hiroshi --help
+    ```
+
+    You should see output listing the available subcommands: `agent`, `daemon`, `service`, `doctor`, and `migrate`.
+  </Step>
+</Steps>
+
+## Feature flags
+
+Hiroshi uses Cargo feature flags to control which optional components are compiled in. This lets you produce a smaller, faster binary if you don't need chat gateways or the web dashboard.
+
+| Feature | What it enables | Dependencies |
+|---|---|---|
+| `gateway-ui` | Local web dashboard served on port 8080 via Axum | `axum`, `tower-http` |
+| `channel-telegram` | Telegram bot gateway | None (uses core `reqwest`) |
+| `channel-discord` | Discord WebSocket gateway | `tokio-tungstenite` |
+| `channel-slack` | Slack Socket Mode gateway | `tokio-tungstenite` |
+| `kernel-only` | Strips all channels and the UI — agent loop only | None |
+
+The **default** feature set includes all four: `gateway-ui`, `channel-telegram`, `channel-discord`, and `channel-slack`.
+
+To build a minimal kernel-only binary without any gateways or dashboard:
+
+```bash
+cargo build --release --no-default-features --features kernel-only
+```
+
+To build with only a specific channel, for example Telegram only:
+
+```bash
+cargo build --release --no-default-features --features channel-telegram
+```
+
+## First-time setup
+
+When you run any Hiroshi command for the first time, Hiroshi detects that `~/.hiroshi/config.toml` does not exist and automatically launches the interactive onboarding wizard. The wizard creates the full `~/.hiroshi/` directory structure — including the SQLite database, the `skills/` directory pre-populated with bundled skills, and the default `AGENTS.md` — and writes your choices to `config.toml`.
+
+You do not need to create any configuration files manually. Simply run `hiroshi agent` and follow the prompts.

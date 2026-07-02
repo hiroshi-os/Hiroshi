@@ -1,0 +1,327 @@
+---
+title: "Hiroshi config.toml — Complete Configuration Reference"
+sidebarTitle: "config.toml"
+description: "Complete reference for ~/.hiroshi/config.toml — Ollama model settings, security sandbox, cron tasks, SOP routines, and channel gateway tokens."
+---
+
+`~/.hiroshi/config.toml` is Hiroshi's main configuration file, automatically created by the onboarding wizard the first time you run Hiroshi. You can open it in any text editor and modify it directly at any time — all changes take effect on the next daemon startup.
+
+## Annotated default config.toml
+
+The following block shows the complete default configuration that Hiroshi writes on first run. Every key is present so you always have a reference for the shape of the file.
+
+```toml
+# ─────────────────────────────────────────────
+# Hiroshi — main configuration file
+# Location: ~/.hiroshi/config.toml
+# ─────────────────────────────────────────────
+
+[engine]
+system_name = "Hiroshi"   # Display name shown in the terminal UI
+log_level   = "info"      # Verbosity: debug | info | warn | error
+
+[ollama]
+host            = "http://127.0.0.1:11434"  # Local Ollama API endpoint
+model           = "qwen2.5-coder:1.5b"      # Chat completion model
+temperature     = 0.2                        # Sampling temperature (0.0–1.0)
+context_window  = 4096                       # Token context window size
+embedding_model = "nomic-embed-text"         # Model used for memory embeddings
+
+[security]
+sandbox_path         = "~/.hiroshi/workspace"             # Agent file-operation root
+allow_shell_commands = false                              # Allow arbitrary shell execution
+allowed_binaries     = ["cargo", "git", "rustfmt", "python"]  # Approved binaries
+allowed_senders      = []                                 # Empty = open mode (allow all)
+
+# ── Cron scheduler ────────────────────────────
+[[cron.tasks]]
+name     = "workspace_triage"
+schedule = "0 0 * * *"    # Daily at midnight
+agent    = "Architect"
+prompt   = "Read all files inside the workspace and generate a README.md summary summarizing our active state."
+
+# ── Standard Operating Procedures ─────────────
+[sop]
+enabled          = false
+agent            = "Architect"
+interval_minutes = 30
+notify_channels  = ["telegram"]
+
+[[sop.routines]]
+name    = "workspace_health"
+routine = "Check the workspace and compile status. If there are compilation errors or new files, write a short summary report."
+
+# ── Telegram gateway ───────────────────────────
+[telegram]
+enabled          = false
+token            = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+allowed_user_ids = []
+
+# ── Discord gateway ────────────────────────────
+[discord]
+enabled          = false
+token            = "YOUR_DISCORD_BOT_TOKEN_HERE"
+allowed_channels = []
+
+# ── Slack gateway ──────────────────────────────
+[slack]
+enabled   = false
+bot_token = "xoxb-YOUR_BOT_TOKEN_HERE"
+app_token = "xapp-YOUR_APP_TOKEN_HERE"
+
+# ── Tailscale overlay ──────────────────────────
+[tailscale]
+enabled            = false
+# interface_fallback = "tailscale0"   # Uncomment to set a fallback interface
+
+# ── MCP servers ────────────────────────────────
+# [mcp_servers.postgres]
+# command = "npx"
+# args    = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+```
+
+---
+
+## [engine]
+
+The `[engine]` section controls top-level identity and logging behaviour.
+
+<ParamField path="engine.system_name" type="string" default="Hiroshi">
+  Display name for the assistant. This name appears in the terminal UI header and in outgoing gateway messages.
+</ParamField>
+
+<ParamField path="engine.log_level" type="string" default="info">
+  Logging verbosity written to `~/.hiroshi/hiroshi.log`. Accepted values are `debug`, `info`, `warn`, and `error`. Use `debug` when troubleshooting unexpected behaviour; switch back to `info` for normal operation to keep the log file lean.
+</ParamField>
+
+---
+
+## [ollama]
+
+The `[ollama]` section points Hiroshi at your local Ollama instance and controls how the language model is invoked.
+
+<ParamField path="ollama.host" type="string" default="http://127.0.0.1:11434">
+  Full URL of your Ollama API server. Change this if you run Ollama on a non-standard port or on a remote machine accessible over your network.
+</ParamField>
+
+<ParamField path="ollama.model" type="string" default="qwen2.5-coder:1.5b">
+  The Ollama model tag used for all chat completions. The onboarding wizard scans your locally available models and lets you pick one interactively. You can update this field at any time — just make sure the model is already pulled with `ollama pull <model>`.
+</ParamField>
+
+<ParamField path="ollama.temperature" type="float" default="0.2">
+  Sampling temperature passed to the model on every completion request. Lower values (closer to `0.0`) produce more deterministic, focused output — recommended for code generation. Higher values introduce more creativity and variation. Valid range is `0.0` to `1.0`.
+</ParamField>
+
+<ParamField path="ollama.context_window" type="integer" default="4096">
+  Maximum number of tokens included in each prompt context. Increase this if you work with large files or long conversation histories, but keep in mind that your chosen model must support the requested window size.
+</ParamField>
+
+<ParamField path="ollama.embedding_model" type="string" default="nomic-embed-text">
+  The Ollama model used to generate vector embeddings for Hiroshi's semantic memory system. Embeddings are stored in `~/.hiroshi/hiroshi.db` and power the hybrid RAG retrieval engine. Make sure this model is pulled locally before enabling memory features.
+</ParamField>
+
+---
+
+## [security]
+
+The `[security]` section defines the boundaries within which Hiroshi's agents are allowed to operate. Review these settings carefully before enabling shell access.
+
+<ParamField path="security.sandbox_path" type="string" default="~/.hiroshi/workspace">
+  The root directory that constrains all file-system operations performed by agents. Hiroshi refuses to read or write paths outside this directory. You can point it at a project directory — for example `~/projects/myapp` — to give agents direct access to your codebase.
+</ParamField>
+
+<ParamField path="security.allow_shell_commands" type="boolean" default="false">
+  When `false`, agents cannot invoke shell commands directly. Set to `true` only if you need the agent to run build commands or scripts, and ensure `allowed_binaries` is tightly scoped. Shell execution is disabled by default as a security-first precaution.
+</ParamField>
+
+<ParamField path="security.allowed_binaries" type="array" default='["cargo", "git", "rustfmt", "python"]'>
+  The explicit list of binary names the agent may invoke when `allow_shell_commands` is `true`. Any binary not in this list is rejected at the process-spawn level. Add or remove entries to match your project toolchain.
+</ParamField>
+
+<ParamField path="security.allowed_senders" type="array" default="[]">
+  Network or user IDs (strings) that are permitted to send messages to Hiroshi through channel gateways. An empty array enables **open mode** — all senders are accepted. Populate this list with specific Telegram user IDs, Discord channel IDs, or Slack user IDs to restrict gateway access.
+</ParamField>
+
+---
+
+## [[cron.tasks]]
+
+The `[[cron.tasks]]` array lets you schedule recurring prompts that fire automatically at a given time or interval. Each entry in the array is an independent task — add as many as you need.
+
+<ParamField path="cron.tasks[].name" type="string">
+  A unique identifier for this task. Used in logs and error messages to distinguish which task ran or failed.
+</ParamField>
+
+<ParamField path="cron.tasks[].schedule" type="string">
+  The schedule in standard five-field cron format: `"min hour day month weekday"`. For example, `"0 9 * * 1"` fires at 09:00 every Monday. You can also supply a plain duration interval.
+</ParamField>
+
+<ParamField path="cron.tasks[].agent" type="string">
+  The name of the agent (as defined in `AGENTS.md`) that will receive and process the prompt when this task fires.
+</ParamField>
+
+<ParamField path="cron.tasks[].prompt" type="string">
+  The prompt string sent to the agent at each scheduled execution. Write this the same way you would type a message in the terminal.
+</ParamField>
+
+Here is a practical example of a two-task cron configuration:
+
+```toml
+[[cron.tasks]]
+name     = "workspace_triage"
+schedule = "0 0 * * *"   # Every day at midnight
+agent    = "Architect"
+prompt   = "Read all files inside the workspace and generate a README.md summary summarizing our active state."
+
+[[cron.tasks]]
+name     = "weekly_git_report"
+schedule = "0 9 * * 1"   # Every Monday at 09:00
+agent    = "Developer"
+prompt   = "Run a git diff against the main branch and write a CHANGES.md entry summarising what changed this week."
+```
+
+---
+
+## [sop]
+
+The Standard Operating Procedures section runs a set of named routines on a repeating interval and optionally broadcasts the results to a channel gateway.
+
+<ParamField path="sop.enabled" type="boolean" default="false">
+  Master switch for the SOP subsystem. Set to `true` to activate periodic routine execution.
+</ParamField>
+
+<ParamField path="sop.agent" type="string" default="Architect">
+  The agent responsible for executing every routine defined in `[[sop.routines]]`.
+</ParamField>
+
+<ParamField path="sop.interval_minutes" type="integer" default="30">
+  How often (in minutes) the SOP engine fires and runs all enabled routines.
+</ParamField>
+
+<ParamField path="sop.notify_channels" type="array" default='["telegram"]'>
+  A list of channel names (e.g. `["telegram"]`) to which the SOP output is forwarded after each run. The named channel must also be enabled in its own config section.
+</ParamField>
+
+<ParamField path="sop.routines[].name" type="string">
+  A human-readable identifier for this routine — used in log output and notification headers.
+</ParamField>
+
+<ParamField path="sop.routines[].routine" type="string">
+  The prompt string the SOP agent executes on every interval tick.
+</ParamField>
+
+Example SOP configuration with multiple routines:
+
+```toml
+[sop]
+enabled          = true
+agent            = "Architect"
+interval_minutes = 60
+notify_channels  = ["telegram"]
+
+[[sop.routines]]
+name    = "workspace_health"
+routine = "Check the workspace and compile status. If there are compilation errors or new files, write a short summary report."
+
+[[sop.routines]]
+name    = "dependency_audit"
+routine = "Review Cargo.toml for outdated dependencies and recommend upgrades if any patch versions are available."
+```
+
+---
+
+## Channel gateways
+
+Each gateway has its own configuration section. They are all disabled by default — flip `enabled = true` and provide the relevant token to activate a gateway. Full setup instructions are on the integration pages linked below.
+
+### [telegram]
+
+<ParamField path="telegram.enabled" type="boolean" default="false">
+  Activates the Telegram bot listener.
+</ParamField>
+
+<ParamField path="telegram.token" type="string">
+  Your Telegram bot token, obtained from [@BotFather](https://t.me/BotFather).
+</ParamField>
+
+<ParamField path="telegram.allowed_user_ids" type="array">
+  Numeric Telegram user IDs permitted to interact with the bot. Leave empty to allow all users (not recommended for public bots).
+</ParamField>
+
+→ Full setup guide: [Telegram integration](/integrations/telegram)
+
+---
+
+### [discord]
+
+<ParamField path="discord.enabled" type="boolean" default="false">
+  Activates the Discord bot listener.
+</ParamField>
+
+<ParamField path="discord.token" type="string">
+  Your Discord bot token from the [Discord Developer Portal](https://discord.com/developers/applications).
+</ParamField>
+
+<ParamField path="discord.allowed_channels" type="array">
+  Channel IDs (as strings) the bot is permitted to read and respond in. Empty = all channels the bot has access to.
+</ParamField>
+
+→ Full setup guide: [Discord integration](/integrations/discord)
+
+---
+
+### [slack]
+
+<ParamField path="slack.enabled" type="boolean" default="false">
+  Activates the Slack gateway using Socket Mode.
+</ParamField>
+
+<ParamField path="slack.bot_token" type="string">
+  Your Slack bot OAuth token (`xoxb-…`).
+</ParamField>
+
+<ParamField path="slack.app_token" type="string">
+  Your Slack app-level token (`xapp-…`) required for Socket Mode.
+</ParamField>
+
+→ Full setup guide: [Slack integration](/integrations/slack)
+
+---
+
+### [tailscale]
+
+<ParamField path="tailscale.enabled" type="boolean" default="false">
+  Enables Tailscale overlay network support, allowing Hiroshi to receive messages over your private Tailscale mesh.
+</ParamField>
+
+<ParamField path="tailscale.interface_fallback" type="string">
+  Optional. The network interface name to fall back to if Tailscale peer discovery fails (e.g. `"tailscale0"`). Omit or leave commented out to use the default behaviour.
+</ParamField>
+
+→ Full setup guide: [Tailscale integration](/integrations/tailscale)
+
+---
+
+### [mcp_servers.\<name\>]
+
+You can register any number of MCP (Model Context Protocol) servers under `[mcp_servers.<name>]`. Each entry spawns the server as a child process and communicates over JSON-RPC 2.0 via stdin/stdout.
+
+<ParamField path='mcp_servers.<name>.command' type="string">
+  The executable to launch (e.g. `"npx"`, `"python"`, `"uvx"`).
+</ParamField>
+
+<ParamField path='mcp_servers.<name>.args' type="array">
+  Command-line arguments passed to the executable.
+</ParamField>
+
+```toml
+[mcp_servers.postgres]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+[mcp_servers.filesystem]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+```
+
+→ Full setup guide: [MCP servers](/integrations/mcp)

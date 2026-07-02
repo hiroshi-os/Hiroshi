@@ -1,0 +1,75 @@
+---
+title: "Configure Slack Socket Mode to Chat With Your Hiroshi Agent"
+sidebarTitle: "Slack"
+description: "Set up a Slack app gateway to interact with Hiroshi from Slack using Socket Mode — configure your bot token and app-level token in config.toml."
+---
+
+The Slack gateway connects Hiroshi to your Slack workspace using Socket Mode, which means no public webhook URL is required. A persistent outbound WebSocket connection from Hiroshi to Slack's servers handles all event delivery. Messages mentioning or sent directly to the bot are routed to the active agent, which replies back into the same conversation.
+
+## Prerequisites
+
+- A [Slack app](https://api.slack.com/apps) with Socket Mode enabled
+- An App-Level Token with the `connections:write` scope (required for Socket Mode)
+- Bot scopes: `chat:write` and `app_mentions:read`
+
+## Setup
+
+<Steps>
+  <Step title="Create a Slack app">
+    Go to [https://api.slack.com/apps](https://api.slack.com/apps) and click **Create New App**. Choose **From scratch**, give it a name, and select the workspace you want to install it in.
+  </Step>
+  <Step title="Enable Socket Mode and generate an App-Level Token">
+    In your app settings, navigate to **Socket Mode** and toggle it on. When prompted, generate an App-Level Token. Give it any label and add the `connections:write` scope. Copy the token — it starts with `xapp-`.
+  </Step>
+  <Step title="Add bot scopes">
+    Navigate to **OAuth & Permissions → Scopes → Bot Token Scopes** and add:
+    - `chat:write` — allows the bot to post messages
+    - `app_mentions:read` — delivers events when the bot is mentioned
+  </Step>
+  <Step title="Install the app to your workspace">
+    Navigate to **Install App** and click **Install to Workspace**. Authorise the requested permissions. After installation, copy the **Bot User OAuth Token** — it starts with `xoxb-`.
+  </Step>
+  <Step title="Edit config.toml">
+    Open `~/.hiroshi/config.toml` and add (or update) the `[slack]` section:
+
+    ```toml
+    [slack]
+    enabled = true
+    bot_token = "xoxb-YOUR_BOT_TOKEN"
+    app_token = "xapp-YOUR_APP_TOKEN"
+    ```
+
+    Replace both token values with your own.
+  </Step>
+  <Step title="Restart the daemon">
+    Apply the new configuration:
+
+    ```bash
+    hiroshi service restart
+    ```
+
+    Or run directly:
+
+    ```bash
+    hiroshi daemon
+    ```
+  </Step>
+</Steps>
+
+## Configuration fields
+
+<ParamField path="enabled" type="boolean" required>
+  Set to `true` to activate the Slack gateway. Defaults to `false`.
+</ParamField>
+
+<ParamField path="bot_token" type="string" required>
+  Your Slack Bot User OAuth Token. Starts with `xoxb-`. Used to post messages and interact with the Slack Web API.
+</ParamField>
+
+<ParamField path="app_token" type="string" required>
+  Your Slack App-Level Token. Starts with `xapp-`. Required to establish the Socket Mode WebSocket connection — without it, Hiroshi cannot receive events from Slack.
+</ParamField>
+
+<Note>
+  The Slack gateway maintains a persistent WebSocket connection for real-time event delivery with no polling delay. If the connection drops, the daemon will automatically reconnect using exponential backoff.
+</Note>

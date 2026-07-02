@@ -1,0 +1,65 @@
+---
+title: "Hiroshi Skills Overview: Extend the Agent with Scripts"
+sidebarTitle: "Overview"
+description: "Skills are polyglot script extensions that Hiroshi discovers automatically and calls as tools — add Python, Bash, or any script to extend the agent."
+---
+
+Skills are how you extend Hiroshi with new capabilities. Each skill is a folder inside `~/.hiroshi/skills/` containing a `SKILL.md` manifest and an executable script. Hiroshi discovers every valid skill folder at startup and registers it as a callable tool — no configuration file edits required.
+
+## How skills work
+
+When Hiroshi starts, it scans `~/.hiroshi/skills/` and loads every subfolder that contains a `SKILL.md` file. From that point forward, the agent can invoke any registered skill whenever it decides the tool is appropriate for a given task.
+
+The execution flow for a single skill call is:
+
+1. Hiroshi serialises the arguments it wants to pass as a JSON object and writes them to the script's **stdin**.
+2. The script runs as a child process with its working directory set to the sandbox path (`~/.hiroshi/workspace` by default).
+3. The script writes its result to **stdout**; Hiroshi reads it and includes it in the agent's response.
+4. If the script does not exit within **10 seconds** it is forcibly killed and the call is reported as a timeout error.
+5. A non-zero exit code is treated as an error and surfaced to the agent.
+
+## Skills directory structure
+
+Each skill lives in its own named subfolder. The folder name is used as a fallback skill name if the `SKILL.md` frontmatter does not supply one.
+
+```text
+~/.hiroshi/skills/
+├── git_manager/
+│   ├── SKILL.md
+│   └── git_manager.py
+├── web_search/
+│   ├── SKILL.md
+│   └── web_search.py
+└── my_custom_skill/
+    ├── SKILL.md
+    └── my_skill.sh
+```
+
+## Supported languages
+
+Hiroshi detects the runtime to use from the script file extension:
+
+| Extension | Runtime invoked |
+|-----------|----------------|
+| `.py` | `python` |
+| `.sh` | `sh` |
+| `.bat` / `.cmd` | `cmd /c` |
+| `.ps1` | `powershell -File` |
+| *(none / binary)* | Executed directly |
+
+Any language that can read from stdin and write to stdout works — the extension just needs to match one of the entries above, or you can ship a compiled binary with no extension.
+
+## MCP tool reflection
+
+Tools exposed by connected MCP servers are automatically reflected as skills and placed in `skills/mcp__<name>/` folders inside your skills directory. You can inspect or extend these reflected skills just like any other skill. See the [MCP integration guide](/integrations/mcp) for details on connecting MCP servers.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Built-In Skills" icon="box" href="/skills/built-in">
+    Explore the five skills that ship with Hiroshi and are generated automatically on first run.
+  </Card>
+  <Card title="Custom Skills" icon="puzzle-piece" href="/skills/custom">
+    Learn how to write your own skill from scratch using Python, Bash, or any scripting language.
+  </Card>
+</CardGroup>

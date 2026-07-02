@@ -1,0 +1,76 @@
+---
+title: "Configure Telegram Bot Access for Your Hiroshi Agent"
+sidebarTitle: "Telegram"
+description: "Set up a Telegram bot gateway so you can chat with Hiroshi from Telegram — configure your bot token and authorize user IDs in config.toml."
+---
+
+The Telegram gateway lets you interact with Hiroshi from any Telegram client. Once configured, messages you send to your bot are routed to the active agent, and responses are sent back through Telegram. Only numeric user IDs that you explicitly authorise can reach the agent, so your instance stays private even if someone discovers your bot's username.
+
+## Prerequisites
+
+- A Telegram account
+- A bot token from [@BotFather](https://t.me/BotFather)
+- Your numeric Telegram user ID (use [@userinfobot](https://t.me/userinfobot) to find it)
+
+## Setup
+
+<Steps>
+  <Step title="Create a bot with @BotFather">
+    Open Telegram, start a conversation with [@BotFather](https://t.me/BotFather), and send `/newbot`. Follow the prompts to choose a name and username. BotFather will reply with your bot token — copy it.
+  </Step>
+  <Step title="Find your Telegram user ID">
+    Start a conversation with [@userinfobot](https://t.me/userinfobot) and send any message. It will reply with your numeric user ID (a plain integer such as `123456789`).
+  </Step>
+  <Step title="Edit config.toml">
+    Open `~/.hiroshi/config.toml` and add (or update) the `[telegram]` section:
+
+    ```toml
+    [telegram]
+    enabled = true
+    token = "YOUR_BOT_TOKEN_HERE"
+    allowed_user_ids = [123456789]
+    ```
+
+    Replace `YOUR_BOT_TOKEN_HERE` with the token from BotFather and `123456789` with your actual user ID. Add more integers to `allowed_user_ids` to authorise additional users.
+  </Step>
+  <Step title="Restart the daemon">
+    Apply the new configuration by restarting Hiroshi:
+
+    ```bash
+    hiroshi service restart
+    ```
+
+    Or, if you are running it manually:
+
+    ```bash
+    hiroshi daemon
+    ```
+  </Step>
+  <Step title="Send a message">
+    Open your bot in Telegram and send it any message. Hiroshi will process it and reply through the same chat.
+  </Step>
+</Steps>
+
+## Configuration fields
+
+<ParamField path="enabled" type="boolean" required>
+  Set to `true` to activate the Telegram gateway. Defaults to `false`.
+</ParamField>
+
+<ParamField path="token" type="string" required>
+  Your Telegram bot token as issued by @BotFather. Looks like `1234567890:ABCDEFabcdef...`.
+</ParamField>
+
+<ParamField path="allowed_user_ids" type="array of integers" required>
+  Numeric Telegram user IDs that are authorised to interact with Hiroshi. Matching is performed on the immutable numeric ID, never on display names, which prevents display-name forgery attacks. Add one integer per authorised user. An empty list blocks all users — you must list at least one ID to receive messages.
+</ParamField>
+
+## Security
+
+Hiroshi evaluates every incoming Telegram message against the `allowed_user_ids` list before forwarding it to the agent. Messages from IDs not in the list are silently dropped.
+
+To allow all Telegram users to interact with Hiroshi (not recommended for personal deployments), set `allowed_user_ids` to an empty array. This puts the gateway into open mode — any user who messages your bot can reach the agent.
+
+<Warning>
+  Keep your bot token secret. Anyone who obtains it can send messages as your bot and potentially interact with your Hiroshi instance. Rotate the token immediately via @BotFather if you suspect it has been compromised.
+</Warning>

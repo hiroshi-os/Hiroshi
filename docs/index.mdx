@@ -1,0 +1,67 @@
+---
+title: "Hiroshi: Local-First Agentic AI Developer Assistant"
+sidebarTitle: "Home"
+description: "Hiroshi is a lightweight Rust-based AI assistant running on Ollama with multi-agent orchestration, skills, MCP, and chat integrations."
+---
+
+Welcome to the Hiroshi documentation. Hiroshi is a local-first agentic AI developer assistant built in Rust that runs entirely on your machine using [Ollama](https://ollama.ai) for inference — no cloud accounts, no data leaving your system. It ships with a multi-agent orchestration loop, polyglot custom skills, MCP server support, cron automation, and optional chat gateways for Telegram, Discord, and Slack.
+
+<CardGroup cols={2}>
+  <Card title="Introduction" icon="rocket" href="/introduction">
+    Learn what Hiroshi is, how the agent loop works, and what you can build with it.
+  </Card>
+  <Card title="Quickstart" icon="terminal" href="/quickstart">
+    Go from a fresh install to your first agent conversation in five minutes.
+  </Card>
+  <Card title="CLI Reference" icon="bolt" href="/cli/agent">
+    Explore every subcommand, flag, and slash command Hiroshi exposes.
+  </Card>
+  <Card title="Skills" icon="puzzle-piece" href="/skills/overview">
+    Extend Hiroshi with polyglot scripts in Python, Bash, PowerShell, and more.
+  </Card>
+  <Card title="Integrations" icon="plug" href="/integrations/mcp">
+    Connect external tools and services through MCP servers and chat gateways.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/config-file">
+    Understand every field in `~/.hiroshi/config.toml` and how to tune them.
+  </Card>
+</CardGroup>
+
+## Get up and running
+
+Follow these four steps to go from zero to a working Hiroshi agent.
+
+<Steps>
+  <Step title="Install Hiroshi">
+    Build Hiroshi from source using Cargo and optionally add it to your `PATH`.
+
+    ```bash
+    git clone https://github.com/hiroshi-os/Hiroshi && cd Hiroshi
+    cargo build --release
+    cargo install --path .
+    ```
+  </Step>
+  <Step title="Run the onboarding wizard">
+    The first time you run any Hiroshi command, an interactive wizard launches automatically and writes `~/.hiroshi/config.toml`.
+
+    ```bash
+    hiroshi agent
+    ```
+
+    The wizard asks for a system name, lets you pick an Ollama model, and optionally configures the Telegram gateway.
+  </Step>
+  <Step title="Start agent mode">
+    Once configuration is complete, Hiroshi drops you into an interactive terminal session where you can chat directly with the active agent.
+
+    ```text
+    Hiroshi [Architect] > What should I build today?
+    ```
+  </Step>
+  <Step title="Optionally launch the daemon">
+    Run `hiroshi daemon` to start background services: chat gateways (Telegram, Discord, Slack), the web dashboard, the SOP engine, and the cron scheduler — all running concurrently.
+
+    ```bash
+    hiroshi daemon
+    ```
+  </Step>
+</Steps>

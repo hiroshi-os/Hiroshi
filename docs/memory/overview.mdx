@@ -1,0 +1,89 @@
+---
+title: "How Hiroshi Remembers: Persistent Semantic Memory System"
+sidebarTitle: "Memory"
+description: "Hiroshi stores conversation history in SQLite with hybrid vector and FTS5 full-text search, enabling fast semantic recall across sessions in under 15ms."
+---
+
+Hiroshi maintains a persistent memory of your conversations using a hybrid SQLite-backed system that combines vector embeddings for semantic similarity search with FTS5 full-text search. This lets the agent recall relevant context from previous sessions — even across restarts — without relying on external vector databases or cloud APIs.
+
+## How Memory Works
+
+Every conversation turn is stored in `~/.hiroshi/hiroshi.db` the moment it occurs. When a new message arrives, the memory engine runs two retrieval branches in parallel and fuses their results before passing context to the agent:
+
+1. **Vector search** — Hiroshi calls Ollama's embed API (default model: `nomic-embed-text`) to generate a vector embedding for the incoming message. It then performs a cosine similarity lookup against all stored embeddings, ranking matches by semantic closeness.
+2. **FTS5 keyword search** — A SQLite FTS5 virtual table indexes the full text of every message. Hiroshi runs a keyword query against it to catch exact and near-exact term matches that vector search might rank lower.
+3. **Reciprocal Rank Fusion (RRF)** — The two result sets are merged using RRF scoring: vector results contribute 70% of the final score and FTS5 results contribute 30%. Duplicates are removed and the top matches are injected into the agent's context window before generating a response.
+
+The entire retrieval pipeline completes in **under 15ms** thanks to SQLite binary blob storage for vectors — no separate vector database process is needed.
+
+## Memory Files
+
+Hiroshi organizes all persistent state under `~/.hiroshi/`:
+
+```text
+~/.hiroshi/
+├── hiroshi.db          # Primary SQLite database — conversation history & embeddings
+└── memory/
+    ├── MEMORY.md       # Long-term consolidated memory profile (updated by dreaming sweep)
+    ├── DREAMS.md       # Memory consolidation reasoning logs
+    └── YYYY-MM-DD.md   # Daily raw conversation log files
+```
+
+| File | Description |
+|---|---|
+| `hiroshi.db` | The main SQLite database. Contains the `history` table, the `history_fts` FTS5 virtual table, and the `history_vectors` blob table. |
+| `memory/MEMORY.md` | A Markdown summary of long-term learnings, decisions, and configurations. Updated automatically by the dreaming sweep when SOP is enabled. |
+| `memory/DREAMS.md` | A log of each memory consolidation cycle — timestamps, how many records were processed, and consolidation status. |
+| `memory/YYYY-MM-DD.md` | Raw daily conversation logs exported by the cron scheduler. One file per day, named by date. |
+
+## Clearing History
+
+In terminal mode, use the `/clear` command to wipe the conversation history for the current session:
+
+```
+/clear
+```
+
+This removes all rows from the `history`, `history_fts`, and `history_vectors` tables. It does not delete `MEMORY.md` or the daily log files — those remain on disk.
+
+## Memory Consolidation (Dreaming)
+
+When the [SOP engine](/automation/sop) is enabled, Hiroshi runs a background memory consolidation sweep every 12 hours. The sweep reads recent conversation history from `hiroshi.db`, summarizes it using the configured LLM, de-duplicates repeated context, and writes a refined summary into `MEMORY.md`. Reasoning logs from each cycle are appended to `DREAMS.md`.
+
+This process runs automatically — you do not need to trigger it manually. Enable it by setting `[sop] enabled = true` in `config.toml`.
+
+## Configuring the Embedding Model
+
+The embedding model is configured under the `[ollama]` section in `~/.hiroshi/config.toml`:
+
+```toml
+[ollama]
+host = "http://127.0.0.1:11434"
+model = "qwen2.5-coder:1.5b"
+embedding_model = "nomic-embed-text"
+```
+
+To use a different embedding model, update `embedding_model` and pull the model with Ollama before starting Hiroshi:
+
+```bash
+ollama pull mxbai-embed-large
+```
+
+Then update your config:
+
+```toml
+[ollama]
+embedding_model = "mxbai-embed-large"
+```
+
+Make sure the model you choose is an embedding model (not a chat model) — it must support Ollama's `/api/embed` endpoint.
+
+## Automatic Database Backups
+
+The cron scheduler automatically backs up `hiroshi.db` to `~/.hiroshi/backups/` every **Sunday at 3:00 AM**. Each backup is named with a timestamp: `hiroshi_backup_YYYY-MM-DD_HH-MM-SS.db`. Backups are created using SQLite's `VACUUM INTO` command, which produces a clean, defragmented copy of the database.
+
+See [Cron Tasks](/automation/cron) for more on the weekly maintenance schedule.
+
+<Note>
+  The database runs in SQLite WAL (Write-Ahead Logging) mode, which allows concurrent reads while writes are in progress. You can safely inspect `hiroshi.db` with any external SQLite client — such as the `sqlite3` CLI or DB Browser for SQLite — while Hiroshi is running, without risking corruption or lock contention.
+</Note>

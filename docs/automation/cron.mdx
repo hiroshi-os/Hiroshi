@@ -1,0 +1,86 @@
+---
+title: "Schedule Recurring Agent Tasks with Cron Schedules"
+sidebarTitle: "Cron Tasks"
+description: "Define scheduled tasks in config.toml to have Hiroshi automatically run agent prompts on a cron schedule — daily reports, workspace triage, and more."
+---
+
+Hiroshi's built-in cron scheduler lets you define recurring tasks that trigger agent prompts on a schedule. Tasks are configured in `~/.hiroshi/config.toml` and run automatically when the daemon is active — no separate scheduler binary or system cron entry required.
+
+## Configuring Cron Tasks
+
+Add one or more `[[cron.tasks]]` entries to your `config.toml`. Each entry defines a task name, when it runs, which agent executes it, and the prompt that agent receives.
+
+```toml
+[[cron.tasks]]
+name = "workspace_triage"
+schedule = "0 0 * * *"
+agent = "Architect"
+prompt = "Read all files inside the workspace and generate a README.md summary summarizing our active state."
+
+[[cron.tasks]]
+name = "daily_report"
+schedule = "0 9 * * 1-5"
+agent = "Architect"
+prompt = "Summarize what was accomplished in the workspace yesterday and list any open TODO items."
+```
+
+### Task Fields
+
+<ParamField path="name" type="string" required>
+  A unique identifier for the task. This name appears in `~/.hiroshi/hiroshi.log` so you can trace which task fired and when.
+</ParamField>
+
+<ParamField path="schedule" type="string" required>
+  A standard 5-field cron expression in the format `min hour day-of-month month day-of-week`. The scheduler checks every minute and fires any task whose expression matches the current time.
+</ParamField>
+
+<ParamField path="agent" type="string" required>
+  The name of the agent that executes this task, as defined in `~/.hiroshi/AGENTS.md`. For example, `"Architect"` or `"Developer"`.
+</ParamField>
+
+<ParamField path="prompt" type="string" required>
+  The message sent to the agent when the task fires. Write this exactly as you would type it in the terminal — the agent has access to the sandbox workspace and any enabled skills.
+</ParamField>
+
+## Cron Schedule Quick Reference
+
+Use the table below to build common schedule expressions. The five fields are ordered `minute hour day-of-month month day-of-week`.
+
+| Schedule | Meaning |
+|---|---|
+| `0 0 * * *` | Daily at midnight |
+| `0 9 * * 1-5` | Weekdays at 9 AM |
+| `0 */6 * * *` | Every 6 hours |
+| `30 8 * * 1` | Mondays at 8:30 AM |
+| `* * * * *` | Every minute |
+| `0 */2 * * *` | Every 2 hours |
+
+## Weekly Database Maintenance
+
+Regardless of the tasks you define, Hiroshi automatically runs a timestamped database backup followed by a SQLite `VACUUM` every **Sunday at 3:00 AM**. The backup is written to `~/.hiroshi/backups/hiroshi_backup_YYYY-MM-DD_HH-MM-SS.db`. You do not need to configure this — it runs as part of the cron scheduler loop.
+
+## How the Scheduler Executes Tasks
+
+When a cron task fires, Hiroshi does the following before calling the agent:
+
+<Steps>
+  <Step title="Export daily log">
+    The current session's conversation history is written to a dated Markdown file in `~/.hiroshi/memory/`.
+  </Step>
+  <Step title="Compact memory">
+    The memory engine summarizes recent conversation history and appends a new entry to `~/.hiroshi/memory/MEMORY.md`.
+  </Step>
+  <Step title="Run the agent prompt">
+    The agent specified in the task receives the prompt and generates a response. If the response contains a `<write_file>` call, the output is written to that file in your workspace. Otherwise, the response is saved to `cron_output.txt` in the workspace.
+  </Step>
+</Steps>
+
+## Notes
+
+- Cron tasks only run when the daemon is active. Start the daemon with `hiroshi daemon` before relying on scheduled tasks.
+- The scheduler wakes every minute, aligns to the next whole minute boundary, and evaluates each task's schedule expression against the current time.
+- Overlapping tasks run in separate async threads — one slow task will not block another from firing.
+
+<Note>
+  Cron task output, task trigger events, and any errors are written to `~/.hiroshi/hiroshi.log`. Run `tail -f ~/.hiroshi/hiroshi.log` to watch task execution in real time.
+</Note>
