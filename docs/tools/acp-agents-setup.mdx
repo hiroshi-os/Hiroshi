@@ -1,0 +1,26 @@
+---
+title: ACP Integration & IDE Setup
+description: Connecting Zed, JetBrains, and Cursor to the Hiroshi OS Bridge.
+---
+
+Integrating Hiroshi OS directly into your IDE context enables sub-10ms code assistance utilizing local or multi-provider models.
+
+### 📝 1. Zed Editor Configuration
+Add the following to your `settings.json` file to register Hiroshi as a custom ACP model provider:
+
+```json
+{
+  "assistant": {
+    "version": "1",
+    "provider": {
+      "name": "acp",
+      "command": "hiroshi acp"
+    }
+  }
+}
+```
+
+### ☕ 2. JetBrains Configuration
+Configure the AI Assistant settings to pipe through custom command endpoints:
+* **Protocol Target:** `stdio`
+* **Execution Command:** `hiroshi acp`

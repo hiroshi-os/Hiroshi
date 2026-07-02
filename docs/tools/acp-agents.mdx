@@ -1,0 +1,16 @@
+---
+title: Agent Client Protocol (ACP)
+description: Stdio JSON-RPC 2.0 interface.
+---
+
+Hiroshi supports the standard **Agent Client Protocol (ACP)** over standard input/output (`stdio`) channels, enabling direct integrations with local developer IDE setups.
+
+### 🔌 1. JSON-RPC 2.0 Connection Lifecycle
+1. **`initialize`**: Exchanges capabilities and sets the protocol version boundaries (e.g. `2.0`).
+2. **`session/new`**: Establishes a new, isolated conversation session context.
+3. **`session/load`**: Replays existing memory history databases.
+4. **`session/prompt`**: Sends prompts and streams back chunk tokens.
+
+### 🔗 2. Channel Binding Commands
+* `/acp_bind <id>`: Manually binds a messaging gateway (Telegram, Discord, Slack) to an active IDE thread.
+* `/cas_resume`: Reconnects to the last bound IDE session.

@@ -84,6 +84,8 @@ enum Commands {
         #[command(subcommand)]
         action: HubAction,
     },
+    /// Start Agent Client Protocol stdio host interface
+    Acp,
 }
 
 #[derive(Subcommand, Clone, Debug)]
@@ -648,6 +650,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Hub { action } => {
             hub_client::handle_hub_cmd(action).await?;
+        }
+        Commands::Acp => {
+            crate::protocols::acp::run_acp_stdio_loop(db.clone(), provider.clone()).await?;
         }
     }
 
