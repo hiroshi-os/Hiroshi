@@ -436,6 +436,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let channels = Arc::new(channels);
 
+            // Spawn pluggable dynamic channel drivers
+            let dynamic_drivers = crate::gateway::factory::load_channel_drivers(&config);
+            for driver in dynamic_drivers {
+                let _ = driver.run(_event_tx.clone()).await;
+            }
+
             // Spawning Gateway Multiplexer router
             let db_clone = db.clone();
             let provider_clone = provider.clone();
