@@ -1,0 +1,20 @@
+---
+title: Microsoft Teams Integration
+description: Deploying outbound notifications to Teams via Power Automate Workflows.
+---
+
+Hiroshi supports Microsoft Teams integration using the updated Power Automate Workflows incoming HTTP gateway.
+
+### 🔑 1. Setup Instructions
+To configure Microsoft Teams outbound notifications:
+1. Inside Microsoft Teams, select **Apps > Workflows**.
+2. Search for the template **"Post to a channel when a webhook request is received"** and add it.
+3. Configure the trigger parameters and copy the generated Workflow Webhook URL.
+4. Paste the URL inside the `config.toml` structure:
+
+```toml
+[channels.teams]
+enabled = true
+workflow_url = "https://prod-12.westus.logic.azure.com:443/workflows/..."
+allowed_channels = ["general-updates"]
+```
