@@ -1,0 +1,22 @@
+---
+title: Scriptable Cron Automation
+description: Scheduling background tasks and system maintenance.
+---
+
+Hiroshi features a background automation scheduler that executes shell tasks or commands at specified clock intervals inside the configured workspace sandbox.
+
+### 🕒 1. Configuration Example
+To schedule background scripts and pipe terminal logs directly into active channels:
+
+```toml
+[[cron_jobs]]
+name = "workspace_backup"
+schedule = "0 0 * * * *"
+command = "git add .; git commit -m 'automatic backup'"
+target_channel = "telegram"
+```
+
+### 🔒 2. Sandboxing & Security
+Scheduled tasks run inside the directory defined by `sandbox_path` to prevent arbitrary filesystem escapes.
+* Standard command constraints apply.
+* Task stdout and stderr streams are fully buffered and output to system log loops.
