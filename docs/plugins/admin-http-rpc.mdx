@@ -1,0 +1,39 @@
+---
+title: Administrative HTTP RPC Plane
+description: Interfacing external client controllers and dashboards to Hiroshi OS.
+---
+
+Hiroshi features a local administrative HTTP RPC server providing operational endpoints for status queries, instant vision screenshots, and manual messaging bypasses.
+
+### 🔑 1. Setup Instructions
+To activate the administrative control plane, configure `rpc` parameters inside `config.toml`:
+
+```toml
+[rpc]
+enabled = true
+port = 3999
+secret_token = "your-cryptographic-token-here"
+```
+
+### 📡 2. Endpoint Matrix
+
+#### `GET /v1/status`
+Returns metadata regarding active dynamic channel drivers and worker loops:
+```bash
+curl -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:3999/v1/status
+```
+
+#### `POST /v1/vision/capture`
+Triggers an immediate coordinate-mapped screenshot capture:
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:3999/v1/vision/capture
+```
+
+#### `POST /v1/message/dispatch`
+Instantly pushes a custom notification down the target gateway thread:
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{"channel_id": "slack_webhook", "target_recipient": "general", "message": "Alert!"}' \
+     http://127.0.0.1:3999/v1/message/dispatch
+```
