@@ -44,4 +44,14 @@ mod tests {
         assert_eq!(drivers.len(), 1);
         assert_eq!(drivers[0].channel_id(), "mattermost");
     }
+
+    #[test]
+    fn test_load_channel_drivers_matrix_active() {
+        let mut config = AppConfig::default();
+        config.matrix.enabled = true;
+
+        let drivers = load_channel_drivers(&config);
+        assert_eq!(drivers.len(), 1);
+        assert_eq!(drivers[0].channel_id(), "matrix");
+    }
 }
