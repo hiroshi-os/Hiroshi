@@ -1,5 +1,5 @@
 use crate::db::{MemoryEngine, ChatMessage};
-use crate::provider::OllamaProvider;
+use crate::providers::ModelProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -34,7 +34,7 @@ fn rrf_score(rank: usize) -> f64 {
 /// 4. Deduplicate by content, sort descending, truncate to `limit`.
 pub async fn hybrid_search(
     db: &Arc<MemoryEngine>,
-    provider: &Arc<OllamaProvider>,
+    provider: &Arc<dyn ModelProvider>,
     session_id: &str,
     query: &str,
     limit: usize,

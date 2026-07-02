@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use chrono::Local;
-use crate::provider::OllamaProvider;
+use crate::providers::ModelProvider;
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
@@ -125,7 +125,7 @@ impl MemoryEngine {
         Ok(id)
     }
 
-    pub async fn add_message_with_vector(&self, session_id: &str, role: &str, content: &str, provider: &OllamaProvider) -> Result<(), String> {
+    pub async fn add_message_with_vector(&self, session_id: &str, role: &str, content: &str, provider: &dyn ModelProvider) -> Result<(), String> {
         let id = self.add_message(session_id, role, content)?;
         
         if self.is_read_only() {
@@ -292,7 +292,7 @@ impl MemoryEngine {
         Ok(())
     }
 
-    pub async fn compact_memory(&self, session_id: &str, memory_dir: &Path, provider: &OllamaProvider) -> Result<(), String> {
+    pub async fn compact_memory(&self, session_id: &str, memory_dir: &Path, provider: &dyn ModelProvider) -> Result<(), String> {
         let history = self.get_context(session_id, 8000)?;
         if history.is_empty() {
             return Ok(());

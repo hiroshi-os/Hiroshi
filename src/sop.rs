@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::db::MemoryEngine;
-use crate::provider::OllamaProvider;
+use crate::providers::ModelProvider;
 use crate::sandbox::WorkspaceSandbox;
 use crate::sandbox_cmd::SafeCommandRunner;
 use crate::skills::SkillsRegistry;
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 pub struct SopEngine {
     config: Arc<AppConfig>,
     db: Arc<MemoryEngine>,
-    provider: Arc<OllamaProvider>,
+    provider: Arc<dyn ModelProvider>,
     session_router: Arc<SessionRouter>,
     skills_registry: Arc<SkillsRegistry>,
     mcp_registry: Arc<McpRegistry>,
@@ -28,7 +28,7 @@ impl SopEngine {
     pub fn new(
         config: Arc<AppConfig>,
         db: Arc<MemoryEngine>,
-        provider: Arc<OllamaProvider>,
+        provider: Arc<dyn ModelProvider>,
         session_router: Arc<SessionRouter>,
         skills_registry: Arc<SkillsRegistry>,
         mcp_registry: Arc<McpRegistry>,

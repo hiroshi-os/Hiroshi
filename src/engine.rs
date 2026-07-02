@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::db::MemoryEngine;
-use crate::provider::OllamaProvider;
+use crate::providers::ModelProvider;
 use crate::sandbox::WorkspaceSandbox;
 use crate::sandbox_cmd::SafeCommandRunner;
 use crate::skills::SkillsRegistry;
@@ -158,7 +158,7 @@ pub async fn run_agent_turn(
     session_id: &str,
     input: &str,
     db: Arc<MemoryEngine>,
-    provider: Arc<OllamaProvider>,
+    provider: Arc<dyn ModelProvider>,
     session_router: Arc<SessionRouter>,
     skills_registry: Arc<SkillsRegistry>,
     mcp_registry: Arc<McpRegistry>,
@@ -177,9 +177,12 @@ pub async fn run_agent_turn(
         *guard = router.active_agent.clone();
     }
 
+    // Run context compaction check
+    let _ = crate::compactor::run_context_compaction(session_id, &db, &provider, config).await;
+
     // Save User Message
     let start_embed = Instant::now();
-    let _ = db.add_message_with_vector(session_id, "user", input, &provider).await;
+    let _ = db.add_message_with_vector(session_id, "user", input, provider.as_ref()).await;
     tracing::info!("[{}] Message embedding took {:?}", session_id, start_embed.elapsed());
 
     // Hybrid 70/30 RAG retrieval (Vector 70% + FTS5 30% via RRF)
@@ -234,8 +237,9 @@ pub async fn run_agent_turn(
             rag_context
         );
 
-        // Get context (sliding window)
-        let history = db.get_context(session_id, context_chars_limit)?;
+        // Get context (sliding window) and apply history hygiene
+        let raw_history = db.get_context(session_id, context_chars_limit)?;
+        let history = crate::hygiene::sanitize_chat_history(raw_history);
         
         let active_name = &router.active_agent;
         print!("\nAssistant [{}] ({}) > ", active_name, session_id);
@@ -290,7 +294,7 @@ pub async fn run_agent_turn(
         last_response = full_response.clone();
 
         // Save Assistant Message
-        let _ = db.add_message_with_vector(session_id, "assistant", &full_response, &provider).await;
+        let _ = db.add_message_with_vector(session_id, "assistant", &full_response, provider.as_ref()).await;
 
         // Send intermediate response back to external channel if present
         if let Some(ref chan) = channel {
@@ -547,7 +551,7 @@ pub async fn run_agent_turn(
                                 Ok(output) => {
                                     tracing::info!("MCP tool execution '{}' took {:?}", name, start_tool.elapsed());
                                     let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
-                                    let _ = db.add_message_with_vector(session_id, "user", &result_msg, &provider).await;
+                                    let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
                                     println!(">> MCP Tool executed successfully.");
 
                                     // Extract and broadcast screenshot if any
@@ -583,7 +587,7 @@ pub async fn run_agent_turn(
                                 Ok(stdout) => {
                                     tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_tool.elapsed());
                                     let result_msg = format!("Skill '{}' execution output:\n{}", name, stdout);
-                                    let _ = db.add_message_with_vector(session_id, "user", &result_msg, &provider).await;
+                                    let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
                                     println!(">> Skill executed successfully.");
 
                                     // Extract and broadcast screenshot if any
@@ -621,7 +625,7 @@ pub async fn run_agent_turn(
                             Ok(output) => {
                                 tracing::info!("MCP tool execution '{}' took {:?}", name, start_mcp.elapsed());
                                 let result_msg = format!("MCP Tool '{}' execution output:\n{}", name, output);
-                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, &provider).await;
+                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
                                 println!(">> MCP Tool executed successfully.");
 
                                 // Extract and broadcast screenshot if any
@@ -658,7 +662,7 @@ pub async fn run_agent_turn(
                             Ok(stdout) => {
                                 tracing::info!("Subprocess tool execution '{}' took {:?}", name, start_cmd.elapsed());
                                 let result_msg = format!("Command '{}' execution output:\n{}", name, stdout);
-                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, &provider).await;
+                                let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
                                 println!(">> Command executed successfully.");
                             }
                             Err(e) => {

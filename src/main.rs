@@ -24,6 +24,9 @@ mod memory;
 mod service;
 mod doctor;
 mod migration;
+mod providers;
+mod hygiene;
+mod compactor;
 
 use clap::{Parser, Subcommand};
 
@@ -31,8 +34,8 @@ use config::init_hiroshi_dir;
 #[allow(unused_imports)]
 use channel::CommunicationChannel;
 use db::MemoryEngine;
-use provider::OllamaProvider;
 use sandbox::WorkspaceSandbox;
+use crate::providers::ModelProvider;
 use agents::SessionRouter;
 use cron::CronScheduler;
 use sandbox_cmd::SafeCommandRunner;
@@ -140,7 +143,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db = Arc::new(MemoryEngine::new(&db_path)?);
     let sandbox = Arc::new(WorkspaceSandbox::new(workspace_path.clone()));
-    let provider = Arc::new(OllamaProvider::new(&config));
+    let provider: Arc<dyn ModelProvider> = crate::providers::create_provider(
+        &config.engine.provider.clone().unwrap_or("ollama".to_string()),
+        &config
+    );
     
     // Initialize MCP Registry & Clients
     let mcp_registry = Arc::new(mcp::McpRegistry::new(&config.mcp_servers));

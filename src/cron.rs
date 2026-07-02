@@ -1,6 +1,6 @@
 use crate::config::CronTask;
 use crate::db::MemoryEngine;
-use crate::provider::OllamaProvider;
+use crate::providers::ModelProvider;
 use crate::sandbox::WorkspaceSandbox;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use chrono::{Local, Timelike, Datelike};
 pub struct CronScheduler {
     tasks: Vec<CronTask>,
     db: Arc<MemoryEngine>,
-    provider: Arc<OllamaProvider>,
+    provider: Arc<dyn ModelProvider>,
     sandbox: Arc<WorkspaceSandbox>,
     memory_dir: PathBuf,
     ws_tx: tokio::sync::broadcast::Sender<String>,
@@ -20,7 +20,7 @@ impl CronScheduler {
     pub fn new(
         tasks: Vec<CronTask>,
         db: Arc<MemoryEngine>,
-        provider: Arc<OllamaProvider>,
+        provider: Arc<dyn ModelProvider>,
         sandbox: Arc<WorkspaceSandbox>,
         memory_dir: PathBuf,
         ws_tx: tokio::sync::broadcast::Sender<String>,
@@ -142,7 +142,7 @@ fn match_field(field: &str, value: u32) -> bool {
 async fn execute_cron_task(
     task: CronTask,
     db: Arc<MemoryEngine>,
-    provider: Arc<OllamaProvider>,
+    provider: Arc<dyn ModelProvider>,
     sandbox: Arc<WorkspaceSandbox>,
     memory_dir: PathBuf,
     ws_tx: tokio::sync::broadcast::Sender<String>,
@@ -151,7 +151,7 @@ async fn execute_cron_task(
     db.export_daily_log("terminal", &memory_dir)?;
 
     // 2. Perform memory compaction
-    db.compact_memory("terminal", &memory_dir, &provider).await?;
+    db.compact_memory("terminal", &memory_dir, provider.as_ref()).await?;
 
     // Broadcast state_version event for hot-reload on dashboard
     let ws_msg = serde_json::json!({

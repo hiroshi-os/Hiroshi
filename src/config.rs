@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct EngineConfig {
     pub system_name: String,
     pub log_level: String,
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 fn default_embedding_model() -> String {
@@ -205,6 +207,7 @@ impl Default for AppConfig {
             engine: EngineConfig {
                 system_name: "Hiroshi".to_string(),
                 log_level: "info".to_string(),
+                provider: Some("ollama".to_string()),
             },
             ollama: OllamaConfig {
                 host: "http://127.0.0.1:11434".to_string(),
