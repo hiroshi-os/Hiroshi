@@ -17,6 +17,12 @@ pub fn load_channel_drivers(config: &AppConfig) -> Vec<Box<dyn ChannelDriver>> {
         )));
     }
 
+    if config.teams.enabled {
+        drivers.push(Box::new(crate::gateway::teams::TeamsDriver::new(
+            config.teams.clone()
+        )));
+    }
+
     // We can scale to other dynamic drivers (e.g. WhatsApp config matching) here cleanly
     drivers
 }

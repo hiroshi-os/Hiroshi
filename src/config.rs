@@ -202,6 +202,23 @@ impl Default for MatrixConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamsConfig {
+    pub enabled: bool,
+    pub workflow_url: String,
+    pub allowed_channels: Option<Vec<String>>,
+}
+
+impl Default for TeamsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            workflow_url: String::new(),
+            allowed_channels: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MattermostConfig {
     pub enabled: bool,
     pub server_url: String,
@@ -243,6 +260,8 @@ pub struct AppConfig {
     pub mattermost: MattermostConfig,
     #[serde(default)]
     pub matrix: MatrixConfig,
+    #[serde(default)]
+    pub teams: TeamsConfig,
 }
 
 impl Default for AppConfig {
@@ -275,6 +294,7 @@ impl Default for AppConfig {
             mcp_servers: std::collections::HashMap::new(),
             mattermost: MattermostConfig::default(),
             matrix: MatrixConfig::default(),
+            teams: TeamsConfig::default(),
         }
     }
 }
