@@ -49,6 +49,21 @@ pub struct SecurityConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SecurityPairingConfig {
+    pub dm_policy: String, // Set to "pairing" or "open"
+    pub trusted_senders: Vec<String>,
+}
+
+impl Default for SecurityPairingConfig {
+    fn default() -> Self {
+        Self {
+            dm_policy: "open".to_string(), // Set default to open
+            trusted_senders: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelegramConfig {
     pub token: String,
     pub allowed_user_ids: Vec<i64>,
@@ -405,6 +420,8 @@ pub struct AppConfig {
     pub scraper: ScraperConfig,
     #[serde(default)]
     pub audio: AudioSystemConfig,
+    #[serde(default)]
+    pub pairing: SecurityPairingConfig,
 }
 
 impl Default for AppConfig {
@@ -445,6 +462,7 @@ impl Default for AppConfig {
             media: MediaConfig::default(),
             scraper: ScraperConfig::default(),
             audio: AudioSystemConfig::default(),
+            pairing: SecurityPairingConfig::default(),
         }
     }
 }
