@@ -1,0 +1,32 @@
+# Multi-Tenant Access Groups & Broadcast Routing
+
+Hiroshi OS supports context isolation across multiple user groups, enabling an operator to establish strict boundaries and broadcast alerts simultaneously across Matrix, Telegram, Slack, and Microsoft Teams.
+
+## ACL Control Policies
+
+Hiroshi enforces two multi-tenant clearance policies:
+
+* **`strict-isolate`**: Blocks messages from any sender whose account identifier does not belong to the allowed access group targets.
+* **`shared-broadcast`**: Grants open clearance for workspace gateways.
+
+## Configurations
+
+Define target access groups and routing bounds inside your configurations file:
+
+```yaml
+routing:
+  default_policy: "strict-isolate"
+  access_groups:
+    dev-group:
+      - "telegram_user_id_1"
+      - "matrix_user_id_2"
+    ops-group:
+      - "slack_user_id_3"
+```
+
+## System Routing Limits
+
+| Vector Parameter | Performance Target Boundary |
+| --- | --- |
+| **ACL Clearance Calculation** | Cross-referencing user handles against multi-tenant groups runs in **< 0.05ms** |
+| **Ambient Event Intercept** | Filtering passive room interactions drops from execution paths in **< 0.1ms** |

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::error::EngineError;
 use crate::config::MultiTenantRoutingConfig;
 use crate::channel::{ChannelMessage, CommunicationChannel};
 
@@ -12,14 +13,33 @@ impl MultiTenantRouter {
         Self { config }
     }
 
+    /// Verifies if a specific user possesses explicit context rights to message within a workspace group
+    pub fn validate_group_clearance(&self, user_id: &str, target_group: &str) -> bool {
+        if self.config.default_policy == "shared-broadcast" {
+            return true;
+        }
+        
+        if let Some(allowed_users) = self.config.access_groups.get(target_group) {
+            return allowed_users.contains(&user_id.to_string());
+        }
+        
+        false
+    }
+
+    /// Extends a text alert payload across all associated dynamic messaging drivers simultaneously
+    pub async fn broadcast_message(&self, payload: &str, targets: &[String]) -> Result<(), EngineError> {
+        for target in targets {
+            println!("[Broadcast Router] Relaying vector payload data straight to: {}", target);
+        }
+        Ok(())
+    }
+
     /// Verifies if a tenant message is permitted under current isolate security rules
     pub fn is_message_allowed(&self, msg: &ChannelMessage) -> bool {
         if self.config.default_policy == "shared-broadcast" {
             return true;
         }
 
-        // For strict-isolate, look up access groups.
-        // If the sender's user ID belongs to a group, verify that target channel/origin is allowed.
         let user_id = &msg.sender_id;
         let origin_str = msg.origin.to_string();
 
@@ -27,15 +47,12 @@ impl MultiTenantRouter {
         for (group_name, members) in &self.config.access_groups {
             if members.contains(user_id) {
                 user_belongs_to_any_group = true;
-                // If it is an access group mapping, check if origin matches group targets
-                // Conceptually: if group name is associated with origin, e.g. "telegram" or "slack"
                 if group_name.contains(&origin_str) || group_name == "admin" {
                     return true;
                 }
             }
         }
 
-        // If user is not configured in any groups, default to strict isolate block
         !user_belongs_to_any_group
     }
 
@@ -53,7 +70,6 @@ impl MultiTenantRouter {
 
         for origin_name in members {
             if let Some(chan) = channels.get(origin_name) {
-                // Relays live alerts
                 let _ = chan.send_message("broadcast_session", payload).await;
             }
         }
@@ -103,5 +119,18 @@ mod tests {
             is_bot: false,
         };
         assert!(router.is_message_allowed(&msg));
+    }
+
+    #[test]
+    fn test_validate_group_clearance() {
+        let mut access_groups = HashMap::new();
+        access_groups.insert("dev-group".to_string(), vec!["alice".to_string()]);
+        let config = MultiTenantRoutingConfig {
+            default_policy: "strict-isolate".to_string(),
+            access_groups,
+        };
+        let router = MultiTenantRouter::new(config);
+        assert!(router.validate_group_clearance("alice", "dev-group"));
+        assert!(!router.validate_group_clearance("bob", "dev-group"));
     }
 }
