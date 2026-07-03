@@ -253,6 +253,27 @@ impl Default for WikiConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MediaConfig {
+    pub enabled: bool,
+    pub max_file_size_bytes: usize,
+    pub allowed_mime_types: Vec<String>,
+}
+
+impl Default for MediaConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_file_size_bytes: 10 * 1024 * 1024, // 10MB default
+            allowed_mime_types: vec![
+                "image/png".to_string(),
+                "image/jpeg".to_string(),
+                "image/webp".to_string(),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CronJobConfig {
     pub name: String,
     pub schedule: String,
@@ -340,6 +361,8 @@ pub struct AppConfig {
     pub rpc: RpcConfig,
     #[serde(default)]
     pub wiki: WikiConfig,
+    #[serde(default)]
+    pub media: MediaConfig,
 }
 
 impl Default for AppConfig {
@@ -377,6 +400,7 @@ impl Default for AppConfig {
             cron_jobs: vec![],
             rpc: RpcConfig::default(),
             wiki: WikiConfig::default(),
+            media: MediaConfig::default(),
         }
     }
 }
