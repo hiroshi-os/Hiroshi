@@ -533,6 +533,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let channel_session_id = event.sender_id.clone();
                     let mut text = event.text.clone();
 
+                    if text.starts_with("/acp spawn --agent ") {
+                        let sub = &text["/acp spawn --agent ".len()..];
+                        let parts: Vec<&str> = sub.splitn(2, ' ').collect();
+                        if parts.is_empty() {
+                            if let Some(chan) = channel {
+                                let _ = chan.send_message(&channel_session_id, "Usage: /acp spawn --agent <agent_name> <prompt>").await;
+                            }
+                            continue;
+                        }
+                        let agent_name = parts[0];
+                        let prompt = if parts.len() > 1 { parts[1] } else { "" };
+                        
+                        if let Some(chan) = channel.clone() {
+                            let _ = chan.send_message(&channel_session_id, &format!("🚀 *[ACPX Headless Spawner]*: Initiating background child process for `{}`...", agent_name)).await;
+                        }
+
+                        let result_msg = match crate::protocols::acpx::spawn_headless_harness(
+                            agent_name,
+                            &config.security.sandbox_path,
+                            prompt,
+                            &config.acpx
+                        ).await {
+                            Ok(output) => {
+                                format!("✅ *[ACPX Stream Relay Completed]*\n```\n{}\n```", output)
+                            }
+                            Err(e) => {
+                                format!("❌ *[ACPX Headless Failure]*: {}", e)
+                            }
+                        };
+
+                        if let Some(chan) = channel {
+                            let _ = chan.send_message(&channel_session_id, &result_msg).await;
+                        }
+                        continue;
+                    }
+
                     if text.starts_with("/acp_bind") || text.starts_with("/cas_resume") {
                         let response = if text.starts_with("/acp_bind") {
                             let arg = text["/acp_bind".len()..].trim();
