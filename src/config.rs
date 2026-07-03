@@ -291,6 +291,27 @@ impl Default for ScraperConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AudioSystemConfig {
+    pub enabled: bool,
+    pub whisper_url: String,
+    pub speech_url: String,
+    pub voice_model: String,
+    pub output_voice_enabled: bool,
+}
+
+impl Default for AudioSystemConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            whisper_url: "https://api.openai.com/v1/audio/transcriptions".to_string(),
+            speech_url: "https://api.openai.com/v1/audio/speech".to_string(),
+            voice_model: "whisper-1".to_string(), // TTS defaults to "tts-1" depending on endpoint, let's keep it general
+            output_voice_enabled: false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CronJobConfig {
     pub name: String,
     pub schedule: String,
@@ -382,6 +403,8 @@ pub struct AppConfig {
     pub media: MediaConfig,
     #[serde(default)]
     pub scraper: ScraperConfig,
+    #[serde(default)]
+    pub audio: AudioSystemConfig,
 }
 
 impl Default for AppConfig {
@@ -421,6 +444,7 @@ impl Default for AppConfig {
             wiki: WikiConfig::default(),
             media: MediaConfig::default(),
             scraper: ScraperConfig::default(),
+            audio: AudioSystemConfig::default(),
         }
     }
 }
