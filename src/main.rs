@@ -3,6 +3,7 @@ mod db;
 mod provider;
 mod sandbox;
 mod agents;
+pub mod error;
 mod cron;
 #[cfg(feature = "channel-telegram")]
 mod telegram;

@@ -330,6 +330,7 @@ impl Default for AcpxHarnessConfig {
 pub struct AdvancedSearchConfig {
     pub searxng_url: Option<String>,
     pub fallback_to_ddg: bool,
+    pub max_pdf_size_bytes: usize,
 }
 
 impl Default for AdvancedSearchConfig {
@@ -337,6 +338,7 @@ impl Default for AdvancedSearchConfig {
         Self {
             searxng_url: None,
             fallback_to_ddg: true,
+            max_pdf_size_bytes: 15 * 1024 * 1024,
         }
     }
 }

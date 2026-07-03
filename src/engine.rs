@@ -21,10 +21,101 @@ enum ToolCall {
     WikiStore { path: String },
     WikiSearch { query: String },
     WebScrape { url: String },
+    ApplyPatch { path: String, patch: String },
+    Search { engine: String, query: String },
+    PdfExtract { path: String },
 }
 
 fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
+
+    // Parse <search engine="searxng">query</search>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<search") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find(">") {
+            let header = &content[abs_start..abs_start + end + 1];
+            let engine = if let Some(e_start) = header.find("engine=\"") {
+                let e_sub = &header[e_start + 8..];
+                if let Some(e_end) = e_sub.find("\"") {
+                    e_sub[..e_end].to_string()
+                } else {
+                    "searxng".to_string()
+                }
+            } else {
+                "searxng".to_string()
+            };
+
+            if let Some(close_end) = content[abs_start..].find("</search>") {
+                let query = content[abs_start + end + 1..abs_start + close_end].trim().to_string();
+                if !query.is_empty() {
+                    calls.push(ToolCall::Search { engine, query });
+                }
+                last_idx = abs_start + close_end + 9;
+            } else {
+                last_idx = abs_start + end + 1;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Parse <pdf_extract path="path"/>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<pdf_extract") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find(">") {
+            let header = &content[abs_start..abs_start + end + 1];
+            let path = if let Some(p_start) = header.find("path=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            if !path.is_empty() {
+                calls.push(ToolCall::PdfExtract { path });
+            }
+            last_idx = abs_start + end + 1;
+        } else {
+            break;
+        }
+    }
+
+    // Parse <apply_patch path="path">patch</apply_patch>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<apply_patch") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find(">") {
+            let header = &content[abs_start..abs_start + end + 1];
+            let path = if let Some(p_start) = header.find("path=\"") {
+                let p_sub = &header[p_start + 6..];
+                if let Some(p_end) = p_sub.find("\"") {
+                    p_sub[..p_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            if let Some(close_end) = content[abs_start..].find("</apply_patch>") {
+                let patch = content[abs_start + end + 1..abs_start + close_end].trim().to_string();
+                if !path.is_empty() && !patch.is_empty() {
+                    calls.push(ToolCall::ApplyPatch { path, patch });
+                }
+                last_idx = abs_start + close_end + 14;
+            } else {
+                last_idx = abs_start + end + 1;
+            }
+        } else {
+            break;
+        }
+    }
 
     // Parse <web_scrape url="url"/> or <web_scrape>url</web_scrape>
     let mut last_idx = 0;
@@ -501,6 +592,105 @@ pub async fn run_agent_turn(
                         }
                         Err(e) => {
                             let err_msg = format!("Web scrape failed for '{}': {}", url, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::ApplyPatch { path, patch } => {
+                    println!("\n>> Running Tool: apply_patch({})", path);
+                    if db.is_read_only() {
+                        let err_msg = "Permission Denied: Running in read-only mode to prevent workspace and database collisions.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
+                    if !active_agent.allowed_tools.contains(&"WriteFile".to_string()) {
+                        let err_msg = "Permission Denied: Active agent does not have permission to modify files.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
+                    match sandbox.read_file(&path) {
+                        Ok(original) => {
+                            match crate::tools::diff::apply_line_patch(&original, &patch) {
+                                Ok(patched) => {
+                                    match sandbox.write_file(&path, &patched) {
+                                        Ok(_) => {
+                                            let result_msg = format!("Successfully applied code patch to '{}'. Content updated.", path);
+                                            db.add_message(session_id, "user", &result_msg)?;
+                                            println!(">> Code patch applied successfully.");
+                                        }
+                                        Err(e) => {
+                                            let err_msg = format!("Failed to write patched file '{}': {}", path, e);
+                                            db.add_message(session_id, "user", &err_msg)?;
+                                            println!(">> Tool failed: {}", e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Failed to apply patch hunks to '{}': {}", path, e);
+                                    db.add_message(session_id, "user", &err_msg)?;
+                                    println!(">> Patch match failed: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Failed to read target file '{}' for patch application: {}", path, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::Search { engine, query } => {
+                    println!("\n>> Running Tool: search({}, {})", engine, query);
+                    let mut search_res = Err("Engine not matched".to_string());
+                    if engine == "searxng" {
+                        if let Some(ref base_url) = config.advanced_search.searxng_url {
+                            search_res = crate::tools::search::search_searxng(&query, base_url).await
+                                .map_err(|e| e.to_string());
+                        } else {
+                            search_res = Err("SearXNG URL is not configured.".to_string());
+                        }
+                    }
+
+                    if search_res.is_err() && config.advanced_search.fallback_to_ddg {
+                        println!(">> SearXNG failed or not configured. Triggering fallback to DuckDuckGo...");
+                        let ddg_provider = crate::tools::search::DuckDuckGoSearchProvider::new();
+                        search_res = crate::tools::search::SearchProvider::search(&ddg_provider, &query).await;
+                    }
+
+                    match search_res {
+                        Ok(res) => {
+                            let _ = db.add_message_with_vector(session_id, "user", &res, provider.as_ref()).await;
+                            println!(">> Search completed successfully.");
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Search failed for '{}': {}", query, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::PdfExtract { path } => {
+                    println!("\n>> Running Tool: pdf_extract({})", path);
+                    match sandbox.sanitize_path(&path) {
+                        Ok(resolved_path) => {
+                            let limit = config.advanced_search.max_pdf_size_bytes;
+                            match crate::tools::pdf::extract_pdf_to_markdown(&resolved_path, limit) {
+                                Ok(markdown) => {
+                                    let _ = db.add_message_with_vector(session_id, "user", &markdown, provider.as_ref()).await;
+                                    println!(">> PDF extraction completed successfully.");
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Failed to extract PDF '{}': {}", path, e);
+                                    db.add_message(session_id, "user", &err_msg)?;
+                                    println!(">> Tool failed: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Sandbox validation failed for path '{}': {}", path, e);
                             db.add_message(session_id, "user", &err_msg)?;
                             println!(">> Tool failed: {}", e);
                         }

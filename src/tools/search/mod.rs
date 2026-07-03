@@ -4,6 +4,12 @@ use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod searxng;
+pub mod ddg;
+
+pub use searxng::search_searxng;
+pub use ddg::DuckDuckGoSearchProvider;
+
 #[async_trait]
 pub trait SearchProvider: Send + Sync {
     async fn search(&self, query: &str) -> Result<String, String>;
