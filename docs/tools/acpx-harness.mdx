@@ -1,0 +1,38 @@
+# ACPX Headless Agent Harness
+
+The Headless Agent Harness (`acpx`) enables Hiroshi gateway events to orchestrate external interactive CLI agents (like Claude Code, Codex, or Aider) as background child processes.
+
+## Command Execution
+
+Gateway users spawn subprocess sessions by utilizing the `/acp spawn` syntax:
+
+```bash
+/acp spawn --agent <agent_bin> <prompt_text>
+```
+
+For example:
+
+```bash
+/acp spawn --agent claude "refactor src/main.rs to remove dead imports"
+```
+
+## Protocol Execution & Auto-Approval
+
+1. **Subprocess Pipes:** The harness spawns the target agent binary with stdin, stdout, and stderr fully captured using async Tokio process streams.
+2. **Handshake Verification:** It writes initial standard `initialize`, `session/new`, and `session/prompt` JSON-RPC packets directly into the child process's stdin.
+3. **Auto-Approval Middleware:** When the sub-agent requests permission authorization (such as writing local files or executing bash scripts), the harness intercepts the `session/request_permission` notification and writes back an auto-approved JSON-RPC confirmation.
+4. **ANSI Sanitization:** It strips all ANSI color escape sequences from stdout before piping the stream outputs back to the chat transceiver.
+
+## Configurations
+
+Add structural constraints inside your configuration file:
+
+```yaml
+acpx:
+  auto_approve_reads: true
+  allowed_harness_agents:
+    - "claude"
+    - "aider"
+    - "codex"
+  execution_timeout_seconds: 300
+```
