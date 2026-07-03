@@ -274,6 +274,23 @@ impl Default for MediaConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScraperConfig {
+    pub enabled: bool,
+    pub firecrawl_api_key: Option<String>,
+    pub exa_api_key: Option<String>,
+}
+
+impl Default for ScraperConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true, // Default to true so fallback works out of the box
+            firecrawl_api_key: None,
+            exa_api_key: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CronJobConfig {
     pub name: String,
     pub schedule: String,
@@ -363,6 +380,8 @@ pub struct AppConfig {
     pub wiki: WikiConfig,
     #[serde(default)]
     pub media: MediaConfig,
+    #[serde(default)]
+    pub scraper: ScraperConfig,
 }
 
 impl Default for AppConfig {
@@ -401,6 +420,7 @@ impl Default for AppConfig {
             rpc: RpcConfig::default(),
             wiki: WikiConfig::default(),
             media: MediaConfig::default(),
+            scraper: ScraperConfig::default(),
         }
     }
 }
