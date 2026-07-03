@@ -372,7 +372,18 @@ pub async fn run_agent_turn(
 
         // Send intermediate response back to external channel if present
         if let Some(ref chan) = channel {
-            let formatted_response = format!("🤖 *[{}]*:\n{}", router.active_agent, full_response);
+            let mut formatted_response = format!("🤖 *[{}]*:\n{}", router.active_agent, full_response);
+            if config.audio.enabled && config.audio.output_voice_enabled {
+                match crate::gateway::audio::generate_voice_response(&full_response, &config.audio, &config.security.sandbox_path).await {
+                    Ok(Some(audio_bytes)) => {
+                        formatted_response.push_str(&format!("\n\n🔊 *[Voice Response Attached ({} bytes)]*", audio_bytes.len()));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        tracing::error!("TTS speech synthesis failed: {}", e);
+                    }
+                }
+            }
             if let Err(e) = chan.send_message(channel_session_id, &formatted_response).await {
                 tracing::error!("Failed to send message to channel {}: {}", session_id, e);
             }

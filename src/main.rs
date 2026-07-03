@@ -503,6 +503,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let ws_tx = ws_tx_clone.clone();
                     let active_agent_name = active_agent_name_clone.clone();
 
+                    let mut event = event;
+                    if let Err(e) = crate::gateway::audio::process_inbound_audio(
+                        &mut event,
+                        &config.audio,
+                        &config.security.sandbox_path,
+                    ).await {
+                        tracing::error!("Failed to process inbound audio: {}", e);
+                    }
+
                     let origin_str = event.origin.to_string();
                     let channel = channels_clone.get(&origin_str).cloned();
                     let channel_session_id = event.sender_id.clone();
@@ -520,8 +529,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         continue;
                     }
-
-                    let mut event = event;
                     if let Err(e) = crate::gateway::media::process_inbound_message_media(
                         &mut event,
                         &config.media,
