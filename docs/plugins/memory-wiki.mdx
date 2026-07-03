@@ -1,0 +1,34 @@
+---
+title: Memory Wiki & Vector RAG Store
+description: Local persistent knowledge bases for long-term agent memory search.
+---
+
+Hiroshi features a file-backed Memory Wiki system that chunks local markdown manuals, generates vector embeddings, and performs fast mathematical cosine similarity lookups.
+
+### ⚙️ 1. Configurations Setup
+To enable Memory Wiki search, update settings inside `config.toml`:
+
+```toml
+[wiki]
+enabled = true
+wiki_dir = "~/.hiroshi/workspace/wiki"
+similarity_threshold = 0.75
+```
+
+### 🛠️ 2. Execution Primitives
+
+#### `<wiki_store>`
+Index or re-index the markdown knowledge base:
+```xml
+<wiki_store>/path/to/custom/wiki</wiki_store>
+```
+* Slices markdown blocks at paragraph boundaries (`\n\n`).
+* Caches generated vector embeddings in-memory.
+
+#### `<wiki_search>`
+Search semantic vector databases using cosine dot-product similarity:
+```xml
+<wiki_search>how to deploy on digitalocean</wiki_search>
+```
+* Generates query embedding vectors.
+* Performs dot-product calculation matching chunks with scores exceeding `similarity_threshold`.
