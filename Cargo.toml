@@ -33,6 +33,7 @@ flate2 = "1.0"
 cron = "0.12"
 tower = { version = "0.5", features = ["util"] }
 base64 = "0.22"
+regex = "1.10"
 
 [features]
 default = ["gateway-ui", "channel-telegram", "channel-discord", "channel-slack"]

@@ -20,10 +20,54 @@ enum ToolCall {
     CreateSkill { name: String, description: String, schema: String, code: String },
     WikiStore { path: String },
     WikiSearch { query: String },
+    WebScrape { url: String },
 }
 
 fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
+
+    // Parse <web_scrape url="url"/> or <web_scrape>url</web_scrape>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<web_scrape") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find(">") {
+            let header = &content[abs_start..abs_start + end + 1];
+            let url = if let Some(u_start) = header.find("url=\"") {
+                let u_sub = &header[u_start + 5..];
+                if let Some(u_end) = u_sub.find("\"") {
+                    u_sub[..u_end].to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let final_url = if url.is_empty() {
+                if let Some(close_end) = content[abs_start..].find("</web_scrape>") {
+                    let content_start = abs_start + end + 1;
+                    let content_end = abs_start + close_end;
+                    content[content_start..content_end].trim().to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                url
+            };
+
+            if !final_url.is_empty() {
+                calls.push(ToolCall::WebScrape { url: final_url });
+            }
+
+            if let Some(close_end) = content[abs_start..].find("</web_scrape>") {
+                last_idx = abs_start + close_end + 13;
+            } else {
+                last_idx = abs_start + end + 1;
+            }
+        } else {
+            break;
+        }
+    }
 
     // Parse <wiki_store>path</wiki_store>
     let mut last_idx = 0;
@@ -425,6 +469,27 @@ pub async fn run_agent_turn(
                         }
                         Err(e) => {
                             let err_msg = format!("Failed to index memory wiki directory '{:?}': {}", target_dir, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::WebScrape { url } => {
+                    println!("\n>> Running Tool: web_scrape({})", url);
+                    if !active_agent.allowed_tools.contains(&"WebScrape".to_string()) {
+                        let err_msg = "Permission Denied: Active agent does not have permission to use WebScrape.";
+                        println!(">> {}", err_msg);
+                        db.add_message(session_id, "user", err_msg)?;
+                        continue;
+                    }
+                    match crate::tools::scraper::scrape_url(&url, &config.scraper).await {
+                        Ok(markdown) => {
+                            let result_msg = format!("Scraped content of '{}':\n{}", url, markdown);
+                            let _ = db.add_message_with_vector(session_id, "user", &result_msg, provider.as_ref()).await;
+                            println!(">> Web scrape completed successfully.");
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Web scrape failed for '{}': {}", url, e);
                             db.add_message(session_id, "user", &err_msg)?;
                             println!(">> Tool failed: {}", e);
                         }
