@@ -34,7 +34,8 @@ pub async fn run_context_compaction(
     if let Ok(mut stream) = provider.chat_stream(system_prompt, vec![crate::db::ChatMessage {
         role: "user".to_string(),
         content: prompt.to_string(),
-    }]).await {
+        images: None,
+    }], None).await {
         use futures_util::StreamExt;
         let mut summary = String::new();
         while let Some(chunk_res) = stream.next().await {

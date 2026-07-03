@@ -339,6 +339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(e) = crate::engine::run_agent_turn(
                     "terminal",
                     input,
+                    None,
                     db.clone(),
                     provider.clone(),
                     session_router.clone(),
@@ -520,6 +521,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
 
+                    let mut event = event;
+                    if let Err(e) = crate::gateway::media::process_inbound_message_media(
+                        &mut event,
+                        &config.media,
+                        &config.security.sandbox_path,
+                    ).await {
+                        tracing::error!("Failed to process message media: {}", e);
+                    }
+
+                    let mut images = None;
+                    if let Some(ref media_list) = event.media {
+                        let mut base64_images = Vec::new();
+                        for asset in media_list {
+                            if asset.mime_type.starts_with("image/") {
+                                let full_path = std::path::Path::new(&config.security.sandbox_path)
+                                    .join(&asset.storage_pointer);
+                                if let Ok(b64) = crate::gateway::media::encode_image_to_base64(full_path) {
+                                    base64_images.push(b64);
+                                }
+                            }
+                        }
+                        if !base64_images.is_empty() {
+                            images = Some(base64_images);
+                        }
+                    }
+
                     if let Some(ref media_list) = event.media {
                         let stt_engine = crate::gateway::voice::AudioTranscriptionEngine::new(
                             &std::env::var("OPENAI_API_KEY").unwrap_or_default()
@@ -539,6 +566,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Err(e) = crate::engine::run_agent_turn(
                             &session_id,
                             &text,
+                            images,
                             db,
                             provider,
                             session_router,
@@ -645,6 +673,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = crate::engine::run_agent_turn(
                             "terminal",
                             &msg,
+                            None,
                             db_clone.clone(),
                             provider_clone.clone(),
                             session_router_clone.clone(),

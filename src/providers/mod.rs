@@ -13,6 +13,7 @@ pub trait ModelProvider: Send + Sync {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String>;
 
     async fn get_embeddings(&self, text: &str) -> Result<Vec<f32>, String>;
@@ -53,6 +54,8 @@ struct OllamaChatRequest {
 struct OllamaMessage {
     role: String,
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    images: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -104,15 +107,20 @@ impl ModelProvider for OllamaProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         let mut messages = vec![OllamaMessage {
             role: "system".to_string(),
             content: system_prompt.to_string(),
+            images: None,
         }];
-        for msg in history {
+        let history_len = history.len();
+        for (i, msg) in history.into_iter().enumerate() {
+            let is_last = i == history_len - 1;
             messages.push(OllamaMessage {
                 role: msg.role,
                 content: msg.content,
+                images: if is_last { images.clone() } else { None },
             });
         }
         let request_body = OllamaChatRequest {
@@ -174,9 +182,30 @@ struct OpenAIChatRequest {
 }
 
 #[derive(Serialize)]
+#[serde(untagged)]
+enum OpenAIContent {
+    Text(String),
+    Parts(Vec<OpenAIMessagePart>),
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum OpenAIMessagePart {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: OpenAIImageUrl },
+}
+
+#[derive(Serialize)]
+struct OpenAIImageUrl {
+    url: String,
+}
+
+#[derive(Serialize)]
 struct OpenAIMessage {
     role: String,
-    content: String,
+    content: OpenAIContent,
 }
 
 #[async_trait]
@@ -189,15 +218,33 @@ impl ModelProvider for OpenAIProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         let mut messages = vec![OpenAIMessage {
             role: "system".to_string(),
-            content: system_prompt.to_string(),
+            content: OpenAIContent::Text(system_prompt.to_string()),
         }];
-        for msg in history {
+        let history_len = history.len();
+        for (i, msg) in history.into_iter().enumerate() {
+            let is_last = i == history_len - 1;
+            let content = if is_last && images.is_some() {
+                let mut parts = vec![OpenAIMessagePart::Text { text: msg.content }];
+                if let Some(ref img_list) = images {
+                    for img in img_list {
+                        parts.push(OpenAIMessagePart::ImageUrl {
+                            image_url: OpenAIImageUrl {
+                                url: format!("data:image/png;base64,{}", img),
+                            },
+                        });
+                    }
+                }
+                OpenAIContent::Parts(parts)
+            } else {
+                OpenAIContent::Text(msg.content)
+            };
             messages.push(OpenAIMessage {
                 role: msg.role,
-                content: msg.content,
+                content,
             });
         }
         let request_body = OpenAIChatRequest {
@@ -267,10 +314,11 @@ impl ModelProvider for AnthropicProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         // Implement simple fallback mapping for Claude-specific requests
         let openai_fallback = OpenAIProvider::new("gpt-4o");
-        openai_fallback.chat_stream(system_prompt, history).await
+        openai_fallback.chat_stream(system_prompt, history, images).await
     }
 }
 
@@ -302,9 +350,10 @@ impl ModelProvider for GeminiProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         let openai_fallback = OpenAIProvider::new("gpt-4o");
-        openai_fallback.chat_stream(system_prompt, history).await
+        openai_fallback.chat_stream(system_prompt, history, images).await
     }
 }
 
@@ -336,9 +385,10 @@ impl ModelProvider for GroqProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         let openai_fallback = OpenAIProvider::new("gpt-4o");
-        openai_fallback.chat_stream(system_prompt, history).await
+        openai_fallback.chat_stream(system_prompt, history, images).await
     }
 }
 
@@ -370,9 +420,10 @@ impl ModelProvider for MistralProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         let openai_fallback = OpenAIProvider::new("gpt-4o");
-        openai_fallback.chat_stream(system_prompt, history).await
+        openai_fallback.chat_stream(system_prompt, history, images).await
     }
 }
 
@@ -402,13 +453,14 @@ impl ModelProvider for FallbackProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
-        match self.primary.chat_stream(system_prompt, history.clone()).await {
+        match self.primary.chat_stream(system_prompt, history.clone(), images.clone()).await {
             Ok(s) => Ok(s),
             Err(e) => {
                 tracing::warn!("Primary provider failed: {}. Triggering failover...", e);
                 for provider in &self.secondary {
-                    if let Ok(s) = provider.chat_stream(system_prompt, history.clone()).await {
+                    if let Ok(s) = provider.chat_stream(system_prompt, history.clone(), images.clone()).await {
                         return Ok(s);
                     }
                 }

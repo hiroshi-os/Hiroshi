@@ -185,6 +185,7 @@ fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
 pub async fn run_agent_turn(
     session_id: &str,
     input: &str,
+    images: Option<Vec<String>>,
     db: Arc<MemoryEngine>,
     provider: Arc<dyn ModelProvider>,
     session_router: Arc<SessionRouter>,
@@ -277,7 +278,8 @@ pub async fn run_agent_turn(
         let mut first_token = true;
         let mut full_response = String::new();
 
-        match provider.chat_stream(&system_prompt, history).await {
+        let active_images = if loop_turn == 1 { images.clone() } else { None };
+        match provider.chat_stream(&system_prompt, history, active_images).await {
             Ok(mut stream) => {
                 while let Some(chunk_res) = stream.next().await {
                     match chunk_res {

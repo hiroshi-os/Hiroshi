@@ -122,6 +122,7 @@ pub fn scored_to_chat_messages(scored: Vec<ScoredMessage>) -> Vec<ChatMessage> {
     scored.into_iter().map(|s| ChatMessage {
         role: s.role,
         content: s.content,
+        images: None,
     }).collect()
 }
 

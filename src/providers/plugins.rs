@@ -98,6 +98,7 @@ impl ModelProvider for PluginProvider {
         &self,
         system_prompt: &str,
         history: Vec<ChatMessage>,
+        images: Option<Vec<String>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>, String> {
         // Dynamic plugins stream response chunks over the JSON-RPC pipe
         let mut guard = self.child.lock().map_err(|e| e.to_string())?;

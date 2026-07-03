@@ -26,6 +26,7 @@ pub fn sanitize_chat_history(history: Vec<ChatMessage>) -> Vec<ChatMessage> {
         cleaned.push(ChatMessage {
             role: msg.role,
             content,
+            images: None,
         });
     }
 
@@ -53,6 +54,7 @@ pub fn sanitize_chat_history(history: Vec<ChatMessage>) -> Vec<ChatMessage> {
                 final_history.push(ChatMessage {
                     role: "user".to_string(),
                     content: "Tool execution interrupted or aborted. Synthetic error frame appended.".to_string(),
+                    images: None,
                 });
             }
         }
@@ -68,8 +70,8 @@ mod tests {
     #[test]
     fn test_empty_block_recovery() {
         let history = vec![
-            ChatMessage { role: "user".to_string(), content: "hello".to_string() },
-            ChatMessage { role: "assistant".to_string(), content: "  ".to_string() }
+            ChatMessage { role: "user".to_string(), content: "hello".to_string(), images: None },
+            ChatMessage { role: "assistant".to_string(), content: "  ".to_string(), images: None }
         ];
         let cleaned = sanitize_chat_history(history);
         assert!(cleaned[1].content.contains("<system_error_recovery>"));
@@ -78,7 +80,7 @@ mod tests {
     #[test]
     fn test_thinking_transposition() {
         let history = vec![
-            ChatMessage { role: "assistant".to_string(), content: "<thinking>Searching...</thinking>Found.".to_string() }
+            ChatMessage { role: "assistant".to_string(), content: "<thinking>Searching...</thinking>Found.".to_string(), images: None }
         ];
         let cleaned = sanitize_chat_history(history);
         assert!(cleaned[0].content.contains("[thoughtSignature: Searching... ]Found."));
@@ -87,7 +89,7 @@ mod tests {
     #[test]
     fn test_orphaned_tool_correction() {
         let history = vec![
-            ChatMessage { role: "assistant".to_string(), content: "<call_tool name=\"git\">{}</call_tool>".to_string() }
+            ChatMessage { role: "assistant".to_string(), content: "<call_tool name=\"git\">{}</call_tool>".to_string(), images: None }
         ];
         let cleaned = sanitize_chat_history(history);
         assert_eq!(cleaned.len(), 2);

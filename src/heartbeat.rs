@@ -48,11 +48,13 @@ pub fn start_heartbeat_loop(
                     let chat_msg = ChatMessage {
                         role: "user".to_string(),
                         content: prompt,
+                        images: None,
                     };
 
                     match provider_clone.chat_stream(
                         "You are an autonomous proactive supervisor. If no actions are needed, return HEARTBEAT_OK.",
-                        vec![chat_msg]
+                        vec![chat_msg],
+                        None,
                     ).await {
                         Ok(mut stream) => {
                             let mut response_text = String::new();

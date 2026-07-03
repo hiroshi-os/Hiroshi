@@ -173,7 +173,8 @@ async fn execute_cron_task(
     let mut stream = provider.chat_stream(&system_prompt, vec![crate::db::ChatMessage {
         role: "user".to_string(),
         content: task.prompt.clone(),
-    }]).await?;
+        images: None,
+    }], None).await?;
 
     use futures_util::StreamExt;
     let mut response = String::new();

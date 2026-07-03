@@ -109,7 +109,8 @@ impl SopEngine {
                             if let Ok(ref mut stream) = provider_dream.chat_stream(system_prompt, vec![crate::db::ChatMessage {
                                 role: "user".to_string(),
                                 content: prompt,
-                            }]).await {
+                                images: None,
+                            }], None).await {
                                 use futures_util::StreamExt;
                                 let mut summary = String::new();
                                 while let Some(chunk_res) = stream.next().await {
@@ -176,6 +177,7 @@ impl SopEngine {
                             match crate::engine::run_agent_turn(
                                 &session_id,
                                 &routine.routine,
+                                None,
                                 db.clone(),
                                 provider.clone(),
                                 session_router.clone(),

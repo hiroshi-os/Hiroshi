@@ -9,6 +9,7 @@ use crate::providers::ModelProvider;
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    pub images: Option<Vec<String>>,
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -104,6 +105,7 @@ impl MemoryEngine {
             list.push(ChatMessage {
                 role: role.to_string(),
                 content: content.to_string(),
+                images: None,
             });
             return Ok(0);
         }
@@ -156,6 +158,7 @@ impl MemoryEngine {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
+                images: None,
             })
         }).map_err(|e| format!("Failed to execute history query: {}", e))?;
         
@@ -204,6 +207,7 @@ impl MemoryEngine {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
+                images: None,
             })
         }).map_err(|e| format!("Failed to execute RAG search: {}", e))?;
 
@@ -245,6 +249,7 @@ impl MemoryEngine {
                     scored_matches.push((score, ChatMessage {
                         role: r.role,
                         content: r.content,
+                        images: None,
                     }));
                 }
             }
@@ -313,7 +318,8 @@ impl MemoryEngine {
         let mut stream = provider.chat_stream(system_prompt, vec![ChatMessage {
             role: "user".to_string(),
             content: prompt,
-        }]).await?;
+            images: None,
+        }], None).await?;
 
         use futures_util::StreamExt;
         let mut summary = String::new();
