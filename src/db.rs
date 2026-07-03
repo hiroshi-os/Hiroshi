@@ -79,9 +79,20 @@ impl MemoryEngine {
                 message_id INTEGER PRIMARY KEY,
                 vector BLOB NOT NULL,
                 FOREIGN KEY(message_id) REFERENCES history(id) ON DELETE CASCADE
-              )",
+            )",
             [],
         ).map_err(|e| format!("Failed to create history_vectors table: {}", e))?;
+
+        // Senders allowlist table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS allowed_senders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel TEXT NOT NULL,
+                sender_id TEXT NOT NULL,
+                UNIQUE(channel, sender_id)
+            )",
+            [],
+        ).map_err(|e| format!("Failed to create allowed_senders table: {}", e))?;
         
         Ok(Self {
             conn: Mutex::new(conn),
@@ -92,6 +103,24 @@ impl MemoryEngine {
 
     pub fn set_read_only(&self, read_only: bool) {
         self.read_only.store(read_only, Ordering::SeqCst);
+    }
+
+    pub fn add_allowed_sender(&self, channel: &str, sender_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO allowed_senders (channel, sender_id) VALUES (?1, ?2)",
+            params![channel, sender_id],
+        ).map_err(|e| format!("Failed to insert allowed sender: {}", e))?;
+        Ok(())
+    }
+
+    pub fn is_sender_allowed(&self, channel: &str, sender_id: &str) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock poison error: {}", e))?;
+        let mut stmt = conn.prepare("SELECT 1 FROM allowed_senders WHERE channel = ?1 AND sender_id = ?2")
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+        let exists = stmt.exists(params![channel, sender_id])
+            .map_err(|e| format!("Failed to query allowed sender: {}", e))?;
+        Ok(exists)
     }
 
     pub fn is_read_only(&self) -> bool {

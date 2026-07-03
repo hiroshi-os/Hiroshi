@@ -11,3 +11,4 @@ pub mod teams;
 pub mod slack_webhook;
 pub mod rpc;
 pub mod audio;
+pub mod security;

@@ -86,6 +86,22 @@ enum Commands {
     },
     /// Start Agent Client Protocol stdio host interface
     Acp,
+    /// Manage sender pairing approval allowlist
+    Pairing {
+        #[command(subcommand)]
+        action: PairingAction,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug)]
+pub enum PairingAction {
+    /// Approve a sender on a channel and add them to the SQLite allowlist cache
+    Approve {
+        /// The channel identifier (e.g. telegram, matrix, mattermost)
+        channel: String,
+        /// The sender ID
+        sender_id: String,
+    },
 }
 
 #[derive(Subcommand, Clone, Debug)]
@@ -529,6 +545,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         continue;
                     }
+
+                    // Zero-Trust Senders Verification
+                    match crate::gateway::security::validate_sender_access(&event, &config.pairing, &db) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            tracing::warn!("Halted execution: sender verification required.");
+                            if let Some(chan) = channel {
+                                let _ = chan.send_message(&channel_session_id, "🔒 *[Security Gate: Approval Pending]*\nVerification pin has been generated on the server terminal. Please ask the administrator to approve this session.").await;
+                            }
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::error!("Pairing security check failed: {}", e);
+                            continue;
+                        }
+                    }
+
                     if let Err(e) = crate::gateway::media::process_inbound_message_media(
                         &mut event,
                         &config.media,
@@ -718,6 +751,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Acp => {
             crate::protocols::acp::run_acp_stdio_loop(db.clone(), provider.clone()).await?;
+        }
+        Commands::Pairing { action } => {
+            match action {
+                PairingAction::Approve { channel, sender_id } => {
+                    db.add_allowed_sender(&channel, &sender_id)?;
+                    println!("[Pairing Security] Successfully approved sender '{}' for channel '{}'.", sender_id, channel);
+                }
+            }
         }
     }
 
