@@ -406,6 +406,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Spawn Background Administrative HTTP RPC Server
             crate::gateway::rpc::start_admin_rpc_server(config.rpc.clone());
 
+            // Spawn Background Memory Wiki Indexer
+            if config.wiki.enabled {
+                let wiki_dir = crate::config::resolve_home_path(&config.wiki.wiki_dir);
+                let provider_clone = provider.clone();
+                tokio::spawn(async move {
+                    tracing::info!("Indexing memory wiki directory: {:?}", wiki_dir);
+                    if let Err(e) = crate::memory::wiki::index_wiki_directory(&wiki_dir, provider_clone.as_ref()) {
+                        tracing::error!("Memory wiki indexing failed: {}", e);
+                    } else {
+                        tracing::info!("Memory wiki indexing completed successfully.");
+                    }
+                });
+            }
+
             // Spawn Background Heartbeat Loop
             crate::heartbeat::start_heartbeat_loop(
                 db.clone(),

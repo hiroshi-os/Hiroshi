@@ -18,10 +18,38 @@ enum ToolCall {
     WriteFile { path: String, content: String },
     CallTool { name: String, json_args: String },
     CreateSkill { name: String, description: String, schema: String, code: String },
+    WikiStore { path: String },
+    WikiSearch { query: String },
 }
 
 fn parse_tool_calls(content: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
+
+    // Parse <wiki_store>path</wiki_store>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<wiki_store>") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</wiki_store>") {
+            let path = content[abs_start + 12..abs_start + end].trim().to_string();
+            calls.push(ToolCall::WikiStore { path });
+            last_idx = abs_start + end + 13;
+        } else {
+            break;
+        }
+    }
+
+    // Parse <wiki_search>query</wiki_search>
+    let mut last_idx = 0;
+    while let Some(start) = content[last_idx..].find("<wiki_search>") {
+        let abs_start = last_idx + start;
+        if let Some(end) = content[abs_start..].find("</wiki_search>") {
+            let query = content[abs_start + 13..abs_start + end].trim().to_string();
+            calls.push(ToolCall::WikiSearch { query });
+            last_idx = abs_start + end + 14;
+        } else {
+            break;
+        }
+    }
     
     // Parse <read_file>path</read_file>
     let mut last_idx = 0;
@@ -375,6 +403,58 @@ pub async fn run_agent_turn(
                         }
                         Err(e) => {
                             let err_msg = format!("Failed to write file '{}': {}", path, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::WikiStore { path } => {
+                    println!("\n>> Running Tool: wiki_store({})", path);
+                    let target_dir = if path.trim().is_empty() {
+                        crate::config::resolve_home_path(&config.wiki.wiki_dir)
+                    } else {
+                        crate::config::resolve_home_path(&path)
+                    };
+                    match crate::memory::wiki::index_wiki_directory(&target_dir, provider.as_ref()) {
+                        Ok(_) => {
+                            let result_msg = format!("Successfully indexed memory wiki directory: {:?}", target_dir);
+                            db.add_message(session_id, "user", &result_msg)?;
+                            println!(">> Wiki directory indexed successfully.");
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Failed to index memory wiki directory '{:?}': {}", target_dir, e);
+                            db.add_message(session_id, "user", &err_msg)?;
+                            println!(">> Tool failed: {}", e);
+                        }
+                    }
+                }
+                ToolCall::WikiSearch { query } => {
+                    println!("\n>> Running Tool: wiki_search({})", query);
+                    match provider.get_embeddings(&query).await {
+                        Ok(emb) => {
+                            let threshold = config.wiki.similarity_threshold;
+                            match crate::memory::wiki::search_wiki(&emb, threshold, 5) {
+                                Ok(matches) => {
+                                    let mut response_content = format!("Memory Wiki matches for '{}':\n", query);
+                                    if matches.is_empty() {
+                                        response_content.push_str("No highly-similar blocks found above similarity threshold.\n");
+                                    } else {
+                                        for (idx, (chunk, score)) in matches.iter().enumerate() {
+                                            response_content.push_str(&format!("\n--- Match {} (Similarity: {:.2}) ---\n{}\n", idx + 1, score, chunk));
+                                        }
+                                    }
+                                    db.add_message(session_id, "user", &response_content)?;
+                                    println!(">> Search completed successfully.");
+                                }
+                                Err(e) => {
+                                    let err_msg = format!("Failed to execute cosine search: {}", e);
+                                    db.add_message(session_id, "user", &err_msg)?;
+                                    println!(">> Tool failed: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let err_msg = format!("Failed to generate embedding for query '{}': {}", query, e);
                             db.add_message(session_id, "user", &err_msg)?;
                             println!(">> Tool failed: {}", e);
                         }
