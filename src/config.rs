@@ -306,6 +306,27 @@ impl Default for ScraperConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AcpxHarnessConfig {
+    pub auto_approve_reads: bool,
+    pub allowed_harness_agents: Vec<String>,
+    pub execution_timeout_seconds: u64,
+}
+
+impl Default for AcpxHarnessConfig {
+    fn default() -> Self {
+        Self {
+            auto_approve_reads: true,
+            allowed_harness_agents: vec![
+                "claude".to_string(),
+                "codex".to_string(),
+                "aider".to_string(),
+            ],
+            execution_timeout_seconds: 300,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AudioSystemConfig {
     pub enabled: bool,
     pub whisper_url: String,
@@ -422,6 +443,8 @@ pub struct AppConfig {
     pub audio: AudioSystemConfig,
     #[serde(default)]
     pub pairing: SecurityPairingConfig,
+    #[serde(default)]
+    pub acpx: AcpxHarnessConfig,
 }
 
 impl Default for AppConfig {
@@ -463,6 +486,7 @@ impl Default for AppConfig {
             scraper: ScraperConfig::default(),
             audio: AudioSystemConfig::default(),
             pairing: SecurityPairingConfig::default(),
+            acpx: AcpxHarnessConfig::default(),
         }
     }
 }
