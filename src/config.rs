@@ -327,6 +327,51 @@ impl Default for AcpxHarnessConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdvancedSearchConfig {
+    pub searxng_url: Option<String>,
+    pub fallback_to_ddg: bool,
+}
+
+impl Default for AdvancedSearchConfig {
+    fn default() -> Self {
+        Self {
+            searxng_url: None,
+            fallback_to_ddg: true,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MultiTenantRoutingConfig {
+    pub default_policy: String, // "strict-isolate" or "shared-broadcast"
+    pub access_groups: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl Default for MultiTenantRoutingConfig {
+    fn default() -> Self {
+        Self {
+            default_policy: "strict-isolate".to_string(),
+            access_groups: std::collections::HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CognitiveMemoryConfig {
+    pub lane_count_limit: usize,
+    pub commitment_tracking_enabled: bool,
+}
+
+impl Default for CognitiveMemoryConfig {
+    fn default() -> Self {
+        Self {
+            lane_count_limit: 4,
+            commitment_tracking_enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AudioSystemConfig {
     pub enabled: bool,
     pub whisper_url: String,
@@ -445,6 +490,12 @@ pub struct AppConfig {
     pub pairing: SecurityPairingConfig,
     #[serde(default)]
     pub acpx: AcpxHarnessConfig,
+    #[serde(default)]
+    pub advanced_search: AdvancedSearchConfig,
+    #[serde(default)]
+    pub routing: MultiTenantRoutingConfig,
+    #[serde(default)]
+    pub memory: CognitiveMemoryConfig,
 }
 
 impl Default for AppConfig {
@@ -487,6 +538,9 @@ impl Default for AppConfig {
             audio: AudioSystemConfig::default(),
             pairing: SecurityPairingConfig::default(),
             acpx: AcpxHarnessConfig::default(),
+            advanced_search: AdvancedSearchConfig::default(),
+            routing: MultiTenantRoutingConfig::default(),
+            memory: CognitiveMemoryConfig::default(),
         }
     }
 }
