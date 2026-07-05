@@ -1,6 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "Hiroshi",
+  "name": "Hiroshi OS",
+  "description": "The sovereign, local-first agent control plane engineered in native Rust. Complete sub-10ms processing speeds, pluggable multi-provider architectures, and background heartbeat automation loops.",
   "theme": "mint",
   "colors": {
     "primary": "#5B6AF0",
@@ -24,8 +25,30 @@
         "tab": "Get Started",
         "groups": [
           {
-            "group": "Get Started",
-            "pages": ["introduction", "installation", "quickstart"]
+            "group": "Overview",
+            "pages": [
+              "index",
+              "introduction",
+              "installation",
+              "quickstart",
+              "get-started/overview",
+              "get-started/features",
+              "get-started/quickstart"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Install & Services",
+        "groups": [
+          {
+            "group": "Deployments",
+            "pages": [
+              "install/installation",
+              "install/service-management",
+              "install/cloud-hosting",
+              "install/migration-guide"
+            ]
           }
         ]
       },
@@ -33,7 +56,7 @@
         "tab": "Configuration",
         "groups": [
           {
-            "group": "Configuration",
+            "group": "Directives",
             "pages": [
               "configuration/config-file",
               "configuration/agents",
@@ -43,16 +66,77 @@
         ]
       },
       {
-        "tab": "CLI",
+        "tab": "CLI Reference",
         "groups": [
           {
-            "group": "CLI Reference",
+            "group": "Command Line Interface",
             "pages": [
-              "cli/agent.mdx",
-              "cli/daemon.mdx",
-              "cli/service.mdx",
-              "cli/doctor.mdx",
-              "cli/migrate.mdx"
+              "cli/agent",
+              "cli/daemon",
+              "cli/service",
+              "cli/doctor",
+              "cli/migrate"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Channels",
+        "groups": [
+          {
+            "group": "Messaging Gateways",
+            "pages": [
+              "channels/overview",
+              "channels/telegram",
+              "channels/discord",
+              "channels/slack",
+              "channels/matrix",
+              "channels/mattermost",
+              "channels/microsoft-teams",
+              "channels/slack-webhook"
+            ]
+          },
+          {
+            "group": "Message Routing",
+            "pages": [
+              "channels/channel-routing",
+              "channels/enterprise-routing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Core Engine",
+        "groups": [
+          {
+            "group": "Gateway Architecture",
+            "pages": [
+              "agents/gateway-architecture",
+              "agents/system-prompt",
+              "agents/hygiene-pipeline",
+              "agents/session-isolation"
+            ]
+          },
+          {
+            "group": "Security & Isolations",
+            "pages": [
+              "gateway/security/dm-pairing-security",
+              "gateway/security/secure-file-operations",
+              "gateway/multi-tenant-routing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Memory",
+        "groups": [
+          {
+            "group": "RAG & Summarization",
+            "pages": [
+              "memory/overview",
+              "memory/hybrid-search",
+              "memory/predictive-compaction",
+              "memory/dreaming-sweeps"
             ]
           }
         ]
@@ -61,22 +145,15 @@
         "tab": "Skills",
         "groups": [
           {
-            "group": "Skills",
-            "pages": ["skills/overview", "skills/built-in", "skills/custom"]
-          }
-        ]
-      },
-      {
-        "tab": "Integrations",
-        "groups": [
-          {
-            "group": "Integrations",
+            "group": "Capabilities & Skills",
             "pages": [
-              "integrations/mcp",
-              "integrations/telegram",
-              "integrations/discord",
-              "integrations/slack",
-              "integrations/tailscale"
+              "capabilities/path-containment",
+              "capabilities/search-factory",
+              "capabilities/self-healing-skills",
+              "capabilities/tool-authorization",
+              "skills/overview",
+              "skills/built-in",
+              "skills/custom"
             ]
           }
         ]
@@ -85,17 +162,49 @@
         "tab": "Automation",
         "groups": [
           {
-            "group": "Automation",
-            "pages": ["automation/cron", "automation/sop"]
+            "group": "Schedulers",
+            "pages": [
+              "automation/cron",
+              "automation/cron-jobs",
+              "automation/sop",
+              "automation/heartbeat-daemon",
+              "automation/voice-ingestion"
+            ]
           }
         ]
       },
       {
-        "tab": "Dashboard",
+        "tab": "Tools & Plugins",
         "groups": [
           {
-            "group": "Dashboard & Memory",
-            "pages": ["dashboard/overview", "memory/overview"]
+            "group": "Standard Tooling",
+            "pages": [
+              "tools/web-browser",
+              "tools/web-fetch",
+              "tools/advanced-search",
+              "tools/acpx-harness",
+              "tools/acp-agents",
+              "tools/acp-agents-setup"
+            ]
+          },
+          {
+            "group": "Core Extensions",
+            "pages": [
+              "integrations/mcp",
+              "integrations/tailscale",
+              "hub/plugin-manifest",
+              "plugins/memory-wiki",
+              "plugins/admin-http-rpc",
+              "plugins/codex-computer-use"
+            ]
+          },
+          {
+            "group": "Nodes & Telemetry",
+            "pages": [
+              "nodes/audio-processing",
+              "nodes/media-understanding",
+              "dashboard/overview"
+            ]
           }
         ]
       }
