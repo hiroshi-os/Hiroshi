@@ -1,20 +1,25 @@
 ---
 title: Matrix Integration
-description: Connecting decentralized Matrix homeservers to the pluggable driver registry.
+description: Set up decentralized Matrix chat gateways for remote agent control.
 ---
 
-Hiroshi supports Matrix room integration utilizing standard client sync long-polling and POST endpoints.
+Hiroshi features a persistent HTTP long-polling synchronization loop targeting Matrix client sync endpoints. It decodes decentralized chat events to run secure local terminal utilities.
 
-### 🔑 1. Setup Instructions
-To connect your Matrix homeserver:
-1. Log in to your homeserver and generate a client Access Token.
-2. Configure the homeserver URL, user ID, and access token variables inside `config.toml`:
+## ⚙️ Configuration Setup
+
+Configure your Matrix homeserver access details in `~/.hiroshi/config.toml`:
 
 ```toml
-[channels.matrix]
+[matrix]
 enabled = true
 homeserver_url = "https://matrix.org"
-user_id = "@hiroshi_agent:matrix.org"
-access_token = "your-access-token"
-allowed_rooms = ["!room_id:matrix.org"]
+user_id = "@hiroshi-agent:matrix.org"
+access_token = "syt_your_access_token_here"
+allowed_rooms = ["!roomid:matrix.org"]
 ```
+
+## 🔐 Security Configuration
+
+Matrix channels are federated and public by default. Ensure that you restrict permissions:
+* Populate the `allowed_rooms` array to prevent the agent from joining unauthorized rooms.
+* Set security policies inside `pairing` controls to require cryptographic pairing before processing messages.

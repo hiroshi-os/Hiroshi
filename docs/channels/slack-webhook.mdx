@@ -1,20 +1,21 @@
 ---
-title: Slack Webhook Integration
-description: Dispatching outbound notification alerts via Slack Webhooks.
+title: Slack Webhooks Integration
+description: Send lightweight alerts and heartbeat summaries directly to Slack channels.
 ---
 
-Hiroshi supports one-way notification routing using standard Slack incoming webhooks.
+For status metrics, alerts, and heartbeat logs that do not require two-way interactive chat sessions, Hiroshi provides a lightweight outbound REST driver to Slack Webhooks.
 
-### 🔑 1. Setup Instructions
-To create a Slack webhook:
-1. Log in to the **Slack API console** and create a new App in your workspace.
-2. Under Features, select **Incoming Webhooks** and activate it.
-3. Click **Add New Webhook to Workspace**, select the target channel, and authorize.
-4. Copy the webhook URL and paste it inside the `config.toml` structure:
+## ⚙️ Configuration Setup
+
+Configure Slack Webhooks in your `~/.hiroshi/config.toml`:
 
 ```toml
-[channels.slack_webhook]
+[slack_webhook]
 enabled = true
-webhook_url = "https://hooks.slack.com/services/..."
-allowed_channels = ["heartbeat-logs"]
+webhook_url = "https://hooks.slack.com/services/YOUR_WORK_SPACE/YOUR_BOT_ID/YOUR_SECRET_TOKEN"
+allowed_channels = ["#alerts"]
 ```
+
+## 💓 Outbound Telemetry Dispatch
+
+This driver is optimized for high-speed, non-blocking telemetry alerts. The SOP Engine uses Slack Webhooks to forward workspace compilation summaries or health diagnostic status files.
