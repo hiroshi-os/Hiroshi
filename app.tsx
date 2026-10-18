@@ -64,6 +64,14 @@ import iconThumbsUp from './assets/icons/thumbs-up.svg' with { type: 'text' }
 import iconThumbsDown from './assets/icons/thumbs-down.svg' with { type: 'text' }
 import iconShare from './assets/icons/share.svg' with { type: 'text' }
 import iconMore from './assets/icons/ellipsis.svg' with { type: 'text' }
+import iconWindowMinimize from './assets/icons/window-minimize.svg' with { type: 'text' }
+import iconWindowMaximize from './assets/icons/window-maximize.svg' with { type: 'text' }
+import iconWindowClose from './assets/icons/window-close.svg' with { type: 'text' }
+import iconContrast from './assets/icons/contrast.svg' with { type: 'text' }
+import iconBlocks from './assets/icons/blocks.svg' with { type: 'text' }
+import iconCube from './assets/icons/cube.svg' with { type: 'text' }
+import iconActivity from './assets/icons/activity.svg' with { type: 'text' }
+import iconServer from './assets/icons/server.svg' with { type: 'text' }
 
 const C = {
   canvas: '#1A1A1A',
@@ -124,6 +132,14 @@ const ICONS = {
   thumbsDown: iconThumbsDown,
   share: iconShare,
   more: iconMore,
+  windowMinimize: iconWindowMinimize,
+  windowMaximize: iconWindowMaximize,
+  windowClose: iconWindowClose,
+  contrast: iconContrast,
+  blocks: iconBlocks,
+  cube: iconCube,
+  activity: iconActivity,
+  server: iconServer,
 } as const
 
 type IconName = keyof typeof ICONS
@@ -1082,6 +1098,490 @@ const Transcript = memo(function Transcript({
   )
 })
 
+function WindowControls() {
+  const { renderer } = useGpuix()
+  const isDarwin = typeof process !== 'undefined' && process.platform === 'darwin'
+  if (isDarwin) return null
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: '100%',
+        flexShrink: 0,
+        marginLeft: 6,
+      }}
+    >
+      <Button
+        testId="window-minimize"
+        aria-label="Minimize"
+        onClick={() => renderer?.minimizeWindow?.()}
+        style={{
+          width: 44,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          hover: { backgroundColor: C.overlay },
+          active: { backgroundColor: C.overlayStrong },
+        }}
+      >
+        <Icon name="windowMinimize" size={12} color={C.secondary} />
+      </Button>
+      <Button
+        testId="window-maximize"
+        aria-label="Maximize"
+        onClick={() => renderer?.zoomWindow?.()}
+        style={{
+          width: 44,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          hover: { backgroundColor: C.overlay },
+          active: { backgroundColor: C.overlayStrong },
+        }}
+      >
+        <Icon name="windowMaximize" size={12} color={C.secondary} />
+      </Button>
+      <Button
+        testId="window-close"
+        aria-label="Close"
+        onClick={() => {
+          if (typeof process !== 'undefined' && process.exit) process.exit(0)
+        }}
+        style={{
+          width: 44,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          hover: { backgroundColor: '#E81123' },
+          active: { backgroundColor: '#BF0F1D' },
+        }}
+      >
+        <Icon name="windowClose" size={12} color={C.secondary} />
+      </Button>
+    </div>
+  )
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  testId,
+}: {
+  checked: boolean
+  onChange: (val: boolean) => void
+  testId?: string
+}) {
+  return (
+    <Button
+      testId={testId}
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 38,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 1.5,
+        borderColor: checked ? '#FFFFFF' : '#FFFFFF40',
+        backgroundColor: '#00000000',
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingLeft: 3,
+        paddingRight: 3,
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 13,
+          height: 13,
+          borderRadius: 6.5,
+          backgroundColor: '#FFFFFF',
+          pointerEvents: 'none',
+        }}
+      />
+    </Button>
+  )
+}
+
+const SETTINGS_SECTIONS = [
+  { id: 'general', label: 'General', icon: 'settings' as const },
+  { id: 'appearance', label: 'Appearance', icon: 'contrast' as const },
+  { id: 'providers', label: 'Providers', icon: 'blocks' as const },
+  { id: 'skills', label: 'Skills', icon: 'cube' as const },
+  { id: 'usage', label: 'Usage', icon: 'activity' as const },
+  { id: 'daemon', label: 'Daemon', icon: 'server' as const },
+]
+
+function SettingsView({ onBack }: { onBack: () => void }) {
+  const [activeSection, setActiveSection] = useState('general')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [shareUsage, setShareUsage] = useState(true)
+  const [renderMath, setRenderMath] = useState(true)
+  const [autoUpdates, setAutoUpdates] = useState(true)
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        width: '100%',
+        height: '100%',
+        backgroundColor: C.canvas,
+        fontFamily: FONT_SANS,
+        color: C.text,
+        userSelect: 'none',
+      }}
+    >
+      {/* Left Sidebar */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: 252,
+          flexShrink: 0,
+          height: '100%',
+          backgroundColor: C.sidebar,
+          borderRightWidth: 1,
+          borderColor: C.sidebarBorder,
+          paddingTop: 12,
+          paddingLeft: 12,
+          paddingRight: 12,
+        }}
+      >
+        {/* Back Button */}
+        <Button
+          testId="settings-back"
+          onClick={onBack}
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            height: 32,
+            paddingLeft: 6,
+            paddingRight: 10,
+            borderRadius: 7,
+            cursor: 'pointer',
+            hover: { backgroundColor: C.overlay },
+            marginBottom: 8,
+          }}
+        >
+          <Icon name="arrowLeft" size={14} color={C.secondary} />
+          <text style={{ fontSize: 13.5, fontWeight: 500, color: C.text }}>Back</text>
+        </Button>
+
+        {/* Search Settings */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            height: 32,
+            paddingLeft: 10,
+            paddingRight: 10,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: C.border,
+            backgroundColor: '#1E1E1E',
+            marginBottom: 14,
+          }}
+        >
+          <Icon name="search" size={13} color={C.ghost} />
+          <input
+            value={searchQuery}
+            placeholder="Search Settings"
+            theme={CHAT_THEME}
+            style={{
+              fontSize: 13,
+              color: C.text,
+              backgroundColor: '#00000000',
+              borderWidth: 0,
+              flexGrow: 1,
+              minWidth: 0,
+              height: 28,
+            }}
+            onChange={(e) => setSearchQuery(e.value ?? '')}
+          />
+        </div>
+
+        {/* Nav Items */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {SETTINGS_SECTIONS.map((section) => {
+            const active = activeSection === section.id
+            return (
+              <Button
+                key={section.id}
+                testId={`settings-section-${section.id}`}
+                onClick={() => setActiveSection(section.id)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  height: 36,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  borderRadius: 7,
+                  cursor: 'pointer',
+                  backgroundColor: active ? '#262626' : '#00000000',
+                  hover: { backgroundColor: active ? '#262626' : C.item },
+                }}
+              >
+                <Icon
+                  name={section.icon}
+                  size={15}
+                  color={active ? C.text : C.secondary}
+                />
+                <text
+                  style={{
+                    fontSize: 13.5,
+                    fontWeight: active ? 500 : 400,
+                    color: active ? C.text : C.secondary,
+                  }}
+                >
+                  {section.label}
+                </text>
+              </Button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Right Content Area */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flexGrow: 1,
+          minWidth: 0,
+          height: '100%',
+        }}
+      >
+        {/* Custom Window Titlebar Header */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            height: 40,
+            flexShrink: 0,
+          }}
+        >
+          <WindowControls />
+        </div>
+
+        {/* Content Body */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flexGrow: 1,
+            minHeight: 0,
+            overflowY: 'scroll',
+            paddingTop: 12,
+            paddingLeft: 44,
+            paddingRight: 44,
+            paddingBottom: 40,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              width: '100%',
+              maxWidth: 680,
+              gap: 12,
+            }}
+          >
+            <text
+              style={{
+                fontSize: 22,
+                fontWeight: 600,
+                color: C.text,
+                marginBottom: 16,
+              }}
+            >
+              {SETTINGS_SECTIONS.find((s) => s.id === activeSection)?.label ?? 'General'}
+            </text>
+
+            {activeSection === 'general' && (
+              <>
+                {/* Local by default */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    backgroundColor: '#202020',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E6EAF20A',
+                    padding: 18,
+                  }}
+                >
+                  <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                    Local by default
+                  </text>
+                  <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
+                    Projects, conversations, and settings are stored on this computer
+                  </text>
+                </div>
+
+                {/* Share anonymous usage data */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                    backgroundColor: '#202020',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E6EAF20A',
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                      Share anonymous usage data
+                    </text>
+                    <text
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 18,
+                        color: C.secondary,
+                        maxWidth: 520,
+                      }}
+                    >
+                      Help improve Waku by sharing feature usage and reliability data. Prompts, responses, project names, file paths, and other personal data are never included
+                    </text>
+                  </div>
+                  <ToggleSwitch
+                    checked={shareUsage}
+                    onChange={setShareUsage}
+                    testId="toggle-share-usage"
+                  />
+                </div>
+
+                {/* Render math expressions */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                    backgroundColor: '#202020',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E6EAF20A',
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                      Render math expressions
+                    </text>
+                    <text
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 18,
+                        color: C.secondary,
+                        maxWidth: 520,
+                      }}
+                    >
+                      Show formatted math in Markdown. Turn off to show LaTeX source.
+                    </text>
+                  </div>
+                  <ToggleSwitch
+                    checked={renderMath}
+                    onChange={setRenderMath}
+                    testId="toggle-render-math"
+                  />
+                </div>
+
+                {/* Automatic updates */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                    backgroundColor: '#202020',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E6EAF20A',
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                      Automatic updates
+                    </text>
+                    <text
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 18,
+                        color: C.secondary,
+                        maxWidth: 520,
+                      }}
+                    >
+                      Check for new versions in the background and offer to install them
+                    </text>
+                  </div>
+                  <ToggleSwitch
+                    checked={autoUpdates}
+                    onChange={setAutoUpdates}
+                    testId="toggle-auto-updates"
+                  />
+                </div>
+              </>
+            )}
+
+            {activeSection !== 'general' && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  backgroundColor: '#202020',
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#E6EAF20A',
+                  padding: 18,
+                }}
+              >
+                <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                  {activeSection.charAt(0).toUpperCase() + activeSection.slice(1)} Settings
+                </text>
+                <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
+                  Configure your {activeSection} preferences, orchestration parameters, and fleet endpoints.
+                </text>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Header({
   collapsed,
   onExpand,
@@ -1155,12 +1655,13 @@ function Header({
           {turnCount.toLocaleString('en-US')} messages
         </text>
       )}
-        <div style={{ flexGrow: 1 }} />
-        <IconButton
+      <div style={{ flexGrow: 1 }} />
+      <IconButton
         icon="panelRight"
         testId="inspector-toggle"
         onClick={onToggleInspector}
       />
+      <WindowControls />
     </div>
   )
 }
@@ -2157,7 +2658,8 @@ export function ChatApp({
   const [nav, setNav] = useState({ stack: ['c1'], index: 0 })
   const [collapsed, setCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [overlay, setOverlay] = useState<'search' | 'settings' | null>(null)
+  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat')
+  const [overlay, setOverlay] = useState<'search' | null>(null)
   const searchInputRef = useRef<PublicInstance | null>(null)
   const [query, setQuery] = useState('')
   const [projectOnly, setProjectOnly] = useState(false)
@@ -2257,6 +2759,10 @@ export function ChatApp({
     renderer.scrollToItem(id, Math.max(0, rowCount - 1))
   }, [renderer, rowCount, tailTick])
 
+  if (currentView === 'settings') {
+    return <SettingsView onBack={() => setCurrentView('chat')} />
+  }
+
   return (
     <div
       style={{
@@ -2309,7 +2815,7 @@ export function ChatApp({
           canGoForward={canGoForward}
           onBack={goBack}
           onForward={goForward}
-          onSettings={() => setOverlay('settings')}
+          onSettings={() => setCurrentView('settings')}
           onFilter={() => setProjectOnly((value) => !value)}
           filterActive={projectOnly}
         />
@@ -2441,27 +2947,6 @@ export function ChatApp({
           ))}
         </div>
       </OverlayCard>
-      <OverlayCard title="Settings" open={overlay === 'settings'} onClose={() => setOverlay(null)}>
-        <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
-          This is the GPUIX chat demo. Threads, drafts, and replies stay in this window.
-        </text>
-        <Button
-          testId="cycle-overlay"
-          onClick={() => renderer?.cycleDebugFrameOverlay?.()}
-          style={{
-            height: 32,
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            paddingLeft: 10,
-            cursor: 'pointer',
-            backgroundColor: C.overlay,
-            hover: { backgroundColor: C.overlayStrong },
-          }}
-        >
-          <text style={{ fontSize: 13, color: C.text }}>Cycle frame overlay</text>
-        </Button>
-      </OverlayCard>
     </div>
   )
 }
@@ -2481,11 +2966,11 @@ if (isEntryPoint) {
     title: 'Hiroshi · Multi-Agent Orchestrator',
     width: 1180,
     height: 820,
-    titlebarTransparent: process.platform !== 'win32',
+    titlebarTransparent: true,
     windowBackground: 'blurred',
     trafficLightX: 16,
     trafficLightY: 17,
-    debugFrameOverlay: 'full',
+    debugFrameOverlay: 'hidden',
     // An agent launching this to check its own work must not take the keyboard
     // away from whoever is typing. Automation needs no focus.
     focus: process.env.GPUIX_BACKGROUND !== '1',

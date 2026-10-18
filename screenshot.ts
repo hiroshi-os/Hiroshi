@@ -15,19 +15,25 @@ const app = await launch({
 await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
 await app.clock.pause()
 
-// 1. Capture Main Chat View
+// 1. Capture Main Chat View (with custom titlebar controls in top-right)
 await app.screenshot({ path: path.join(outDir, 'chat-main.png') })
 console.log('[screenshot] wrote screenshots/chat-main.png')
 
-// 2. Capture with Inspector Open
-await app.getByTestId('inspector-toggle').click()
-await app.screenshot({ path: path.join(outDir, 'chat-inspector.png') })
-console.log('[screenshot] wrote screenshots/chat-inspector.png')
+// 2. Click Settings button to transition to Settings view
+await app.getByTestId('settings').click()
+await app.getByTestId('settings-back').waitFor({ timeoutMs: 10_000 })
 
-// 3. Switch conversation
-await app.getByTestId('thread-c2').click()
-await app.screenshot({ path: path.join(outDir, 'chat-thread2.png') })
-console.log('[screenshot] wrote screenshots/chat-thread2.png')
+// 3. Capture Settings View
+await app.screenshot({ path: path.join(outDir, 'settings-view.png') })
+console.log('[screenshot] wrote screenshots/settings-view.png')
+
+// 4. Click Back to transition back to Chat
+await app.getByTestId('settings-back').click()
+await app.getByTestId('composer').waitFor({ timeoutMs: 10_000 })
+
+// 5. Capture returned Chat view
+await app.screenshot({ path: path.join(outDir, 'chat-returned.png') })
+console.log('[screenshot] wrote screenshots/chat-returned.png')
 
 await app.close()
-console.log('[screenshot] all views captured successfully!')
+console.log('[screenshot] all views and transitions captured successfully!')
