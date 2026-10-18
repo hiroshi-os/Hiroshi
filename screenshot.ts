@@ -15,24 +15,19 @@ const app = await launch({
 await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
 await app.clock.pause()
 
-// 1. Capture Timeline View
-await app.screenshot({ path: path.join(outDir, 'timeline.png') })
-console.log('[screenshot] wrote screenshots/timeline.png')
+// 1. Capture Main Chat View
+await app.screenshot({ path: path.join(outDir, 'chat-main.png') })
+console.log('[screenshot] wrote screenshots/chat-main.png')
 
-// 2. Capture Topology View
-await app.getByTestId('tab-topology').click()
-await app.screenshot({ path: path.join(outDir, 'topology.png') })
-console.log('[screenshot] wrote screenshots/topology.png')
+// 2. Capture with Inspector Open
+await app.getByTestId('inspector-toggle').click()
+await app.screenshot({ path: path.join(outDir, 'chat-inspector.png') })
+console.log('[screenshot] wrote screenshots/chat-inspector.png')
 
-// 3. Capture Fleet & Agents View
-await app.getByTestId('tab-fleet').click()
-await app.screenshot({ path: path.join(outDir, 'fleet.png') })
-console.log('[screenshot] wrote screenshots/fleet.png')
-
-// 4. Capture Artifacts View
-await app.getByTestId('tab-artifacts').click()
-await app.screenshot({ path: path.join(outDir, 'artifacts.png') })
-console.log('[screenshot] wrote screenshots/artifacts.png')
+// 3. Switch conversation
+await app.getByTestId('thread-c2').click()
+await app.screenshot({ path: path.join(outDir, 'chat-thread2.png') })
+console.log('[screenshot] wrote screenshots/chat-thread2.png')
 
 await app.close()
 console.log('[screenshot] all views captured successfully!')
