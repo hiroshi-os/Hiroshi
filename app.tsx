@@ -72,6 +72,7 @@ import iconBlocks from './assets/icons/blocks.svg' with { type: 'text' }
 import iconCube from './assets/icons/cube.svg' with { type: 'text' }
 import iconActivity from './assets/icons/activity.svg' with { type: 'text' }
 import iconServer from './assets/icons/server.svg' with { type: 'text' }
+import iconTrash from './assets/icons/trash.svg' with { type: 'text' }
 
 const C = {
   canvas: '#1A1A1A',
@@ -140,6 +141,7 @@ const ICONS = {
   cube: iconCube,
   activity: iconActivity,
   server: iconServer,
+  trash: iconTrash,
 } as const
 
 type IconName = keyof typeof ICONS
@@ -1224,12 +1226,75 @@ const SETTINGS_SECTIONS = [
   { id: 'daemon', label: 'Daemon', icon: 'server' as const },
 ]
 
+function SettingsDropdown({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (val: string) => void
+}) {
+  const currentLabel = options.find((o) => o.value === value)?.label ?? value
+  return (
+    <Button
+      onClick={() => {
+        const nextIdx = (options.findIndex((o) => o.value === value) + 1) % options.length
+        onChange(options[nextIdx].value)
+      }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        height: 28,
+        paddingLeft: 10,
+        paddingRight: 8,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: C.border,
+        backgroundColor: '#262626',
+        cursor: 'pointer',
+        hover: { backgroundColor: C.overlayStrong },
+      }}
+    >
+      <text style={{ fontSize: 13, color: C.text }}>{currentLabel}</text>
+      <Icon name="chevronDown" size={10} color={C.tertiary} />
+    </Button>
+  )
+}
+
 function SettingsView({ onBack }: { onBack: () => void }) {
   const [activeSection, setActiveSection] = useState('general')
   const [searchQuery, setSearchQuery] = useState('')
+
+  // General state
   const [shareUsage, setShareUsage] = useState(true)
   const [renderMath, setRenderMath] = useState(true)
   const [autoUpdates, setAutoUpdates] = useState(true)
+
+  // Appearance state
+  const [themeValue, setThemeValue] = useState('system')
+  const [langValue, setLangValue] = useState('system')
+  const [uiFontSize, setUiFontSize] = useState('14px')
+  const [codeFontSize, setCodeFontSize] = useState('13px')
+
+  // Providers state
+  const [cursorEnabled, setCursorEnabled] = useState(true)
+  const [openCodeEnabled, setOpenCodeEnabled] = useState(true)
+  const [grokEnabled, setGrokEnabled] = useState(true)
+
+  // Skills state
+  const [selectedSkill, setSelectedSkill] = useState('find-skills')
+  const [findSkillsEnabled, setFindSkillsEnabled] = useState(true)
+
+  // Usage state
+  const [usagePeriod, setUsagePeriod] = useState<'daily' | 'monthly' | 'projects'>('daily')
+  const [usageCostType, setUsageCostType] = useState<'cost' | 'tokens'>('cost')
+  const [usageBreakdownTab, setUsageBreakdownTab] = useState<'model' | 'day'>('model')
+
+  // Daemon state
+  const [daemonExposed, setDaemonExposed] = useState(false)
 
   return (
     <div
@@ -1377,8 +1442,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            height: 40,
+            height: 38,
             flexShrink: 0,
+            paddingRight: 4,
           }}
         >
           <WindowControls />
@@ -1392,190 +1458,1161 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             flexGrow: 1,
             minHeight: 0,
             overflowY: 'scroll',
-            paddingTop: 12,
-            paddingLeft: 44,
-            paddingRight: 44,
+            paddingTop: 8,
+            paddingLeft: activeSection === 'skills' ? 0 : 44,
+            paddingRight: activeSection === 'skills' ? 0 : 44,
             paddingBottom: 40,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              width: '100%',
-              maxWidth: 680,
-              gap: 12,
-            }}
-          >
-            <text
+          {activeSection !== 'skills' && (
+            <div
               style={{
-                fontSize: 22,
-                fontWeight: 600,
-                color: C.text,
-                marginBottom: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                width: '100%',
+                maxWidth: 720,
+                gap: 14,
               }}
             >
-              {SETTINGS_SECTIONS.find((s) => s.id === activeSection)?.label ?? 'General'}
-            </text>
-
-            {activeSection === 'general' && (
-              <>
-                {/* Local by default */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    backgroundColor: '#202020',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E6EAF20A',
-                    padding: 18,
-                  }}
-                >
-                  <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                    Local by default
+              {/* SECTION: GENERAL */}
+              {activeSection === 'general' && (
+                <>
+                  <text
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: C.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    General
                   </text>
-                  <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
-                    Projects, conversations, and settings are stored on this computer
+
+                  {/* Local by default */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                    }}
+                  >
+                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                      Local by default
+                    </text>
+                    <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
+                      Projects, conversations, and settings are stored on this computer
+                    </text>
+                  </div>
+
+                  {/* Share anonymous usage data */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                      <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                        Share anonymous usage data
+                      </text>
+                      <text
+                        style={{
+                          fontSize: 13,
+                          lineHeight: 18,
+                          color: C.secondary,
+                          maxWidth: 520,
+                        }}
+                      >
+                        Help improve Hiroshi by sharing feature usage and reliability data. Prompts, responses, project names, file paths, and other personal data are never included
+                      </text>
+                    </div>
+                    <ToggleSwitch
+                      checked={shareUsage}
+                      onChange={setShareUsage}
+                      testId="toggle-share-usage"
+                    />
+                  </div>
+
+                  {/* Render math expressions */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                      <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                        Render math expressions
+                      </text>
+                      <text
+                        style={{
+                          fontSize: 13,
+                          lineHeight: 18,
+                          color: C.secondary,
+                          maxWidth: 520,
+                        }}
+                      >
+                        Show formatted math in Markdown. Turn off to show LaTeX source.
+                      </text>
+                    </div>
+                    <ToggleSwitch
+                      checked={renderMath}
+                      onChange={setRenderMath}
+                      testId="toggle-render-math"
+                    />
+                  </div>
+
+                  {/* Automatic updates */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                      <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                        Automatic updates
+                      </text>
+                      <text
+                        style={{
+                          fontSize: 13,
+                          lineHeight: 18,
+                          color: C.secondary,
+                          maxWidth: 520,
+                        }}
+                      >
+                        Check for new versions in the background and offer to install them
+                      </text>
+                    </div>
+                    <ToggleSwitch
+                      checked={autoUpdates}
+                      onChange={setAutoUpdates}
+                      testId="toggle-auto-updates"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* SECTION: APPEARANCE */}
+              {activeSection === 'appearance' && (
+                <>
+                  <text
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: C.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Appearance
                   </text>
-                </div>
 
-                {/* Share anonymous usage data */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 16,
-                    backgroundColor: '#202020',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E6EAF20A',
-                    padding: 18,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
-                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                      Share anonymous usage data
-                    </text>
-                    <text
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Theme */}
+                    <div
                       style={{
-                        fontSize: 13,
-                        lineHeight: 18,
-                        color: C.secondary,
-                        maxWidth: 520,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 18,
                       }}
                     >
-                      Help improve Waku by sharing feature usage and reliability data. Prompts, responses, project names, file paths, and other personal data are never included
-                    </text>
-                  </div>
-                  <ToggleSwitch
-                    checked={shareUsage}
-                    onChange={setShareUsage}
-                    testId="toggle-share-usage"
-                  />
-                </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Theme</text>
+                        <text style={{ fontSize: 13, color: C.secondary }}>
+                          Choose between system, light, or dark themes
+                        </text>
+                      </div>
+                      <SettingsDropdown
+                        value={themeValue}
+                        options={[
+                          { value: 'system', label: 'System' },
+                          { value: 'dark', label: 'Dark' },
+                          { value: 'light', label: 'Light' },
+                        ]}
+                        onChange={setThemeValue}
+                      />
+                    </div>
 
-                {/* Render math expressions */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 16,
-                    backgroundColor: '#202020',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E6EAF20A',
-                    padding: 18,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
-                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                      Render math expressions
-                    </text>
-                    <text
+                    <div style={{ height: 1, backgroundColor: '#E6EAF20A' }} />
+
+                    {/* Language */}
+                    <div
                       style={{
-                        fontSize: 13,
-                        lineHeight: 18,
-                        color: C.secondary,
-                        maxWidth: 520,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 18,
                       }}
                     >
-                      Show formatted math in Markdown. Turn off to show LaTeX source.
-                    </text>
-                  </div>
-                  <ToggleSwitch
-                    checked={renderMath}
-                    onChange={setRenderMath}
-                    testId="toggle-render-math"
-                  />
-                </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Language</text>
+                        <text style={{ fontSize: 13, color: C.secondary }}>
+                          Choose the language used throughout Hiroshi
+                        </text>
+                      </div>
+                      <SettingsDropdown
+                        value={langValue}
+                        options={[
+                          { value: 'system', label: 'System' },
+                          { value: 'en', label: 'English' },
+                          { value: 'ja', label: 'Japanese' },
+                        ]}
+                        onChange={setLangValue}
+                      />
+                    </div>
 
-                {/* Automatic updates */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 16,
-                    backgroundColor: '#202020',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E6EAF20A',
-                    padding: 18,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
-                    <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                      Automatic updates
-                    </text>
-                    <text
+                    <div style={{ height: 1, backgroundColor: '#E6EAF20A' }} />
+
+                    {/* UI font size */}
+                    <div
                       style={{
-                        fontSize: 13,
-                        lineHeight: 18,
-                        color: C.secondary,
-                        maxWidth: 520,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 18,
                       }}
                     >
-                      Check for new versions in the background and offer to install them
-                    </text>
-                  </div>
-                  <ToggleSwitch
-                    checked={autoUpdates}
-                    onChange={setAutoUpdates}
-                    testId="toggle-auto-updates"
-                  />
-                </div>
-              </>
-            )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>UI font size</text>
+                        <text style={{ fontSize: 13, color: C.secondary }}>
+                          Text size across the interface and messages
+                        </text>
+                      </div>
+                      <SettingsDropdown
+                        value={uiFontSize}
+                        options={[
+                          { value: '13px', label: '13 px' },
+                          { value: '14px', label: '14 px' },
+                          { value: '15px', label: '15 px' },
+                          { value: '16px', label: '16 px' },
+                        ]}
+                        onChange={setUiFontSize}
+                      />
+                    </div>
 
-            {activeSection !== 'general' && (
+                    <div style={{ height: 1, backgroundColor: '#E6EAF20A' }} />
+
+                    {/* Code font size */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 18,
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Code font size</text>
+                        <text style={{ fontSize: 13, color: C.secondary }}>
+                          Text size in the file editor, diffs, code blocks, and tool output
+                        </text>
+                      </div>
+                      <SettingsDropdown
+                        value={codeFontSize}
+                        options={[
+                          { value: '12px', label: '12 px' },
+                          { value: '13px', label: '13 px' },
+                          { value: '14px', label: '14 px' },
+                        ]}
+                        onChange={setCodeFontSize}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* SECTION: PROVIDERS */}
+              {activeSection === 'providers' && (
+                <>
+                  <text
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: C.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Providers
+                  </text>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Header */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        padding: 18,
+                        borderBottomWidth: 1,
+                        borderColor: '#E6EAF20A',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                          Coding agents
+                        </text>
+                        <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary, maxWidth: 480 }}>
+                          Hiroshi drives agent CLIs installed on this computer. Install or sign in with each agent's own CLI, then refresh
+                        </text>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                        <Button
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            height: 28,
+                            paddingLeft: 10,
+                            paddingRight: 10,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: C.border,
+                            backgroundColor: '#262626',
+                            cursor: 'pointer',
+                            hover: { backgroundColor: C.overlayStrong },
+                          }}
+                        >
+                          <Icon name="retry" size={12} color={C.secondary} />
+                          <text style={{ fontSize: 12.5, color: C.text }}>Refresh</text>
+                        </Button>
+                        <text style={{ fontSize: 11.5, color: C.ghost }}>Checked 12m ago</text>
+                      </div>
+                    </div>
+
+                    {/* Agent list */}
+                    {[
+                      {
+                        name: 'Amp',
+                        status: 'Not detected on PATH as amp',
+                        installed: false,
+                        icon: 'zap' as const,
+                      },
+                      {
+                        name: 'Claude Code',
+                        status: 'Not detected on PATH as claude',
+                        installed: false,
+                        icon: 'sparkle' as const,
+                      },
+                      {
+                        name: 'Codex CLI',
+                        status: 'Not detected on PATH as codex',
+                        installed: false,
+                        icon: 'sparkle' as const,
+                      },
+                      {
+                        name: 'Cursor CLI',
+                        status: '~/AppData\\Local\\cursor-agent\\cursor-agent.CMD · 233 models',
+                        installed: true,
+                        icon: 'arrowRight' as const,
+                        toggle: cursorEnabled,
+                        onToggle: setCursorEnabled,
+                      },
+                      {
+                        name: 'DeepSeek Harness',
+                        status: 'Not detected on PATH as dsh',
+                        installed: false,
+                        icon: 'sparkle' as const,
+                      },
+                      {
+                        name: 'Fx',
+                        status: 'Not detected on PATH as fx',
+                        installed: false,
+                        icon: 'wrench' as const,
+                      },
+                      {
+                        name: 'OpenCode v1.18.35',
+                        status: '~/.bun\\bin\\opencode.EXE · 115 models',
+                        installed: true,
+                        icon: 'laptop' as const,
+                        toggle: openCodeEnabled,
+                        onToggle: setOpenCodeEnabled,
+                      },
+                      {
+                        name: 'Grok Build v1.0.34',
+                        status: '~/.grok\\bin\\grok.EXE · 2 models',
+                        installed: true,
+                        icon: 'activity' as const,
+                        toggle: grokEnabled,
+                        onToggle: setGrokEnabled,
+                      },
+                    ].map((agent, index) => (
+                      <div
+                        key={agent.name}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingLeft: 16,
+                          paddingRight: 16,
+                          height: 52,
+                          borderTopWidth: index === 0 ? 0 : 1,
+                          borderColor: '#E6EAF208',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <div
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              backgroundColor: '#262626',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Icon name={agent.icon} size={14} color={agent.installed ? C.accent : C.secondary} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <text style={{ fontSize: 13.5, fontWeight: 500, color: C.text }}>
+                              {agent.name}
+                            </text>
+                            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <div
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: 3,
+                                  backgroundColor: agent.installed ? '#10B981' : '#6B7280',
+                                }}
+                              />
+                              <text style={{ fontSize: 12, color: C.secondary }}>{agent.status}</text>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <Icon name="chevronRight" size={13} color={C.ghost} />
+                          {agent.installed && agent.onToggle && (
+                            <ToggleSwitch checked={agent.toggle!} onChange={agent.onToggle} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* SECTION: USAGE */}
+              {activeSection === 'usage' && (
+                <>
+                  {/* Usage Top bar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <text style={{ fontSize: 22, fontWeight: 600, color: C.text }}>Usage</text>
+                      <text style={{ fontSize: 13, color: C.secondary }}>Sep 20 to Oct 19</text>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {/* Segmented Daily/Monthly/Projects */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'row',
+                          backgroundColor: '#262626',
+                          borderRadius: 7,
+                          padding: 2,
+                        }}
+                      >
+                        {(['daily', 'monthly', 'projects'] as const).map((tab) => (
+                          <Button
+                            key={tab}
+                            onClick={() => setUsagePeriod(tab)}
+                            style={{
+                              height: 24,
+                              paddingLeft: 8,
+                              paddingRight: 8,
+                              borderRadius: 5,
+                              backgroundColor: usagePeriod === tab ? '#333333' : '#00000000',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: usagePeriod === tab ? 500 : 400,
+                                color: usagePeriod === tab ? C.text : C.secondary,
+                              }}
+                            >
+                              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </text>
+                          </Button>
+                        ))}
+                      </div>
+
+                      <SettingsDropdown
+                        value="30d"
+                        options={[{ value: '30d', label: 'Last 30 days' }]}
+                        onChange={() => {}}
+                      />
+
+                      <Button
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: '#262626',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Icon name="retry" size={12} color={C.secondary} />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* RAW TOKEN COST Card */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <text style={{ fontSize: 11.5, fontWeight: 600, color: C.ghost }}>
+                        RAW TOKEN COST
+                      </text>
+                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            backgroundColor: '#262626',
+                            borderRadius: 6,
+                            padding: 2,
+                          }}
+                        >
+                          {(['cost', 'tokens'] as const).map((t) => (
+                            <Button
+                              key={t}
+                              onClick={() => setUsageCostType(t)}
+                              style={{
+                                height: 20,
+                                paddingLeft: 6,
+                                paddingRight: 6,
+                                borderRadius: 4,
+                                backgroundColor: usageCostType === t ? '#383838' : '#00000000',
+                              }}
+                            >
+                              <text style={{ fontSize: 11, fontWeight: 500, color: usageCostType === t ? C.text : C.secondary }}>
+                                {t.toUpperCase()}
+                              </text>
+                            </Button>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#E2795B' }} />
+                          <text style={{ fontSize: 12, color: C.secondary }}>Claude Code</text>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                        <text style={{ fontSize: 28, fontWeight: 700, color: C.text }}>$1.36*</text>
+                        <text style={{ fontSize: 12, color: C.ghost }}>* if billed at full API rate</text>
+
+                        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, width: 280 }}>
+                          <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <text style={{ fontSize: 12.5, color: C.text }}>Claude Code</text>
+                            <text style={{ fontSize: 12.5, color: C.text }}>$1.36</text>
+                          </div>
+                          <div style={{ height: 4, borderRadius: 2, backgroundColor: '#333333', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: '100%', backgroundColor: '#E2795B' }} />
+                          </div>
+                          <text style={{ fontSize: 11.5, color: C.ghost }}>100.0% of cost · 3.21M tokens</text>
+                        </div>
+                      </div>
+
+                      {/* Chart representation */}
+                      <div style={{ display: 'flex', flexDirection: 'column', width: 280, height: 110, justifyContent: 'space-between', paddingLeft: 10 }}>
+                        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <text style={{ fontSize: 11, color: C.ghost }}>$1.50</text>
+                          <div style={{ width: 220, height: 1, backgroundColor: '#FFFFFF0A' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', position: 'relative' }}>
+                          <text style={{ fontSize: 11, color: C.ghost }}>$1.00</text>
+                          <div style={{ width: 220, height: 1, backgroundColor: '#FFFFFF0A' }} />
+                          {/* Visual Spike */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 30,
+                              top: -20,
+                              width: 3,
+                              height: 60,
+                              backgroundColor: '#E2795B',
+                              borderRadius: 1.5,
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <text style={{ fontSize: 11, color: C.ghost }}>$0.50</text>
+                          <div style={{ width: 220, height: 1, backgroundColor: '#FFFFFF0A' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <text style={{ fontSize: 11, color: C.ghost }}>0</text>
+                          <div style={{ width: 220, height: 1, backgroundColor: '#FFFFFF12' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 20 }}>
+                          <text style={{ fontSize: 11, color: C.ghost }}>Sep 20</text>
+                          <text style={{ fontSize: 11, color: C.ghost }}>Oct 5</text>
+                          <text style={{ fontSize: 11, color: C.ghost }}>Oct 19</text>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5 Stats Cards Row */}
+                  <div style={{ display: 'flex', flexDirection: 'row', gap: 10 }}>
+                    {[
+                      { title: 'Processed tokens', value: '3.21M', sub: '3.21M per active...' },
+                      { title: 'Cached input', value: '3.05M', sub: '100.0% of obser...' },
+                      { title: 'Uncached input', value: '86', sub: '145K cache writes' },
+                      { title: 'Output', value: '14.2K', sub: 'includes 0 reaso...' },
+                      { title: 'Cache savings', value: '$9.48', sub: '7.0x the raw toke...' },
+                    ].map((stat) => (
+                      <div
+                        key={stat.title}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          flexGrow: 1,
+                          backgroundColor: '#202020',
+                          borderRadius: 10,
+                          padding: 12,
+                          borderWidth: 1,
+                          borderColor: '#E6EAF20A',
+                          gap: 4,
+                        }}
+                      >
+                        <text style={{ fontSize: 11.5, color: C.secondary }}>{stat.title}</text>
+                        <text style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{stat.value}</text>
+                        <text style={{ fontSize: 11, color: C.ghost }}>{stat.sub}</text>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Breakdown Table */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 16,
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <text style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>Breakdown</text>
+                      <div style={{ display: 'flex', flexDirection: 'row', backgroundColor: '#262626', borderRadius: 6, padding: 2 }}>
+                        {(['model', 'day'] as const).map((tab) => (
+                          <Button
+                            key={tab}
+                            onClick={() => setUsageBreakdownTab(tab)}
+                            style={{
+                              height: 20,
+                              paddingLeft: 8,
+                              paddingRight: 8,
+                              borderRadius: 4,
+                              backgroundColor: usageBreakdownTab === tab ? '#383838' : '#00000000',
+                            }}
+                          >
+                            <text style={{ fontSize: 11, fontWeight: 500, color: usageBreakdownTab === tab ? C.text : C.secondary }}>
+                              {tab.toUpperCase()}
+                            </text>
+                          </Button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'row', gap: 14 }}>
+                        <text style={{ fontSize: 12, color: C.ghost }}>Provider reported 0.0%</text>
+                        <text style={{ fontSize: 12, color: C.ghost }}>Model priced 100.0%</text>
+                      </div>
+                    </div>
+
+                    <div style={{ height: 1, backgroundColor: '#E6EAF208' }} />
+
+                    {/* Table headers */}
+                    <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 6, paddingRight: 6 }}>
+                      <text style={{ fontSize: 12, color: C.ghost, width: 200 }}>Model</text>
+                      <text style={{ fontSize: 12, color: C.ghost, width: 80, textAlign: 'right' }}>Cost</text>
+                      <text style={{ fontSize: 12, color: C.ghost, width: 80, textAlign: 'right' }}>Share</text>
+                      <text style={{ fontSize: 12, color: C.ghost, width: 80, textAlign: 'right' }}>Tokens</text>
+                    </div>
+
+                    {/* Table rows */}
+                    {[
+                      { model: 'claude-opus-5-5', cost: '$0.89', share: '65.4%', tokens: '2.06M' },
+                      { model: 'claude-sonnet-5', cost: '$0.47', share: '34.6%', tokens: '1.15M' },
+                    ].map((row) => (
+                      <div
+                        key={row.model}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          paddingLeft: 6,
+                          paddingRight: 6,
+                          paddingTop: 4,
+                          paddingBottom: 4,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, width: 200 }}>
+                          <Icon name="sparkle" size={13} color="#E2795B" />
+                          <text style={{ fontSize: 13, color: C.text }}>{row.model}</text>
+                        </div>
+                        <text style={{ fontSize: 13, color: C.text, width: 80, textAlign: 'right' }}>{row.cost}</text>
+                        <text style={{ fontSize: 13, color: C.secondary, width: 80, textAlign: 'right' }}>{row.share}</text>
+                        <text style={{ fontSize: 13, color: C.secondary, width: 80, textAlign: 'right' }}>{row.tokens}</text>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* SECTION: DAEMON */}
+              {activeSection === 'daemon' && (
+                <>
+                  <text
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: C.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Daemon
+                  </text>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      backgroundColor: '#202020',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#E6EAF20A',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
+                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                          Expose managed daemon
+                        </text>
+                        <div
+                          style={{
+                            paddingLeft: 6,
+                            paddingRight: 6,
+                            paddingTop: 2,
+                            paddingBottom: 2,
+                            borderRadius: 4,
+                            backgroundColor: '#2B2B2B',
+                          }}
+                        >
+                          <text style={{ fontSize: 11, color: C.secondary }}>Local only</text>
+                        </div>
+                      </div>
+                      <text
+                        style={{
+                          fontSize: 13,
+                          lineHeight: 18,
+                          color: C.secondary,
+                          maxWidth: 540,
+                        }}
+                      >
+                        Listen beyond this machine so another Hiroshi client can connect. Changing this restarts only the daemon.
+                      </text>
+                    </div>
+                    <ToggleSwitch
+                      checked={daemonExposed}
+                      onChange={setDaemonExposed}
+                      testId="toggle-daemon"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* SECTION: SKILLS (2-column layout matching Screenshot 3) */}
+          {activeSection === 'skills' && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                width: '100%',
+                height: '100%',
+              }}
+            >
+              {/* Middle Skills List Column */}
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
+                  width: 250,
+                  flexShrink: 0,
+                  borderRightWidth: 1,
+                  borderColor: C.sidebarBorder,
+                  padding: 12,
                   gap: 8,
-                  backgroundColor: '#202020',
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: '#E6EAF20A',
-                  padding: 18,
                 }}
               >
-                <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                  {activeSection.charAt(0).toUpperCase() + activeSection.slice(1)} Settings
-                </text>
-                <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
-                  Configure your {activeSection} preferences, orchestration parameters, and fleet endpoints.
-                </text>
+                {/* Search skills input */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    height: 30,
+                    paddingLeft: 8,
+                    paddingRight: 8,
+                    borderRadius: 7,
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    backgroundColor: '#1E1E1E',
+                  }}
+                >
+                  <Icon name="search" size={12} color={C.ghost} />
+                  <input
+                    placeholder="Search skills..."
+                    theme={CHAT_THEME}
+                    style={{
+                      fontSize: 12.5,
+                      color: C.text,
+                      backgroundColor: '#00000000',
+                      borderWidth: 0,
+                      flexGrow: 1,
+                      minWidth: 0,
+                    }}
+                  />
+                </div>
+
+                {/* Filter chip */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    height: 28,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    backgroundColor: '#222222',
+                  }}
+                >
+                  <Icon name="cube" size={13} color={C.secondary} />
+                  <text style={{ fontSize: 12.5, color: C.text }}>All skills</text>
+                  <Icon name="chevronDown" size={10} color={C.ghost} />
+                </div>
+
+                <div style={{ marginTop: 6, marginBottom: 2 }}>
+                  <text style={{ fontSize: 11, fontWeight: 600, color: C.ghost }}>USER 3</text>
+                </div>
+
+                {/* Skill List items */}
+                {[
+                  { id: 'find-skills', name: 'find-skills', desc: 'Helps users discover and install a...', icon: 'cube' as const },
+                  { id: 'native-sdk', name: 'native-sdk', desc: 'Discovery skill for the Native SDK...', icon: 'arrowRight' as const },
+                  { id: 'opentui', name: 'opentui', desc: 'Build terminal UIs with OpenTUI...', icon: 'cube' as const },
+                ].map((skill) => {
+                  const isSel = selectedSkill === skill.id
+                  return (
+                    <Button
+                      key={skill.id}
+                      onClick={() => setSelectedSkill(skill.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: 8,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        backgroundColor: isSel ? '#262626' : '#00000000',
+                        hover: { backgroundColor: isSel ? '#262626' : C.item },
+                      }}
+                    >
+                      <Icon name={skill.icon} size={14} color={isSel ? C.text : C.secondary} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
+                        <text style={{ fontSize: 13, fontWeight: isSel ? 600 : 500, color: C.text }}>
+                          {skill.name}
+                        </text>
+                        <text
+                          style={{
+                            fontSize: 11.5,
+                            color: C.secondary,
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {skill.desc}
+                        </text>
+                      </div>
+                    </Button>
+                  )
+                })}
+
+                <div style={{ flexGrow: 1 }} />
+                <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 6 }}>
+                  <text style={{ fontSize: 11.5, color: C.ghost }}>3 skills</text>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Right Skill Detail Pane */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  flexGrow: 1,
+                  padding: 24,
+                  gap: 16,
+                  overflowY: 'scroll',
+                }}
+              >
+                {/* Header */}
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        backgroundColor: '#262626',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Icon name="cube" size={18} color={C.text} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <text style={{ fontSize: 16, fontWeight: 600, color: C.text }}>
+                        {selectedSkill}
+                      </text>
+                      <text style={{ fontSize: 12, color: C.tertiary }}>
+                        Shared · available in every project
+                      </text>
+                    </div>
+                  </div>
+
+                  <ToggleSwitch
+                    checked={findSkillsEnabled}
+                    onChange={setFindSkillsEnabled}
+                    testId="toggle-find-skills"
+                  />
+                </div>
+
+                {/* Description */}
+                <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
+                  Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
+                </text>
+
+                {/* Metadata Table */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: 'Invoke', value: `/${selectedSkill}` },
+                    { label: 'Location', value: `.../skills/${selectedSkill}` },
+                    { label: 'Contents', value: '5.4 KB' },
+                    { label: 'Updated', value: '90d ago' },
+                  ].map((row) => (
+                    <div key={row.label} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                      <text style={{ fontSize: 12.5, color: C.tertiary, width: 80 }}>{row.label}</text>
+                      <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text }}>{row.value}</text>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
+                  <Button
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      height: 28,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      borderRadius: 6,
+                      backgroundColor: '#262626',
+                      borderWidth: 1,
+                      borderColor: C.border,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Icon name="pencil" size={12} color={C.secondary} />
+                    <text style={{ fontSize: 12.5, color: C.text }}>Open SKILL.md</text>
+                  </Button>
+                  <Button
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      height: 28,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      borderRadius: 6,
+                      backgroundColor: '#262626',
+                      borderWidth: 1,
+                      borderColor: C.border,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Icon name="folder" size={12} color={C.secondary} />
+                    <text style={{ fontSize: 12.5, color: C.text }}>Show in File Manager</text>
+                  </Button>
+                  <Button
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      height: 28,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      borderRadius: 6,
+                      backgroundColor: '#262626',
+                      borderWidth: 1,
+                      borderColor: C.border,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Icon name="copy" size={12} color={C.secondary} />
+                    <text style={{ fontSize: 12.5, color: C.text }}>Copy Path</text>
+                  </Button>
+                  <Button
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      height: 28,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      borderRadius: 6,
+                      backgroundColor: '#262626',
+                      borderWidth: 1,
+                      borderColor: C.border,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Icon name="trash" size={12} color={C.secondary} />
+                    <text style={{ fontSize: 12.5, color: C.text }}>Delete</text>
+                  </Button>
+                </div>
+
+                <div style={{ height: 1, backgroundColor: C.border, marginTop: 4, marginBottom: 4 }} />
+
+                {/* SKILL.md preview */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <text style={{ fontSize: 12, fontWeight: 500, color: C.ghost }}>SKILL.md</text>
+                  <text style={{ fontSize: 18, fontWeight: 700, color: C.text }}>Find Skills</text>
+                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
+                    This skill helps you discover and install skills from the open agent skills ecosystem.
+                  </text>
+                  <text style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 8 }}>
+                    When to Use This Skill
+                  </text>
+                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
+                    Use this skill when the user:
+                  </text>
+                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary, paddingLeft: 12 }}>
+                    • Asks "how do I do X" where X might be a common task with an existing skill
+                  </text>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

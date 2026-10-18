@@ -11,29 +11,48 @@ const app = await launch({
   env: { GPUIX_BACKGROUND: '1' },
 })
 
-// Wait for the UI root to mount
+// Wait for UI to mount
 await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
 await app.clock.pause()
 
-// 1. Capture Main Chat View (with custom titlebar controls in top-right)
-await app.screenshot({ path: path.join(outDir, 'chat-main.png') })
-console.log('[screenshot] wrote screenshots/chat-main.png')
-
-// 2. Click Settings button to transition to Settings view
+// 1. Transition to Settings
 await app.getByTestId('settings').click()
 await app.getByTestId('settings-back').waitFor({ timeoutMs: 10_000 })
 
-// 3. Capture Settings View
-await app.screenshot({ path: path.join(outDir, 'settings-view.png') })
-console.log('[screenshot] wrote screenshots/settings-view.png')
+// 2. Capture General
+await app.screenshot({ path: path.join(outDir, 'settings-general.png') })
+console.log('[screenshot] wrote screenshots/settings-general.png')
 
-// 4. Click Back to transition back to Chat
+// 3. Capture Appearance
+await app.getByTestId('settings-section-appearance').click()
+await app.screenshot({ path: path.join(outDir, 'settings-appearance.png') })
+console.log('[screenshot] wrote screenshots/settings-appearance.png')
+
+// 4. Capture Providers
+await app.getByTestId('settings-section-providers').click()
+await app.screenshot({ path: path.join(outDir, 'settings-providers.png') })
+console.log('[screenshot] wrote screenshots/settings-providers.png')
+
+// 5. Capture Skills
+await app.getByTestId('settings-section-skills').click()
+await app.screenshot({ path: path.join(outDir, 'settings-skills.png') })
+console.log('[screenshot] wrote screenshots/settings-skills.png')
+
+// 6. Capture Usage
+await app.getByTestId('settings-section-usage').click()
+await app.screenshot({ path: path.join(outDir, 'settings-usage.png') })
+console.log('[screenshot] wrote screenshots/settings-usage.png')
+
+// 7. Capture Daemon
+await app.getByTestId('settings-section-daemon').click()
+await app.screenshot({ path: path.join(outDir, 'settings-daemon.png') })
+console.log('[screenshot] wrote screenshots/settings-daemon.png')
+
+// 8. Return back to chat
 await app.getByTestId('settings-back').click()
 await app.getByTestId('composer').waitFor({ timeoutMs: 10_000 })
-
-// 5. Capture returned Chat view
-await app.screenshot({ path: path.join(outDir, 'chat-returned.png') })
-console.log('[screenshot] wrote screenshots/chat-returned.png')
+await app.screenshot({ path: path.join(outDir, 'chat-main.png') })
+console.log('[screenshot] wrote screenshots/chat-main.png')
 
 await app.close()
-console.log('[screenshot] all views and transitions captured successfully!')
+console.log('[screenshot] all 6 settings views captured successfully!')
