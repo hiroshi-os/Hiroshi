@@ -1,11 +1,12 @@
 {
-  "name": "my-app",
+  "name": "hiroshi",
   "version": "0.1.0",
+  "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun --hot app.tsx",
-    "build": "bun build --compile app.tsx --outfile dist/todo",
+    "build": "bun build --compile app.tsx --outfile dist/hiroshi",
     "web:dev": "bun web.ts",
     "screenshot": "bun screenshot.ts",
     "test": "vitest run",
