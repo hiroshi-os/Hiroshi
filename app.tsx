@@ -12,6 +12,7 @@
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AnimatePresence,
   applyMacCpuThrottleFromEnv,
   Button,
   Dialog,
@@ -791,15 +792,29 @@ function Sidebar({
                 </div>
               )}
             </div>
-            {group.items.map((conversation) => (
-              <ConversationRow
-                key={conversation.id}
-                conversation={conversation}
-                active={conversation.id === activeId}
-                onSelect={onSelect}
-                onDelete={onDelete}
-              />
-            ))}
+            <AnimatePresence initial={false}>
+              {group.items.map((conversation) => (
+                <motion.div
+                  key={conversation.id}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 51 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  style={{
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <ConversationRow
+                    conversation={conversation}
+                    active={conversation.id === activeId}
+                    onSelect={onSelect}
+                    onDelete={onDelete}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ))}
       </div>
@@ -3055,11 +3070,13 @@ function SurfacePanel({
   onChangeSurface,
   onClose,
   project,
+  open = true,
 }: {
   activeSurface: SurfaceKind
   onChangeSurface: (surface: SurfaceKind) => void
   onClose: () => void
   project: string
+  open?: boolean
 }) {
   const [surfaceMenuOpen, setSurfaceMenuOpen] = useState(false)
   const [termInput, setTermInput] = useState('')
@@ -3125,48 +3142,57 @@ function SurfacePanel({
         }}
       >
         {/* Left: Tab badge if surface is active */}
-        {activeSurface !== 'none' && currentDef ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: '#262626',
-              borderRadius: 6,
-              height: 28,
-              paddingLeft: 8,
-              paddingRight: 6,
-            }}
-          >
-            {activeSurface === 'terminal' ? (
-              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: C.secondary }}>&gt;_</text>
-            ) : (
-              <Icon name={currentDef.icon} size={13} color={C.secondary} />
-            )}
-            <text style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>
-              {currentDef.label}
-            </text>
-            <Button
-              testId="surface-close-tab"
-              aria-label="Close surface"
-              onClick={() => onChangeSurface('none')}
+        <AnimatePresence initial={false}>
+          {activeSurface !== 'none' && currentDef ? (
+            <motion.div
+              key={currentDef.id}
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 112 }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
               style={{
-                width: 16,
-                height: 16,
                 display: 'flex',
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 4,
-                cursor: 'pointer',
-                marginLeft: 2,
-                hover: { backgroundColor: C.overlayStrong },
+                gap: 6,
+                backgroundColor: '#262626',
+                borderRadius: 6,
+                height: 28,
+                paddingLeft: 8,
+                paddingRight: 6,
+                overflow: 'hidden',
+                flexShrink: 0,
               }}
             >
-              <Icon name="windowClose" size={10} color={C.tertiary} />
-            </Button>
-          </div>
-        ) : null}
+              {activeSurface === 'terminal' ? (
+                <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: C.secondary, whiteSpace: 'nowrap' }}>&gt;_</text>
+              ) : (
+                <Icon name={currentDef.icon} size={13} color={C.secondary} />
+              )}
+              <text style={{ fontSize: 12.5, fontWeight: 500, color: C.text, whiteSpace: 'nowrap' }}>
+                {currentDef.label}
+              </text>
+              <Button
+                testId="surface-close-tab"
+                aria-label="Close surface"
+                onClick={() => onChangeSurface('none')}
+                style={{
+                  width: 16,
+                  height: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  marginLeft: 2,
+                  hover: { backgroundColor: C.overlayStrong },
+                }}
+              >
+                <Icon name="windowClose" size={10} color={C.tertiary} />
+              </Button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <div style={{ flexGrow: 1 }} />
 
@@ -3250,12 +3276,29 @@ function SurfacePanel({
             onClick={onClose}
             borderRadius={14}
           />
-          <WindowControls />
+          {open && <WindowControls />}
         </div>
       </div>
 
       {/* Surface Content */}
-      {activeSurface === 'none' && (
+      <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, width: '100%', position: 'relative', overflow: 'hidden' }}>
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={activeSurface}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flexGrow: 1,
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            {activeSurface === 'none' && (
         <div
           style={{
             display: 'flex',
@@ -3611,6 +3654,9 @@ function SurfacePanel({
           </div>
         </div>
       )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
@@ -5297,6 +5343,19 @@ export function ChatApp({
     setFocusTick((value) => value + 1)
   }
 
+  const handleDeleteConversation = useCallback(
+    (id: string) => {
+      setConversations((current) => current.filter((c) => c.id !== id))
+      if (activeId === id) {
+        const remaining = conversations.filter((c) => c.id !== id)
+        if (remaining.length > 0 && remaining[0]) {
+          goTo(remaining[0].id)
+        }
+      }
+    },
+    [activeId, conversations, goTo],
+  )
+
   const retryLastReply = () => {
     let cut = -1
     for (let i = turns.length - 1; i >= 0; i--) {
@@ -5370,6 +5429,7 @@ export function ChatApp({
           conversations={visibleConversations}
           activeId={activeId}
           onSelect={goTo}
+          onDelete={handleDeleteConversation}
           onCollapse={() => setCollapsed(true)}
           onNewTask={() => {
             const id = `task-${nextTask.current++}`
@@ -5479,27 +5539,52 @@ export function ChatApp({
           onBranchChange={setBranch}
         />
       </div>
-      {inspectorOpen && (
-        <Inspector
-          conversation={active}
-          model={model}
-          reasoning={reasoning}
-          access={access}
-          mode={mode}
-          project={project}
-        />
-      )}
-      {rightPanelOpen && (
-        <>
-          <div style={{ width: 1, height: '100%', flexShrink: 0, backgroundColor: C.sidebarBorder }} />
+      <motion.div
+        initial={false}
+        animate={{ width: inspectorOpen ? 260 : 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          height: '100%',
+          flexShrink: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ width: 260, height: '100%', flexShrink: 0, display: 'flex' }}>
+          <Inspector
+            conversation={active}
+            model={model}
+            reasoning={reasoning}
+            access={access}
+            mode={mode}
+            project={project}
+          />
+        </div>
+      </motion.div>
+      <motion.div
+        initial={false}
+        animate={{ width: rightPanelOpen ? 381 : 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          height: '100%',
+          flexShrink: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ width: 1, height: '100%', flexShrink: 0, backgroundColor: C.sidebarBorder }} />
+        <div style={{ width: 380, height: '100%', flexShrink: 0, display: 'flex' }}>
           <SurfacePanel
+            open={rightPanelOpen}
             activeSurface={activeSurface}
             onChangeSurface={setActiveSurface}
             onClose={() => setRightPanelOpen(false)}
             project={project}
           />
-        </>
-      )}
+        </div>
+      </motion.div>
       <CommitPushModal
         open={commitModalOpen}
         onClose={() => setCommitModalOpen(false)}
