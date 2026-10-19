@@ -5649,7 +5649,7 @@ if (isEntryPoint) {
     title: 'Hiroshi · Multi-Agent Orchestrator',
     width: 1180,
     height: 820,
-    titlebarTransparent: process.platform !== 'win32',
+    titlebarTransparent: true,
     windowBackground: 'blurred',
     trafficLightX: 16,
     trafficLightY: 17,
