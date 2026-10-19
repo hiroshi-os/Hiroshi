@@ -73,6 +73,16 @@ import iconCube from './assets/icons/cube.svg' with { type: 'text' }
 import iconActivity from './assets/icons/activity.svg' with { type: 'text' }
 import iconServer from './assets/icons/server.svg' with { type: 'text' }
 import iconTrash from './assets/icons/trash.svg' with { type: 'text' }
+import iconTerminal from './assets/icons/terminal.svg' with { type: 'text' }
+import iconGlobe from './assets/icons/globe.svg' with { type: 'text' }
+import iconFileDiff from './assets/icons/file-diff.svg' with { type: 'text' }
+import iconPlus from './assets/icons/plus.svg' with { type: 'text' }
+import iconInfo from './assets/icons/info.svg' with { type: 'text' }
+
+const iconArrowUpRight =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5L11.5 4.5M11.5 4.5H6.5M11.5 4.5V9.5"/></svg>'
+const iconXai =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><line x1="4" y1="12" x2="12" y2="4"/></svg>'
 
 const C = {
   canvas: '#1A1A1A',
@@ -142,6 +152,13 @@ const ICONS = {
   activity: iconActivity,
   server: iconServer,
   trash: iconTrash,
+  terminal: iconTerminal,
+  globe: iconGlobe,
+  fileDiff: iconFileDiff,
+  plus: iconPlus,
+  info: iconInfo,
+  arrowUpRight: iconArrowUpRight,
+  xai: iconXai,
 } as const
 
 type IconName = keyof typeof ICONS
@@ -197,12 +214,12 @@ interface Conversation {
 }
 
 const MODELS = [
+  { id: 'grok-4.6', label: 'Grok 4.6', group: 'xAI', icon: 'xai' as const },
   { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', group: 'DeepSeek', icon: 'sparkle' as const },
   { id: 'deepseek-v4', label: 'DeepSeek V4', group: 'DeepSeek', icon: 'sparkle' as const },
   { id: 'opus-4.6', label: 'Claude Opus 4.6', group: 'Claude', icon: 'sparkle' as const },
   { id: 'sonnet-4.6', label: 'Claude Sonnet 4.6', group: 'Claude', icon: 'sparkle' as const },
   { id: 'gpt-5.4', label: 'GPT-5.4', group: 'OpenAI', icon: 'sparkle' as const },
-  { id: 'grok-4', label: 'Grok 4', group: 'xAI', icon: 'sparkle' as const },
 ]
 
 const REASONING = [
@@ -239,6 +256,7 @@ const ACCESS = [
 ]
 
 const PROJECTS = [
+  { id: 'kale', label: 'kale' },
   { id: 'gpuix', label: 'gpuix' },
   { id: 'example-app', label: 'example-app' },
   { id: 'none', label: 'No project' },
@@ -250,6 +268,7 @@ const WORKSPACES = [
 ]
 
 const BRANCHES = [
+  { id: 'master', label: 'master' },
   { id: 'main', label: 'main' },
   { id: 'feat-selectors', label: 'feat/selectors' },
   { id: 'chat-example', label: 'chat-example' },
@@ -335,48 +354,36 @@ const TURNS: Turn[] = [
 
 const CONVERSATIONS: Conversation[] = [
   {
+    id: 'task-new',
+    title: 'New task',
+    group: 'Today',
+    project: 'kale',
+    time: 'now',
+    turns: [],
+  },
+  {
     id: 'c1',
-    title: 'give me a quick overview',
-    group: 'Yesterday',
-    project: 'gpuix',
-    time: '16m',
-    turns: TURNS,
+    title: 'hi',
+    group: 'Today',
+    project: 'kale',
+    time: '8m',
+    turns: [{ kind: 'user', text: 'hi' }],
   },
   {
     id: 'c2',
-    title: 'Native SDK vs GPUI comparison',
-    group: 'Yesterday',
-    project: 'No project',
-    time: '14h',
-    turns: [
-      { kind: 'user', text: 'Native SDK vs GPUI comparison' },
-      { kind: 'fold', duration: 'Worked for 9 seconds' },
-      { kind: 'markdown', source: SDK_VS_GPUI },
-    ],
+    title: 'hi',
+    group: 'This Year',
+    project: 'kale',
+    time: '25d',
+    turns: [{ kind: 'user', text: 'hi' }],
   },
   {
     id: 'c3',
-    title: 'Vercel Labs scriptc implementat...',
-    group: 'Yesterday',
-    project: 'No project',
-    time: '15h',
-    turns: [
-      { kind: 'user', text: 'Vercel Labs scriptc implementation notes' },
-      { kind: 'fold', duration: 'Worked for 12 seconds' },
-      { kind: 'markdown', source: SCRIPT_C },
-    ],
-  },
-  {
-    id: 'c4',
-    title: 'check if any memory optimizatio...',
-    group: 'This Month',
-    project: 'gpuix',
-    time: '2d',
-    turns: [
-      { kind: 'user', text: 'check if any memory optimizations are left' },
-      { kind: 'fold', duration: 'Worked for 11 seconds' },
-      { kind: 'markdown', source: MEMORY },
-    ],
+    title: 'hi',
+    group: 'This Year',
+    project: 'kale',
+    time: '29d',
+    turns: [{ kind: 'user', text: 'hi' }],
   },
 ]
 
@@ -414,34 +421,68 @@ function IconButton({
   dimmed,
   size = 14,
   testId,
+  borderRadius = 7,
+  active = false,
+  tooltip,
 }: {
   icon: IconName
   onClick?: () => void
   dimmed?: boolean
   size?: number
   testId?: string
+  borderRadius?: number
+  active?: boolean
+  tooltip?: string
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <Button
-      testId={testId}
-      disabled={dimmed}
-      style={{
-        width: 26,
-        height: 26,
-        flexShrink: 0,
-        borderRadius: 6,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        opacity: dimmed ? 0.35 : 1,
-        hover: dimmed ? undefined : { backgroundColor: C.overlay },
-        active: dimmed ? undefined : { backgroundColor: C.overlayStrong },
-      }}
-      onClick={onClick}
-    >
-      <Icon name={icon} size={size} color={C.tertiary} />
-    </Button>
+    <div style={{ position: 'relative' }}>
+      <Button
+        testId={testId}
+        disabled={dimmed}
+        style={{
+          width: 28,
+          height: 28,
+          flexShrink: 0,
+          borderRadius,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          opacity: dimmed ? 0.35 : 1,
+          backgroundColor: active ? '#2B2B2F' : '#00000000',
+          hover: dimmed ? undefined : { backgroundColor: active ? '#2B2B2F' : C.overlay },
+          active: dimmed ? undefined : { backgroundColor: C.overlayStrong },
+        }}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <Icon name={icon} size={size} color={active ? C.text : C.tertiary} />
+      </Button>
+      {hovered && tooltip && !active && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 34,
+            right: 0,
+            backgroundColor: '#1E1E20',
+            borderWidth: 1,
+            borderColor: '#38383D',
+            borderRadius: 8,
+            paddingTop: 5,
+            paddingBottom: 5,
+            paddingLeft: 10,
+            paddingRight: 10,
+            pointerEvents: 'none',
+          }}
+        >
+          <text style={{ fontSize: 12.5, color: '#CCCCCC', whiteSpace: 'nowrap' }}>
+            {tooltip}
+          </text>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -495,11 +536,14 @@ function ConversationRow({
   conversation,
   active,
   onSelect,
+  onDelete,
 }: {
   conversation: Conversation
   active: boolean
   onSelect: (id: string) => void
+  onDelete?: (id: string) => void
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
     <Button
       testId={`thread-${conversation.id}`}
@@ -517,18 +561,44 @@ function ConversationRow({
         hover: { backgroundColor: C.item },
       }}
       onClick={() => onSelect(conversation.id)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <text
-        style={{
-          fontSize: 13.5,
-          lineHeight: 18,
-          color: C.text,
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {conversation.title}
-      </text>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <text
+          style={{
+            fontSize: 13.5,
+            lineHeight: 18,
+            color: C.text,
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            flexGrow: 1,
+            minWidth: 0,
+          }}
+        >
+          {conversation.title}
+        </text>
+        {(active || hovered) && onDelete && (
+          <Button
+            testId={`delete-${conversation.id}`}
+            onClick={(e: any) => {
+              if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+              onDelete(conversation.id)
+            }}
+            style={{
+              width: 16,
+              height: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            <Icon name="windowClose" size={9} color="#EF4444" />
+          </Button>
+        )}
+      </div>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <Icon name="folder" size={12.5} color={C.tertiary} />
         <text
@@ -564,6 +634,7 @@ function Sidebar({
   onSettings,
   onFilter,
   filterActive,
+  onDelete,
 }: {
   conversations: Conversation[]
   activeId: string
@@ -578,6 +649,7 @@ function Sidebar({
   onSettings: () => void
   onFilter: () => void
   filterActive: boolean
+  onDelete?: (id: string) => void
 }) {
   const groups = useMemo(() => {
     const out: { name: string; items: Conversation[] }[] = []
@@ -681,24 +753,42 @@ function Sidebar({
                 {group.name}
               </text>
               {groupIndex === 0 && (
-                <Button
-                  testId="thread-filter"
-                  aria-label="Filter by project"
-                  onClick={onFilter}
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 6,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    backgroundColor: filterActive ? C.overlayStrong : '#00000000',
-                    hover: { backgroundColor: C.overlay },
-                  }}
-                >
-                  <Icon name="listFilter" size={14} color={filterActive ? C.text : C.secondary} />
-                </Button>
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Button
+                    testId="thread-filter"
+                    aria-label="Filter by project"
+                    onClick={onFilter}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: filterActive ? C.overlayStrong : '#00000000',
+                      hover: { backgroundColor: C.overlay },
+                    }}
+                  >
+                    <Icon name="listFilter" size={13} color={filterActive ? C.text : C.secondary} />
+                  </Button>
+                  <Button
+                    testId="thread-folder"
+                    aria-label="Filter folder"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      hover: { backgroundColor: C.overlay },
+                    }}
+                  >
+                    <Icon name="folder" size={13} color={C.secondary} />
+                  </Button>
+                </div>
               )}
             </div>
             {group.items.map((conversation) => (
@@ -707,6 +797,7 @@ function Sidebar({
                 conversation={conversation}
                 active={conversation.id === activeId}
                 onSelect={onSelect}
+                onDelete={onDelete}
               />
             ))}
           </div>
@@ -1061,12 +1152,47 @@ const Transcript = memo(function Transcript({
   includeSafeMdx = false,
   listRef,
   onRetry,
+  project = 'kale',
 }: {
   turns: Turn[]
   includeSafeMdx?: boolean
   listRef?: React.Ref<PublicInstance>
   onRetry?: () => void
+  project?: string
 }) {
+  if (turns.length === 0 && !includeSafeMdx) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexGrow: 1,
+          minHeight: 0,
+          width: '100%',
+          gap: 16,
+          userSelect: 'none',
+        }}
+      >
+        <svg
+          style={{ width: 34, height: 34, color: '#E2795B' }}
+          source='<svg viewBox="0 0 24 24" fill="none" stroke="#E2795B" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="3.34" y1="7" x2="20.66" y2="17"/><line x1="3.34" y1="17" x2="20.66" y2="7"/></svg>'
+        />
+        <text
+          style={{
+            fontSize: 21,
+            fontWeight: 500,
+            color: C.text,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {`What should we build in ${project}?`}
+        </text>
+      </div>
+    )
+  }
+
   return (
     <virtual-list
       ref={listRef}
@@ -1103,6 +1229,7 @@ const Transcript = memo(function Transcript({
 function WindowControls() {
   const { renderer } = useGpuix()
   const isDarwin = typeof process !== 'undefined' && process.platform === 'darwin'
+  const [hovered, setHovered] = useState<'minimize' | 'maximize' | 'close' | null>(null)
   if (isDarwin) return null
 
   return (
@@ -1111,18 +1238,22 @@ function WindowControls() {
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
         height: '100%',
         flexShrink: 0,
-        marginLeft: 6,
+        position: 'relative',
       }}
     >
       <Button
         testId="window-minimize"
         aria-label="Minimize"
         onClick={() => renderer?.minimizeWindow?.()}
+        onMouseEnter={() => setHovered('minimize')}
+        onMouseLeave={() => setHovered(null)}
         style={{
-          width: 44,
-          height: 32,
+          width: 28,
+          height: 28,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1131,15 +1262,19 @@ function WindowControls() {
           active: { backgroundColor: C.overlayStrong },
         }}
       >
-        <Icon name="windowMinimize" size={12} color={C.secondary} />
+        <Icon name="windowMinimize" size={13} color={C.secondary} />
       </Button>
+
       <Button
         testId="window-maximize"
         aria-label="Maximize"
         onClick={() => renderer?.zoomWindow?.()}
+        onMouseEnter={() => setHovered('maximize')}
+        onMouseLeave={() => setHovered(null)}
         style={{
-          width: 44,
-          height: 32,
+          width: 28,
+          height: 28,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1150,25 +1285,57 @@ function WindowControls() {
       >
         <Icon name="windowMaximize" size={12} color={C.secondary} />
       </Button>
+
       <Button
         testId="window-close"
         aria-label="Close"
         onClick={() => {
           if (typeof process !== 'undefined' && process.exit) process.exit(0)
         }}
+        onMouseEnter={() => setHovered('close')}
+        onMouseLeave={() => setHovered(null)}
         style={{
-          width: 44,
-          height: 32,
+          width: 28,
+          height: 28,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          hover: { backgroundColor: '#E81123' },
-          active: { backgroundColor: '#BF0F1D' },
+          backgroundColor: hovered === 'close' ? '#3F2427' : '#00000000',
+          hover: { backgroundColor: '#3F2427' },
+          active: { backgroundColor: '#582E33' },
         }}
       >
         <Icon name="windowClose" size={12} color={C.secondary} />
       </Button>
+
+      {hovered && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 34,
+            right: 0,
+            backgroundColor: '#1E1E20',
+            borderWidth: 1,
+            borderColor: '#38383D',
+            borderRadius: 8,
+            paddingTop: 5,
+            paddingBottom: 5,
+            paddingLeft: 10,
+            paddingRight: 10,
+            pointerEvents: 'none',
+          }}
+        >
+          <text style={{ fontSize: 12.5, color: '#CCCCCC', whiteSpace: 'nowrap' }}>
+            {hovered === 'close'
+              ? 'Close Window'
+              : hovered === 'maximize'
+                ? 'Maximize Window'
+                : 'Minimize Window'}
+          </text>
+        </div>
+      )}
     </div>
   )
 }
@@ -1264,8 +1431,14 @@ function SettingsDropdown({
   )
 }
 
-function SettingsView({ onBack }: { onBack: () => void }) {
-  const [activeSection, setActiveSection] = useState('general')
+function SettingsView({
+  onBack,
+  initialSection = 'general',
+}: {
+  onBack: () => void
+  initialSection?: string
+}) {
+  const [activeSection, setActiveSection] = useState(initialSection)
   const [searchQuery, setSearchQuery] = useState('')
 
   // General state
@@ -2628,7 +2801,11 @@ function Header({
   canGoForward,
   onBack,
   onForward,
-  onToggleInspector,
+  onToggleRightPanel,
+  rightPanelOpen,
+  onOpenCommitModal,
+  onOpenReview,
+  activeId,
 }: {
   collapsed: boolean
   onExpand: () => void
@@ -2638,8 +2815,21 @@ function Header({
   canGoForward: boolean
   onBack: () => void
   onForward: () => void
-  onToggleInspector: () => void
+  onToggleRightPanel: () => void
+  rightPanelOpen: boolean
+  onOpenCommitModal?: () => void
+  onOpenReview?: () => void
+  activeId?: string
 }) {
+  const [envMenuOpen, setEnvMenuOpen] = useState(false)
+  const [copiedTaskId, setCopiedTaskId] = useState(false)
+
+  const taskIdDisplay = activeId
+    ? activeId.startsWith('task-')
+      ? activeId
+      : `task-1949cf8c6b5b557f`
+    : 'task-1949cf8c6b5b557f'
+
   return (
     <div
       style={{
@@ -2693,13 +2883,1355 @@ function Header({
         </text>
       )}
       <div style={{ flexGrow: 1 }} />
-      <IconButton
-        icon="panelRight"
-        testId="inspector-toggle"
-        onClick={onToggleInspector}
-      />
-      <WindowControls />
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <div style={{ position: 'relative' }}>
+          <IconButton
+            icon="info"
+            testId="inspector-toggle"
+            active={envMenuOpen}
+            onClick={() => setEnvMenuOpen((v) => !v)}
+            borderRadius={14}
+            tooltip="Environment & tasks"
+          />
+          {envMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 36,
+                right: 0,
+                width: 236,
+                backgroundColor: '#1E1E1E',
+                borderRadius: 9,
+                borderWidth: 1,
+                borderColor: '#303030',
+                padding: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}
+            >
+              <Button
+                testId="env-commit-push"
+                onClick={() => {
+                  setEnvMenuOpen(false)
+                  onOpenCommitModal?.()
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 32,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#2C2C2C' },
+                }}
+              >
+                <text style={{ fontSize: 13, color: C.text }}>Commit or push</text>
+              </Button>
+              <Button
+                testId="env-compare-branch"
+                onClick={() => {
+                  setEnvMenuOpen(false)
+                  onOpenReview?.()
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  height: 32,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#2C2C2C' },
+                }}
+              >
+                <text style={{ fontSize: 13, color: C.text }}>Compare branch</text>
+                <Icon name="arrowUpRight" size={13} color={C.tertiary} />
+              </Button>
+
+              <div style={{ height: 1, backgroundColor: '#2A2A2A', marginTop: 3, marginBottom: 3 }} />
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  paddingLeft: 10,
+                  paddingRight: 6,
+                  paddingTop: 4,
+                  paddingBottom: 6,
+                }}
+              >
+                <text style={{ fontSize: 11, fontWeight: 500, color: C.tertiary }}>Task ID</text>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: '#141414',
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: '#2A2A2A',
+                    paddingLeft: 8,
+                    paddingRight: 4,
+                    height: 28,
+                  }}
+                >
+                  <text
+                    style={{
+                      fontSize: 11.5,
+                      fontFamily: FONT_MONO,
+                      color: C.secondary,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: 165,
+                    }}
+                  >
+                    {taskIdDisplay}
+                  </text>
+                  <Button
+                    testId="copy-task-id-btn"
+                    onClick={() => {
+                      setCopiedTaskId(true)
+                      setTimeout(() => setCopiedTaskId(false), 2000)
+                    }}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      hover: { backgroundColor: '#252525' },
+                    }}
+                  >
+                    <Icon
+                      name={copiedTaskId ? 'check' : 'copy'}
+                      size={12}
+                      color={copiedTaskId ? '#10B981' : C.tertiary}
+                    />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        {!rightPanelOpen && (
+          <>
+            <IconButton
+              icon="panelRight"
+              testId="panel-right-open"
+              onClick={onToggleRightPanel}
+              borderRadius={14}
+              tooltip="Toggle Right Panel"
+            />
+            <WindowControls />
+          </>
+        )}
+      </div>
     </div>
+  )
+}
+
+type SurfaceKind = 'none' | 'browser' | 'terminal' | 'files' | 'review'
+
+const SURFACES: { id: SurfaceKind; label: string; icon: IconName; desc: string }[] = [
+  { id: 'browser', label: 'Browser', icon: 'globe', desc: 'Open a local app or URL' },
+  { id: 'terminal', label: 'Terminal', icon: 'terminal', desc: 'Start a shell in this workspace' },
+  { id: 'files', label: 'Files', icon: 'folder', desc: 'Browse and read workspace files' },
+  { id: 'review', label: 'Review', icon: 'fileDiff', desc: 'Review file changes' },
+]
+
+function SurfacePanel({
+  activeSurface,
+  onChangeSurface,
+  onClose,
+  project,
+}: {
+  activeSurface: SurfaceKind
+  onChangeSurface: (surface: SurfaceKind) => void
+  onClose: () => void
+  project: string
+}) {
+  const [surfaceMenuOpen, setSurfaceMenuOpen] = useState(false)
+  const [termInput, setTermInput] = useState('')
+  const [termHistory, setTermHistory] = useState<string[]>([])
+
+  const handleTermSubmit = (val: string) => {
+    const cmd = val.trim()
+    if (!cmd) return
+    if (cmd === 'clear' || cmd === 'cls') {
+      setTermHistory([])
+    } else if (cmd === 'ls' || cmd === 'dir') {
+      setTermHistory((prev) => [
+        ...prev,
+        `PS E:\\hiroshi> ${cmd}`,
+        '    Directory: E:\\hiroshi',
+        '',
+        'Mode                 LastWriteTime         Length Name',
+        '----                 -------------         ------ ----',
+        'd-----        10/19/2026   3:20 AM                assets',
+        'd-----        10/19/2026   3:00 AM                screenshots',
+        '-a----        10/19/2026   3:30 AM         140200 app.tsx',
+        '-a----        10/19/2026   1:45 AM            450 package.json',
+        '-a----        10/19/2026   1:45 AM            520 tsconfig.json',
+        '-a----        10/19/2026   3:15 AM           2100 screenshot.ts',
+        '',
+      ])
+    } else {
+      setTermHistory((prev) => [
+        ...prev,
+        `PS E:\\hiroshi> ${cmd}`,
+        `[hiroshi-daemon] executed: ${cmd}`,
+        '',
+      ])
+    }
+    setTermInput('')
+  }
+
+  const currentDef = SURFACES.find((s) => s.id === activeSurface)
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flexGrow: 1,
+        minWidth: 360,
+        height: '100%',
+        backgroundColor: C.canvas,
+        userSelect: 'none',
+        position: 'relative',
+      }}
+    >
+      {/* Titlebar / Header */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          height: TITLEBAR_HEIGHT,
+          flexShrink: 0,
+          paddingLeft: 12,
+          paddingRight: 14,
+        }}
+      >
+        {/* Left: Tab badge if surface is active */}
+        {activeSurface !== 'none' && currentDef ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: '#262626',
+              borderRadius: 6,
+              height: 28,
+              paddingLeft: 8,
+              paddingRight: 6,
+            }}
+          >
+            {activeSurface === 'terminal' ? (
+              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: C.secondary }}>&gt;_</text>
+            ) : (
+              <Icon name={currentDef.icon} size={13} color={C.secondary} />
+            )}
+            <text style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>
+              {currentDef.label}
+            </text>
+            <Button
+              testId="surface-close-tab"
+              aria-label="Close surface"
+              onClick={() => onChangeSurface('none')}
+              style={{
+                width: 16,
+                height: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 4,
+                cursor: 'pointer',
+                marginLeft: 2,
+                hover: { backgroundColor: C.overlayStrong },
+              }}
+            >
+              <Icon name="windowClose" size={10} color={C.tertiary} />
+            </Button>
+          </div>
+        ) : null}
+
+        <div style={{ flexGrow: 1 }} />
+
+        {/* Right controls: + dropdown, panelRight toggle, and WindowControls */}
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          {/* Surface selector button (+) */}
+          {activeSurface !== 'none' && (
+            <div style={{ position: 'relative' }}>
+              <Button
+                testId="surface-plus-menu"
+                aria-label="Add surface"
+                onClick={() => setSurfaceMenuOpen((v) => !v)}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  backgroundColor: surfaceMenuOpen ? C.overlayStrong : '#00000000',
+                  hover: { backgroundColor: C.overlay },
+                }}
+              >
+                <Icon name="plus" size={13} color={C.tertiary} />
+              </Button>
+
+              {surfaceMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 32,
+                    right: 0,
+                    width: 160,
+                    backgroundColor: '#212121',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: C.borderStrong,
+                    padding: 4,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                  }}
+                >
+                  {SURFACES.map((s) => (
+                    <Button
+                      key={s.id}
+                      testId={`surface-select-${s.id}`}
+                      onClick={() => {
+                        onChangeSurface(s.id)
+                        setSurfaceMenuOpen(false)
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: 6,
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        backgroundColor: activeSurface === s.id ? '#2A2A2A' : '#00000000',
+                        hover: { backgroundColor: '#2C2C2C' },
+                      }}
+                    >
+                      {s.id === 'terminal' ? (
+                        <text style={{ fontSize: 11, fontFamily: FONT_MONO, color: C.secondary, width: 14 }}>&gt;_</text>
+                      ) : (
+                        <Icon name={s.icon} size={13} color={C.secondary} />
+                      )}
+                      <text style={{ fontSize: 12.5, color: C.text }}>{s.label}</text>
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <IconButton
+            icon="panelRight"
+            testId="surface-panel-toggle"
+            onClick={onClose}
+            borderRadius={14}
+          />
+          <WindowControls />
+        </div>
+      </div>
+
+      {/* Surface Content */}
+      {activeSurface === 'none' && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexGrow: 1,
+            padding: 24,
+            gap: 4,
+          }}
+        >
+          <text style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+            Open a surface
+          </text>
+          <text style={{ fontSize: 13, color: C.tertiary, marginBottom: 24 }}>
+            Choose what to show in the right panel
+          </text>
+
+          {/* 2x2 Grid */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'row', gap: 12 }}>
+              {/* Browser Card */}
+              <Button
+                testId="surface-card-browser"
+                onClick={() => onChangeSurface('browser')}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  width: 196,
+                  height: 104,
+                  backgroundColor: '#1E1E1E',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#292929',
+                  padding: 14,
+                  gap: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#252525', borderColor: '#3A3A3A' },
+                }}
+              >
+                <Icon name="globe" size={16} color={C.secondary} />
+                <text style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginTop: 6 }}>
+                  Browser
+                </text>
+                <text style={{ fontSize: 12, color: C.tertiary, lineHeight: 16 }}>
+                  Open a local app or URL
+                </text>
+              </Button>
+
+              {/* Terminal Card */}
+              <Button
+                testId="surface-card-terminal"
+                onClick={() => onChangeSurface('terminal')}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  width: 196,
+                  height: 104,
+                  backgroundColor: '#1E1E1E',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#292929',
+                  padding: 14,
+                  gap: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#252525', borderColor: '#3A3A3A' },
+                }}
+              >
+                <text style={{ fontSize: 13, fontFamily: FONT_MONO, color: C.secondary, height: 16 }}>&gt;_</text>
+                <text style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginTop: 6 }}>
+                  Terminal
+                </text>
+                <text style={{ fontSize: 12, color: C.tertiary, lineHeight: 16 }}>
+                  Start a shell in this workspace
+                </text>
+              </Button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'row', gap: 12 }}>
+              {/* Files Card */}
+              <Button
+                testId="surface-card-files"
+                onClick={() => onChangeSurface('files')}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  width: 196,
+                  height: 104,
+                  backgroundColor: '#1E1E1E',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#292929',
+                  padding: 14,
+                  gap: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#252525', borderColor: '#3A3A3A' },
+                }}
+              >
+                <Icon name="folder" size={16} color={C.secondary} />
+                <text style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginTop: 6 }}>
+                  Files
+                </text>
+                <text style={{ fontSize: 12, color: C.tertiary, lineHeight: 16 }}>
+                  Browse and read workspace files
+                </text>
+              </Button>
+
+              {/* Review Card */}
+              <Button
+                testId="surface-card-review"
+                onClick={() => onChangeSurface('review')}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  width: 196,
+                  height: 104,
+                  backgroundColor: '#1E1E1E',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#292929',
+                  padding: 14,
+                  gap: 6,
+                  cursor: 'pointer',
+                  hover: { backgroundColor: '#252525', borderColor: '#3A3A3A' },
+                }}
+              >
+                <Icon name="fileDiff" size={16} color={C.secondary} />
+                <text style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginTop: 6 }}>
+                  Review
+                </text>
+                <text style={{ fontSize: 12, color: C.tertiary, lineHeight: 16 }}>
+                  Review file changes
+                </text>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terminal Active View */}
+      {activeSurface === 'terminal' && (
+        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden' }}>
+          {/* Subheader info bar */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              height: 28,
+              paddingLeft: 14,
+              paddingRight: 14,
+              borderBottomWidth: 1,
+              borderColor: C.border,
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: '#E2795B',
+                  flexShrink: 0,
+                }}
+              />
+              <text
+                style={{
+                  fontSize: 11.5,
+                  fontFamily: FONT_MONO,
+                  color: C.tertiary,
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  minWidth: 0,
+                }}
+              >
+                C:\Program Files\WindowsApps\Microsoft.PowerShell_7.4.5.0_x64__8wekyb3d8bbwe\pwsh.exe
+              </text>
+            </div>
+            <text style={{ fontSize: 11.5, color: C.ghost, flexShrink: 0 }}>
+              {project}
+            </text>
+          </div>
+
+          {/* Monospace Shell Output & Input */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flexGrow: 1,
+              padding: 14,
+              overflowY: 'scroll',
+              gap: 4,
+              fontFamily: FONT_MONO,
+            }}
+          >
+            {termHistory.map((line, idx) => (
+              <text
+                key={idx}
+                style={{
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontFamily: FONT_MONO,
+                  color: line.startsWith('PS ') ? C.text : C.secondary,
+                }}
+              >
+                {line || ' '}
+              </text>
+            ))}
+
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
+              <text
+                style={{
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontFamily: FONT_MONO,
+                  color: C.text,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {`PS E:\\${project}> `}
+              </text>
+              <input
+                testId="terminal-input"
+                value={termInput}
+                theme={CHAT_THEME}
+                placeholder="█"
+                style={{
+                  flexGrow: 1,
+                  height: 20,
+                  fontSize: 13,
+                  fontFamily: FONT_MONO,
+                  color: C.text,
+                  backgroundColor: '#00000000',
+                  borderWidth: 0,
+                  padding: 0,
+                }}
+                onChange={(e) => setTermInput(e.value ?? '')}
+                onSubmit={(e) => handleTermSubmit(e.value ?? termInput)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Browser Active View */}
+      {activeSurface === 'browser' && (
+        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 12 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              height: 32,
+              paddingLeft: 10,
+              paddingRight: 10,
+              borderRadius: 6,
+              backgroundColor: '#242424',
+              borderWidth: 1,
+              borderColor: C.border,
+            }}
+          >
+            <Icon name="globe" size={14} color={C.tertiary} />
+            <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text, flexGrow: 1 }}>
+              http://localhost:3000
+            </text>
+            <IconButton icon="retry" size={12} />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexGrow: 1,
+              backgroundColor: '#1E1E1E',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: C.border,
+              gap: 8,
+            }}
+          >
+            <Icon name="globe" size={32} color={C.tertiary} />
+            <text style={{ fontSize: 13, color: C.secondary }}>Local Browser Preview</text>
+            <text style={{ fontSize: 12, color: C.ghost }}>Ready at http://localhost:3000</text>
+          </div>
+        </div>
+      )}
+
+      {/* Files Active View */}
+      {activeSurface === 'files' && (
+        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 6, overflowY: 'scroll' }}>
+          <text style={{ fontSize: 12, fontWeight: 600, color: C.ghost, marginBottom: 4 }}>
+            WORKSPACE FILES
+          </text>
+          {[
+            { name: 'app.tsx', icon: 'pencil' as const, size: '140 KB' },
+            { name: 'screenshot.ts', icon: 'laptop' as const, size: '2.1 KB' },
+            { name: 'package.json', icon: 'cube' as const, size: '450 B' },
+            { name: 'tsconfig.json', icon: 'wrench' as const, size: '520 B' },
+            { name: 'assets/icons/', icon: 'folder' as const, size: '49 files' },
+          ].map((f) => (
+            <div
+              key={f.name}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                padding: 6,
+                borderRadius: 6,
+                backgroundColor: '#00000000',
+                hover: { backgroundColor: '#262626' },
+                cursor: 'pointer',
+              }}
+            >
+              <Icon name={f.icon} size={14} color={C.secondary} />
+              <text style={{ fontSize: 13, color: C.text, flexGrow: 1 }}>{f.name}</text>
+              <text style={{ fontSize: 11.5, color: C.ghost }}>{f.size}</text>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Review Active View */}
+      {activeSurface === 'review' && (
+        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 10, overflowY: 'scroll' }}>
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>File Changes</text>
+            <text style={{ fontSize: 11.5, color: C.secondary }}>1 file modified</text>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#1E1E1E',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: C.border,
+              padding: 10,
+              gap: 6,
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="fileDiff" size={13} color={C.accent} />
+              <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text }}>hiroshi/app.tsx</text>
+            </div>
+            <text style={{ fontSize: 11.5, color: C.tertiary, fontFamily: FONT_MONO }}>
+              +185 additions, -24 deletions
+            </text>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CommitPushModal({
+  open,
+  onClose,
+  branch = 'master',
+  taskId = 'task-1949cf8c6b5b557f',
+}: {
+  open: boolean
+  onClose: () => void
+  branch?: string
+  taskId?: string
+}) {
+  const [message, setMessage] = useState('')
+  const [includeUnstaged, setIncludeUnstaged] = useState(true)
+  const inputRef = useRef<PublicInstance | null>(null)
+
+  if (!open) return null
+
+  const taskHash = taskId ? taskId.replace('task-', 'io-') : 'io-1949cf8c6b5b557f'
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogPortal
+        {...({ position: { x: 0, y: 0 } } as any)}
+        onMouseDown={onClose}
+        style={{
+          width: 1180,
+          height: 820,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#00000088',
+        }}
+      >
+        <DialogPopup
+          initialFocus={inputRef}
+          testId="commit-push-popup"
+          onMouseDown={(e: any) => {
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+          }}
+          style={{
+            width: 480,
+            maxWidth: '92%',
+            backgroundColor: '#1E1E1E',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#303030',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            padding: 16,
+            gap: 14,
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {/* Branch badge */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingLeft: 7,
+                  paddingRight: 8,
+                  paddingTop: 3,
+                  paddingBottom: 3,
+                  borderRadius: 6,
+                  backgroundColor: '#152C22',
+                  borderWidth: 1,
+                  borderColor: '#1C4A38',
+                }}
+              >
+                <Icon name="gitBranch" size={12} color="#10B981" />
+                <text style={{ fontSize: 12, fontWeight: 500, color: '#34D399' }}>{branch}</text>
+              </div>
+              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: C.ghost }}>
+                .{taskHash}
+              </text>
+            </div>
+            <Button
+              testId="commit-modal-close"
+              onClick={onClose}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                hover: { backgroundColor: '#2C2C2C' },
+              }}
+            >
+              <Icon name="windowClose" size={11} color={C.tertiary} />
+            </Button>
+          </div>
+
+          {/* Commit message input */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#141414',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: '#2D2D2D',
+              padding: 10,
+              minHeight: 88,
+            }}
+          >
+            <textarea
+              ref={inputRef}
+              value={message}
+              placeholder="Commit message..."
+              autoFocus
+              theme={CHAT_THEME}
+              style={{
+                width: '100%',
+                minHeight: 70,
+                fontSize: 13,
+                lineHeight: 18,
+                color: C.text,
+                backgroundColor: '#00000000',
+                borderWidth: 0,
+                padding: 0,
+              }}
+              onChange={(e) => setMessage(e.value ?? '')}
+            />
+          </div>
+
+          {/* Include unstaged changes */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+            onClick={() => setIncludeUnstaged((v) => !v)}
+          >
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 4,
+                  backgroundColor: includeUnstaged ? C.accent : '#252525',
+                  borderWidth: 1,
+                  borderColor: includeUnstaged ? C.accent : '#3D3D3D',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {includeUnstaged && <Icon name="check" size={11} color="#FFFFFF" />}
+              </div>
+              <text style={{ fontSize: 12.5, color: C.secondary }}>Include unstaged changes</text>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: '#10B981' }}>+0</text>
+              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: '#EF4444' }}>-0</text>
+            </div>
+          </div>
+
+          {/* Hiroshi daemon is disconnected */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingLeft: 10,
+              paddingRight: 10,
+              paddingTop: 8,
+              paddingBottom: 8,
+              borderRadius: 6,
+              backgroundColor: '#261F18',
+              borderWidth: 1,
+              borderColor: '#4A3828',
+            }}
+          >
+            <Icon name="contrast" size={13} color="#F59E0B" />
+            <text style={{ fontSize: 12, color: '#FCD34D' }}>Hiroshi daemon is disconnected</text>
+          </div>
+
+          {/* Action buttons */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
+            <Button
+              onClick={() => {
+                onClose()
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                height: 32,
+                paddingLeft: 12,
+                paddingRight: 12,
+                borderRadius: 6,
+                backgroundColor: '#2A2A2A',
+                borderWidth: 1,
+                borderColor: '#383838',
+                cursor: 'pointer',
+                hover: { backgroundColor: '#333333' },
+              }}
+            >
+              <text style={{ fontSize: 12.5, color: C.text }}>Commit</text>
+              <text style={{ fontSize: 11, color: C.ghost, fontFamily: FONT_SANS }}>Ctrl+Enter</text>
+            </Button>
+            <Button
+              onClick={() => {
+                onClose()
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                height: 32,
+                paddingLeft: 12,
+                paddingRight: 12,
+                borderRadius: 6,
+                backgroundColor: '#2A2A2A',
+                borderWidth: 1,
+                borderColor: '#383838',
+                cursor: 'pointer',
+                hover: { backgroundColor: '#333333' },
+              }}
+            >
+              <text style={{ fontSize: 12.5, color: C.text }}>Commit and push</text>
+            </Button>
+            <Button
+              onClick={() => {
+                onClose()
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                height: 32,
+                paddingLeft: 14,
+                paddingRight: 14,
+                borderRadius: 6,
+                backgroundColor: '#2A2A2A',
+                borderWidth: 1,
+                borderColor: '#383838',
+                cursor: 'pointer',
+                hover: { backgroundColor: '#333333' },
+              }}
+            >
+              <text style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>Push</text>
+            </Button>
+          </div>
+        </DialogPopup>
+      </DialogPortal>
+    </Dialog>
+  )
+}
+
+function CommandPaletteModal({
+  open,
+  onClose,
+  onNewTask,
+  onOpenProject,
+  onChooseModel,
+  onFocusComposer,
+  onCopyTaskId,
+  onToggleUsage,
+  onCollapseSidebar,
+  conversations,
+  onSelectConversation,
+}: {
+  open: boolean
+  onClose: () => void
+  onNewTask: () => void
+  onOpenProject: () => void
+  onChooseModel: () => void
+  onFocusComposer: () => void
+  onCopyTaskId: () => void
+  onToggleUsage: () => void
+  onCollapseSidebar: () => void
+  conversations: Conversation[]
+  onSelectConversation: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<PublicInstance | null>(null)
+  const [highlightedId, setHighlightedId] = useState<string>('new-task')
+
+  useEffect(() => {
+    if (open) {
+      setQuery('')
+      setHighlightedId('new-task')
+    }
+  }, [open])
+
+  const suggestedItems = [
+    { id: 'new-task', label: 'New task', icon: 'pencil' as const, shortcut: 'Ctrl+N', action: onNewTask },
+    { id: 'resume', label: 'Resume...', icon: 'retry' as const, action: () => onClose() },
+    { id: 'open-project', label: 'Open project...', icon: 'folder' as const, shortcut: 'Ctrl+O', action: onOpenProject },
+    { id: 'choose-model', label: 'Choose model...', icon: 'blocks' as const, shortcut: 'Ctrl+/', action: onChooseModel },
+  ]
+
+  const commandItems = [
+    { id: 'focus-composer', label: 'Focus Composer', icon: 'pencil' as const, shortcut: 'Ctrl+L', action: onFocusComposer },
+    { id: 'copy-task-id', label: 'Copy Task ID', icon: 'copy' as const, action: onCopyTaskId },
+    { id: 'toggle-usage', label: 'Toggle Usage Panel', icon: 'activity' as const, shortcut: 'Ctrl+U', action: onToggleUsage },
+    { id: 'collapse-sidebar', label: 'Collapse all sidebar groups', icon: 'sidebar' as const, action: onCollapseSidebar },
+  ]
+
+  const q = query.trim().toLowerCase()
+
+  const filteredSuggested = q
+    ? suggestedItems.filter((i) => i.label.toLowerCase().includes(q))
+    : suggestedItems
+
+  const filteredCommands = q
+    ? commandItems.filter((i) => i.label.toLowerCase().includes(q))
+    : commandItems
+
+  const matchedTasks = q
+    ? conversations.filter((c) => c.title.toLowerCase().includes(q))
+    : []
+
+  const executeItem = (action: () => void) => {
+    onClose()
+    action()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogPortal
+        {...({ position: { x: 0, y: 0 } } as any)}
+        onMouseDown={onClose}
+        style={{
+          width: 1180,
+          height: 820,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          paddingTop: 70,
+          backgroundColor: '#00000088',
+        }}
+      >
+        <DialogPopup
+          initialFocus={inputRef}
+          onMouseDown={(e: any) => {
+            // Stop backdrop click from closing when clicking inside popup
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+          }}
+          style={{
+            width: 580,
+            maxWidth: '92%',
+            maxHeight: 520,
+            backgroundColor: '#1E1E1E',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#303030',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            paddingTop: 4,
+            paddingBottom: 6,
+            paddingLeft: 0,
+            paddingRight: 0,
+          }}
+        >
+          {/* Top Search Input */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingLeft: 16,
+              paddingRight: 16,
+              paddingTop: 8,
+              paddingBottom: 8,
+            }}
+          >
+            <input
+              ref={inputRef}
+              testId="command-palette-input"
+              value={query}
+              placeholder="Search tasks or run a command..."
+              theme={CHAT_THEME}
+              style={{
+                width: '100%',
+                height: 34,
+                fontSize: 14,
+                color: C.text,
+                backgroundColor: '#00000000',
+                borderWidth: 0,
+                padding: 0,
+              }}
+              onChange={(e) => setQuery(e.value ?? '')}
+            />
+          </div>
+
+          <div style={{ height: 1, backgroundColor: '#292929', width: '100%' }} />
+
+          {/* Items List */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flexGrow: 1,
+              overflowY: 'scroll',
+              paddingLeft: 8,
+              paddingRight: 8,
+              paddingTop: 6,
+              paddingBottom: 6,
+            }}
+          >
+            {/* Suggested Section */}
+            {filteredSuggested.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
+                <text
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    color: C.ghost,
+                    paddingLeft: 10,
+                    paddingTop: 4,
+                    paddingBottom: 4,
+                  }}
+                >
+                  Suggested
+                </text>
+                {filteredSuggested.map((item) => {
+                  const isHighlighted = highlightedId === item.id
+                  return (
+                    <Button
+                      key={item.id}
+                      testId={`command-${item.id}`}
+                      onClick={() => executeItem(item.action)}
+                      onHover={() => setHighlightedId(item.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        height: 36,
+                        paddingLeft: 10,
+                        paddingRight: 10,
+                        borderRadius: 7,
+                        cursor: 'pointer',
+                        backgroundColor: isHighlighted ? '#2B2B2B' : '#00000000',
+                        hover: { backgroundColor: '#2B2B2B' },
+                      }}
+                    >
+                      <Icon name={item.icon} size={15} color={C.secondary} />
+                      <text style={{ fontSize: 13, color: C.text, flexGrow: 1 }}>
+                        {item.label}
+                      </text>
+                      {item.shortcut && (
+                        <div
+                          style={{
+                            paddingLeft: 6,
+                            paddingRight: 6,
+                            paddingTop: 2,
+                            paddingBottom: 2,
+                            borderRadius: 4,
+                            backgroundColor: '#262626',
+                            borderWidth: 1,
+                            borderColor: '#383838',
+                          }}
+                        >
+                          <text style={{ fontSize: 11, color: C.tertiary, fontFamily: FONT_SANS }}>
+                            {item.shortcut}
+                          </text>
+                        </div>
+                      )}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Commands Section */}
+            {filteredCommands.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
+                <text
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    color: C.ghost,
+                    paddingLeft: 10,
+                    paddingTop: 4,
+                    paddingBottom: 4,
+                  }}
+                >
+                  Commands
+                </text>
+                {filteredCommands.map((item) => {
+                  const isHighlighted = highlightedId === item.id
+                  return (
+                    <Button
+                      key={item.id}
+                      testId={`command-${item.id}`}
+                      onClick={() => executeItem(item.action)}
+                      onHover={() => setHighlightedId(item.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        height: 36,
+                        paddingLeft: 10,
+                        paddingRight: 10,
+                        borderRadius: 7,
+                        cursor: 'pointer',
+                        backgroundColor: isHighlighted ? '#2B2B2B' : '#00000000',
+                        hover: { backgroundColor: '#2B2B2B' },
+                      }}
+                    >
+                      <Icon name={item.icon} size={15} color={C.secondary} />
+                      <text style={{ fontSize: 13, color: C.text, flexGrow: 1 }}>
+                        {item.label}
+                      </text>
+                      {item.shortcut && (
+                        <div
+                          style={{
+                            paddingLeft: 6,
+                            paddingRight: 6,
+                            paddingTop: 2,
+                            paddingBottom: 2,
+                            borderRadius: 4,
+                            backgroundColor: '#262626',
+                            borderWidth: 1,
+                            borderColor: '#383838',
+                          }}
+                        >
+                          <text style={{ fontSize: 11, color: C.tertiary, fontFamily: FONT_SANS }}>
+                            {item.shortcut}
+                          </text>
+                        </div>
+                      )}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Tasks section if query matches */}
+            {matchedTasks.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <text
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    color: C.ghost,
+                    paddingLeft: 10,
+                    paddingTop: 4,
+                    paddingBottom: 4,
+                  }}
+                >
+                  Tasks
+                </text>
+                {matchedTasks.map((t) => (
+                  <Button
+                    key={t.id}
+                    testId={`command-task-${t.id}`}
+                    onClick={() => {
+                      onClose()
+                      onSelectConversation(t.id)
+                    }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      height: 36,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      borderRadius: 7,
+                      cursor: 'pointer',
+                      hover: { backgroundColor: '#2B2B2B' },
+                    }}
+                  >
+                    <Icon name="compose" size={14} color={C.secondary} />
+                    <text
+                      style={{
+                        fontSize: 13,
+                        color: C.text,
+                        flexGrow: 1,
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {t.title}
+                    </text>
+                    <text style={{ fontSize: 11.5, color: C.ghost }}>{t.time}</text>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogPopup>
+      </DialogPortal>
+    </Dialog>
   )
 }
 
@@ -2797,7 +4329,7 @@ function ChipSelect({
   value: string
   onChange: (next: string) => void
   items: { value: string; label: string }[]
-  icon: IconName
+  icon?: IconName
   label: string
   caret?: boolean
   accent?: boolean
@@ -2824,7 +4356,7 @@ function ChipSelect({
             hover: { backgroundColor: C.overlay },
           })}
         >
-          <Icon name={icon} size={12} color={accent ? C.accent : C.tertiary} />
+          {icon && <Icon name={icon} size={12} color={accent ? C.accent : C.tertiary} />}
           <text
             style={{
               fontSize: 13,
@@ -2909,7 +4441,6 @@ function ReasoningPicker({ value, onChange }: { value: string; onChange: (next: 
       value={value}
       onChange={onChange}
       items={REASONING.map((option) => ({ value: option.id, label: option.label }))}
-      icon={value === 'low' ? 'zap' : 'sparkle'}
       label={selected.label}
       caret={false}
     >
@@ -3168,7 +4699,7 @@ function Composer({
           ref={composerRef}
           testId="composer"
           value={value}
-          placeholder="Do anything..."
+          placeholder="Ask anything, @ to mention, / for workflows"
           minRows={1}
           maxRows={3}
           autoFocus
@@ -3277,7 +4808,8 @@ function WorkspaceFooter({
             width: 8,
             height: 8,
             borderRadius: 4,
-            backgroundColor: '#3B82F6',
+            borderWidth: 1.5,
+            borderColor: C.tertiary,
             flexShrink: 0,
           }}
         />
@@ -3691,23 +5223,27 @@ export function ChatApp({
       turns: seedTurnsFor(conversation.id, turnCount),
     })),
   )
-  const [activeId, setActiveId] = useState('c1')
-  const [nav, setNav] = useState({ stack: ['c1'], index: 0 })
+  const [activeId, setActiveId] = useState('task-new')
+  const [nav, setNav] = useState({ stack: ['task-new'], index: 0 })
   const [collapsed, setCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [activeSurface, setActiveSurface] = useState<SurfaceKind>('none')
+  const [settingsInitialSection, setSettingsInitialSection] = useState('general')
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat')
   const [overlay, setOverlay] = useState<'search' | null>(null)
+  const [commitModalOpen, setCommitModalOpen] = useState(false)
   const searchInputRef = useRef<PublicInstance | null>(null)
   const [query, setQuery] = useState('')
   const [projectOnly, setProjectOnly] = useState(false)
   const [draft, setDraft] = useState('')
-  const [model, setModel] = useState('deepseek-v4-flash')
+  const [model, setModel] = useState('grok-4.6')
   const [reasoning, setReasoning] = useState('high')
-  const [access, setAccess] = useState('full')
+  const [access, setAccess] = useState('ask')
   const [mode, setMode] = useState<'build' | 'plan'>('build')
-  const [project, setProject] = useState('gpuix')
+  const [project, setProject] = useState('kale')
   const [workspace, setWorkspace] = useState('local')
-  const [branch, setBranch] = useState('main')
+  const [branch, setBranch] = useState('master')
   const [tailTick, setTailTick] = useState(0)
   const [focusTick, setFocusTick] = useState(0)
 
@@ -3797,7 +5333,12 @@ export function ChatApp({
   }, [renderer, rowCount, tailTick])
 
   if (currentView === 'settings') {
-    return <SettingsView onBack={() => setCurrentView('chat')} />
+    return (
+      <SettingsView
+        onBack={() => setCurrentView('chat')}
+        initialSection={settingsInitialSection}
+      />
+    )
   }
 
   return (
@@ -3852,7 +5393,10 @@ export function ChatApp({
           canGoForward={canGoForward}
           onBack={goBack}
           onForward={goForward}
-          onSettings={() => setCurrentView('settings')}
+          onSettings={() => {
+            setSettingsInitialSection('general')
+            setCurrentView('settings')
+          }}
           onFilter={() => setProjectOnly((value) => !value)}
           filterActive={projectOnly}
         />
@@ -3878,7 +5422,14 @@ export function ChatApp({
           canGoForward={canGoForward}
           onBack={goBack}
           onForward={goForward}
-          onToggleInspector={() => setInspectorOpen((value) => !value)}
+          onToggleRightPanel={() => setRightPanelOpen((value) => !value)}
+          rightPanelOpen={rightPanelOpen}
+          onOpenCommitModal={() => setCommitModalOpen(true)}
+          onOpenReview={() => {
+            setRightPanelOpen(true)
+            setActiveSurface('review')
+          }}
+          activeId={activeId}
         />
         <Transcript
           key={activeId}
@@ -3886,6 +5437,7 @@ export function ChatApp({
           includeSafeMdx={showSafeMdx}
           listRef={listRef}
           onRetry={onRetry}
+          project={projectLabel}
         />
         <Composer
           value={draft}
@@ -3937,53 +5489,62 @@ export function ChatApp({
           project={project}
         />
       )}
-      <OverlayCard
-        title="Search threads"
-        height={420}
+      {rightPanelOpen && (
+        <>
+          <div style={{ width: 1, height: '100%', flexShrink: 0, backgroundColor: C.sidebarBorder }} />
+          <SurfacePanel
+            activeSurface={activeSurface}
+            onChangeSurface={setActiveSurface}
+            onClose={() => setRightPanelOpen(false)}
+            project={project}
+          />
+        </>
+      )}
+      <CommitPushModal
+        open={commitModalOpen}
+        onClose={() => setCommitModalOpen(false)}
+        branch={branch}
+        taskId={active?.id ?? 'task-1949cf8c6b5b557f'}
+      />
+      <CommandPaletteModal
         open={overlay === 'search'}
         onClose={() => setOverlay(null)}
-        initialFocus={searchInputRef}
-      >
-        <input
-          ref={searchInputRef}
-          testId="search-input"
-          value={query}
-          placeholder="Filter by title"
-          theme={CHAT_THEME}
-          style={{
-            width: '100%',
-            height: 32,
-            flexShrink: 0,
-            fontSize: 13,
-            color: C.text,
-            backgroundColor: C.composer,
-            borderRadius: 8,
-            paddingLeft: 10,
-            paddingRight: 10,
-          }}
-          onChange={(event) => setQuery(event.value ?? '')}
-        />
-        <div style={{ flexGrow: 1, minHeight: 0, overflowY: 'scroll' }}>
-          {searchHits.map((conversation) => (
-            <Button
-              key={conversation.id}
-              testId={`search-${conversation.id}`}
-              onClick={() => goTo(conversation.id)}
-              style={{
-                paddingTop: 8,
-                paddingBottom: 8,
-                paddingLeft: 8,
-                paddingRight: 8,
-                borderRadius: 8,
-                cursor: 'pointer',
-                hover: { backgroundColor: C.overlay },
-              }}
-            >
-              <text style={{ fontSize: 13, color: C.text }}>{conversation.title}</text>
-            </Button>
-          ))}
-        </div>
-      </OverlayCard>
+        onNewTask={() => {
+          const id = `task-${nextTask.current++}`
+          const created: Conversation = {
+            id,
+            title: 'New task',
+            group: 'Today',
+            project: projectLabel,
+            time: 'now',
+            turns: [],
+          }
+          setConversations((current) => [created, ...current])
+          setDraft('')
+          goTo(id)
+        }}
+        onOpenProject={() => {
+          setProject((curr) => (curr === 'gpuix' ? 'example-app' : 'gpuix'))
+        }}
+        onChooseModel={() => {
+          setModel((curr) => (curr === 'deepseek-v4-flash' ? 'opus-4.6' : 'deepseek-v4-flash'))
+        }}
+        onFocusComposer={() => {
+          setFocusTick((v) => v + 1)
+        }}
+        onCopyTaskId={() => {
+          // copy active id
+        }}
+        onToggleUsage={() => {
+          setSettingsInitialSection('usage')
+          setCurrentView('settings')
+        }}
+        onCollapseSidebar={() => {
+          setCollapsed((v) => !v)
+        }}
+        conversations={conversations}
+        onSelectConversation={goTo}
+      />
     </div>
   )
 }
@@ -3999,11 +5560,11 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   applyMacCpuThrottleFromEnv()
-  render(<ChatApp turnCount={1_000} includeSafeMdx />, {
+  render(<ChatApp turnCount={0} includeSafeMdx={false} />, {
     title: 'Hiroshi · Multi-Agent Orchestrator',
     width: 1180,
     height: 820,
-    titlebarTransparent: true,
+    titlebarTransparent: process.platform !== 'win32',
     windowBackground: 'blurred',
     trafficLightX: 16,
     trafficLightY: 17,

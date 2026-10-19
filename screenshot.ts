@@ -13,46 +13,43 @@ const app = await launch({
 
 // Wait for UI to mount
 await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
-await app.clock.pause()
+await new Promise((r) => setTimeout(r, 400))
 
-// 1. Transition to Settings
-await app.getByTestId('settings').click()
-await app.getByTestId('settings-back').waitFor({ timeoutMs: 10_000 })
+// 1. Capture Main Empty State (New chat page matching media_1792361923259_91e4dedb.png)
+await app.screenshot({ path: path.join(outDir, 'new-task-empty.png') })
+console.log('[screenshot] wrote screenshots/new-task-empty.png')
 
-// 2. Capture General
-await app.screenshot({ path: path.join(outDir, 'settings-general.png') })
-console.log('[screenshot] wrote screenshots/settings-general.png')
+// 2. Open Environment & Tasks menu by clicking info (i) button (matching media_1792361940172_1d8741c1.png)
+await app.getByTestId('inspector-toggle').click()
+await app.getByTestId('env-commit-push').waitFor({ timeoutMs: 10_000 })
+await new Promise((r) => setTimeout(r, 200))
+await app.screenshot({ path: path.join(outDir, 'environment-menu.png') })
+console.log('[screenshot] wrote screenshots/environment-menu.png')
 
-// 3. Capture Appearance
-await app.getByTestId('settings-section-appearance').click()
-await app.screenshot({ path: path.join(outDir, 'settings-appearance.png') })
-console.log('[screenshot] wrote screenshots/settings-appearance.png')
+// 3. Open Commit & Push modal by clicking "Commit or push" (matching media_1792361952266_f70665e0.png)
+await app.getByTestId('env-commit-push').click()
+await app.getByTestId('commit-modal-close').waitFor({ timeoutMs: 10_000 })
+await new Promise((r) => setTimeout(r, 300))
+await app.screenshot({ path: path.join(outDir, 'commit-push-modal.png') })
+console.log('[screenshot] wrote screenshots/commit-push-modal.png')
 
-// 4. Capture Providers
-await app.getByTestId('settings-section-providers').click()
-await app.screenshot({ path: path.join(outDir, 'settings-providers.png') })
-console.log('[screenshot] wrote screenshots/settings-providers.png')
+// 4. Close modal and test Compare Branch -> opens Review in right sidebar
+await app.getByTestId('commit-modal-close').click()
+await new Promise((r) => setTimeout(r, 300))
+await app.getByTestId('inspector-toggle').click()
+await app.getByTestId('env-compare-branch').waitFor({ timeoutMs: 10_000 })
+await app.getByTestId('env-compare-branch').click()
+await new Promise((r) => setTimeout(r, 400))
+await app.screenshot({ path: path.join(outDir, 'review-sidebar.png') })
+console.log('[screenshot] wrote screenshots/review-sidebar.png')
 
-// 5. Capture Skills
-await app.getByTestId('settings-section-skills').click()
-await app.screenshot({ path: path.join(outDir, 'settings-skills.png') })
-console.log('[screenshot] wrote screenshots/settings-skills.png')
-
-// 6. Capture Usage
-await app.getByTestId('settings-section-usage').click()
-await app.screenshot({ path: path.join(outDir, 'settings-usage.png') })
-console.log('[screenshot] wrote screenshots/settings-usage.png')
-
-// 7. Capture Daemon
-await app.getByTestId('settings-section-daemon').click()
-await app.screenshot({ path: path.join(outDir, 'settings-daemon.png') })
-console.log('[screenshot] wrote screenshots/settings-daemon.png')
-
-// 8. Return back to chat
-await app.getByTestId('settings-back').click()
-await app.getByTestId('composer').waitFor({ timeoutMs: 10_000 })
-await app.screenshot({ path: path.join(outDir, 'chat-main.png') })
-console.log('[screenshot] wrote screenshots/chat-main.png')
+// 5. Close right panel, hover window-close button to test close hover state & tooltip
+await app.getByTestId('surface-panel-toggle').click()
+await new Promise((r) => setTimeout(r, 300))
+await app.mouse.move(app.getByTestId('window-close'))
+await new Promise((r) => setTimeout(r, 300))
+await app.screenshot({ path: path.join(outDir, 'window-controls-hover.png') })
+console.log('[screenshot] wrote screenshots/window-controls-hover.png')
 
 await app.close()
-console.log('[screenshot] all 6 settings views captured successfully!')
+console.log('[screenshot] all requested views captured successfully!')
