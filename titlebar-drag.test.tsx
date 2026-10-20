@@ -94,8 +94,23 @@ describeNative('Hiroshi titlebar dragging', () => {
     await app.close()
   })
 
-  it('ignores presses that are not on the titlebar', async () => {
+  it('zooms the window from the maximize button', async () => {
     const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+
+    let zooms = 0
+    ;(renderer as any).zoomWindow = () => {
+      zooms += 1
+    }
+
+    await app.getByTestId('window-maximize').click()
+    expect(zooms).toBe(1)
+
+    await app.close()
+  })
+
+  it('ignores presses that are not on the titlebar', async () => {    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 

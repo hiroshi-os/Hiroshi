@@ -67,6 +67,7 @@ import iconShare from './assets/icons/share.svg' with { type: 'text' }
 import iconMore from './assets/icons/ellipsis.svg' with { type: 'text' }
 import iconWindowMinimize from './assets/icons/window-minimize.svg' with { type: 'text' }
 import iconWindowMaximize from './assets/icons/window-maximize.svg' with { type: 'text' }
+import iconWindowRestore from './assets/icons/window-restore.svg' with { type: 'text' }
 import iconWindowClose from './assets/icons/window-close.svg' with { type: 'text' }
 import iconContrast from './assets/icons/contrast.svg' with { type: 'text' }
 import iconBlocks from './assets/icons/blocks.svg' with { type: 'text' }
@@ -79,7 +80,14 @@ import iconGlobe from './assets/icons/globe.svg' with { type: 'text' }
 import iconFileDiff from './assets/icons/file-diff.svg' with { type: 'text' }
 import iconPlus from './assets/icons/plus.svg' with { type: 'text' }
 import iconInfo from './assets/icons/info.svg' with { type: 'text' }
-import { handleTitlebarMouseDown, startWindowDrag, updateWindowDrag, endWindowDrag } from './src/window-drag'
+import {
+  endWindowDrag,
+  handleTitlebarMouseDown,
+  isWindowMaximized,
+  startWindowDrag,
+  toggleWindowZoom,
+  updateWindowDrag,
+} from './src/window-drag'
 
 const iconArrowUpRight =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5L11.5 4.5M11.5 4.5H6.5M11.5 4.5V9.5"/></svg>'
@@ -147,6 +155,7 @@ const ICONS = {
   more: iconMore,
   windowMinimize: iconWindowMinimize,
   windowMaximize: iconWindowMaximize,
+  windowRestore: iconWindowRestore,
   windowClose: iconWindowClose,
   contrast: iconContrast,
   blocks: iconBlocks,
@@ -1303,6 +1312,7 @@ function WindowControls() {
   const { renderer } = useGpuix()
   const isDarwin = typeof process !== 'undefined' && process.platform === 'darwin'
   const [hovered, setHovered] = useState<'minimize' | 'maximize' | 'close' | null>(null)
+  const [maximized, setMaximized] = useState(false)
   if (isDarwin) return null
 
   return (
@@ -1340,9 +1350,17 @@ function WindowControls() {
 
       <Button
         testId="window-maximize"
-        aria-label="Maximize"
-        onClick={() => renderer?.zoomWindow?.()}
-        onMouseEnter={() => setHovered('maximize')}
+        aria-label={maximized ? 'Restore' : 'Maximize'}
+        onClick={() => {
+          toggleWindowZoom(renderer)
+          setMaximized(isWindowMaximized())
+        }}
+        onMouseEnter={() => {
+          // The window can also be zoomed from the titlebar, so read the
+          // state instead of trusting the last click.
+          setMaximized(isWindowMaximized())
+          setHovered('maximize')
+        }}
         onMouseLeave={() => setHovered(null)}
         style={{
           width: 28,
@@ -1356,7 +1374,7 @@ function WindowControls() {
           active: { backgroundColor: C.overlayStrong },
         }}
       >
-        <Icon name="windowMaximize" size={12} color={C.secondary} />
+        <Icon name={maximized ? 'windowRestore' : 'windowMaximize'} size={12} color={C.secondary} />
       </Button>
 
       <Button
@@ -1404,7 +1422,9 @@ function WindowControls() {
             {hovered === 'close'
               ? 'Close Window'
               : hovered === 'maximize'
-                ? 'Maximize Window'
+                ? maximized
+                  ? 'Restore Window'
+                  : 'Maximize Window'
                 : 'Minimize Window'}
           </text>
         </div>

@@ -32,6 +32,11 @@
 - Double click on the titlebar zooms the window. The detection lives in
   `handleTitlebarMouseDown` and compares the timestamps and the positions of
   two presses.
+- The maximize button and the titlebar double click share `toggleWindowZoom`.
+  The native zoom only maximizes on Windows, it never restores, so the
+  restore goes through `ShowWindow(SW_RESTORE)`. A window move cannot stand
+  in for it: `IsZoomed` stays true and the next click would restore again
+  instead of maximizing.
 
 ### Centered Modals & DialogPortals
 - When using `DialogPortal` in GPUIX, explicitly pass `position: { x: 0, y: 0 }` and window dimensions to bypass trigger anchoring and ensure full-viewport centering and backdrop dimming:

@@ -52,6 +52,8 @@ type User32Symbols = {
   ) => boolean
   SetCapture: (hwnd: any) => any
   ReleaseCapture: () => boolean
+  IsZoomed: (hwnd: any) => boolean
+  ShowWindow: (hwnd: any, command: number) => boolean
   GetDpiForWindow: (hwnd: any) => number
   GetThreadDpiAwarenessContext: () => any
   GetAwarenessFromDpiAwarenessContext: (context: any) => number
@@ -93,6 +95,8 @@ function loadUser32(): { symbols: User32Symbols } | null {
       },
       SetCapture: { args: [FFIType.ptr], returns: FFIType.ptr },
       ReleaseCapture: { args: [], returns: FFIType.bool },
+      IsZoomed: { args: [FFIType.ptr], returns: FFIType.bool },
+      ShowWindow: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.bool },
       GetDpiForWindow: { args: [FFIType.ptr], returns: FFIType.u32 },
       GetThreadDpiAwarenessContext: { args: [], returns: FFIType.ptr },
       GetAwarenessFromDpiAwarenessContext: { args: [FFIType.ptr], returns: FFIType.i32 },
@@ -308,6 +312,60 @@ export function isDragging(): boolean {
   return session !== null
 }
 
+/** The window rectangle from before the window was maximized. */
+let normalRect: number[] | null = null
+
+/** ShowWindow command: put the window back to its normal size. */
+const SW_RESTORE = 9
+
+/** True when the window is maximized right now. */
+export function isWindowMaximized(): boolean {
+  const lib = loadUser32()
+  if (!lib) return false
+  try {
+    const hwnd = resolveWindowHandle()
+    if (!hwnd) return false
+    return lib.symbols.IsZoomed(hwnd)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Maximize the window, or restore it when it is maximized already.
+ *
+ * The native zoom only maximizes on Windows, it never restores, so the
+ * restore goes through `ShowWindow(SW_RESTORE)`. That also clears the zoomed
+ * state, which a plain window move would leave behind.
+ */
+export function toggleWindowZoom(renderer?: any): boolean {
+  const lib = loadUser32()
+  if (!lib) {
+    renderer?.zoomWindow?.()
+    return false
+  }
+  try {
+    const hwnd = resolveWindowHandle()
+    if (!hwnd) {
+      renderer?.zoomWindow?.()
+      return false
+    }
+    if (lib.symbols.IsZoomed(hwnd)) {
+      lib.symbols.ShowWindow(hwnd, SW_RESTORE)
+      normalRect = null
+      return true
+    }
+    const rect = new Int32Array(4)
+    if (lib.symbols.GetWindowRect(hwnd, rect)) {
+      normalRect = [rect[0], rect[1], rect[2], rect[3]]
+    }
+    renderer?.zoomWindow?.()
+    return true
+  } catch {
+    return false
+  }
+}
+
 type DragStarter = (event?: any) => boolean
 
 let dragStarter: DragStarter = beginDrag
@@ -357,7 +415,7 @@ export function handleTitlebarMouseDown(renderer?: any, event?: any): void {
       Math.abs(y - lastPressY) <= DOUBLE_CLICK_SLOP_PX)
   if (lastPressAt !== 0 && now - lastPressAt < DOUBLE_CLICK_MS && nearFirstPress) {
     resetTitlebarPress()
-    renderer?.zoomWindow?.()
+    toggleWindowZoom(renderer)
     return
   }
   lastPressAt = now
