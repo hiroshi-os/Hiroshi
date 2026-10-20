@@ -53,3 +53,13 @@ bun run screenshot
 # Bundle for the browser
 bun run web:dev
 ```
+
+---
+
+## Versioning
+
+`0.MINOR.PATCH`. The major stays `0` until the desktop shell and the app
+surface are stable, and the minor counts the feature releases up to `255`
+before `1.0.0`. The version lives in `package.json` and nowhere else.
+
+What changed in every release is in [CHANGELOG.md](./CHANGELOG.md).
