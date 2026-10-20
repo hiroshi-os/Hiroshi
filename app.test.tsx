@@ -1,6 +1,7 @@
 /**
- * Automated tests for Hiroshi Multi-Agent Orchestration Cockpit
- * Tested through the GPUIX native test renderer.
+ * Integration tests for the Hiroshi chat cockpit.
+ * Tested through the GPUIX native test renderer, so the real tree is built,
+ * painted and hit tested.
  *
  *   bun run test
  */
@@ -14,107 +15,171 @@ import { HiroshiApp } from './app'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
-describeNative('Hiroshi Multi-Agent Orchestrator', () => {
-  it('mounts and paints the swarm timeline, header, and sidebar', async () => {
-    const { render, renderer } = createTestRoot({ width: 1200, height: 1600 })
+/** Every `testId` in the painted tree. */
+function testIds(renderer: any): string[] {
+  const ids: string[] = []
+  const walk = (node: any) => {
+    if (node.testId) ids.push(node.testId)
+    for (const child of node.children ?? []) walk(child)
+  }
+  walk(JSON.parse(renderer.getAutomationTree()))
+  return ids
+}
+
+/**
+ * Wait until the element stops moving.
+ *
+ * The automation clicks the last painted bounds, so an element that is still
+ * sliding into place has to settle before it is clicked.
+ */
+async function settle(locator: any): Promise<void> {
+  let previous: any = null
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const bounds = await locator.bounds()
+    if (previous && bounds.x === previous.x && bounds.y === previous.y) return
+    previous = bounds
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
+describeNative('Hiroshi chat cockpit', () => {
+  it('mounts the sidebar, the header, the composer and the empty state', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
     const painted = renderer.getPaintedText()
 
-    // Assert branding, active mission, and supervisor plan are painted
-    expect(painted).toContain('Hiroshi')
-    expect(painted).toContain('Multi-Agent Orchestrator')
-    expect(painted).toContain('SWARM RUNNING')
-    expect(painted).toContain('Implement Distributed State Synchronization with CRDT in Rust & GPUI')
-    expect(painted).toContain('Swarm Orchestration DAG Decomposed (4 Subtasks)')
+    // Sidebar
+    expect(painted).toContain('New Task')
+    expect(painted).toContain('Search')
+    expect(painted).toContain('Today')
+    expect(painted).toContain('This Year')
+    // Header and the empty state of a fresh task
+    expect(painted).toContain('New task')
+    expect(painted).toContain('What should we build in kale?')
+    // Composer
+    expect(painted).toContain('Ask anything, @ to mention, / for workflows')
+    expect(painted).toContain('Grok 4.6')
+    // Workspace footer
+    expect(painted).toContain('kale')
+    expect(painted).toContain('Local')
+    expect(painted).toContain('master')
 
     await app.close()
   })
 
-  it('switches between Timeline, Topology, Fleet, and Artifacts tabs', async () => {
-    const { render, renderer } = createTestRoot({ width: 1200, height: 1600 })
+  it('switches to another thread and shows its transcript', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
-    // 1. Switch to Topology View
-    await app.getByTestId('tab-topology').click()
-    let painted = renderer.getPaintedText()
-    expect(painted).toContain('Swarm Topology & Communication DAG')
-    expect(painted).toContain('P2P BUS HEALTHY (120 FPS)')
+    expect(renderer.getPaintedText()).toContain('What should we build in kale?')
 
-    // 2. Switch to Fleet View
-    await app.getByTestId('tab-fleet').click()
-    painted = renderer.getPaintedText()
-    expect(painted).toContain('Swarm Agent Fleet Roster')
-    expect(painted).toContain('Atlas')
-    expect(painted).toContain('Forge')
+    await app.getByTestId('thread-c1').click()
 
-    // 3. Switch to Artifacts View
-    await app.getByTestId('tab-artifacts').click()
-    painted = renderer.getPaintedText()
-    expect(painted).toContain('Swarm Artifacts')
-    expect(painted).toContain('crdt.rs')
-    expect(painted).toContain('engine.rs')
-
-    // 4. Switch back to Timeline
-    await app.getByTestId('tab-timeline').click()
-    painted = renderer.getPaintedText()
-    expect(painted).toContain('Active Swarm Mission')
+    // The empty state belongs to the task that was selected before.
+    expect(renderer.getPaintedText()).not.toContain('What should we build in kale?')
 
     await app.close()
   })
 
-  it('toggles swarm run and pause state', async () => {
-    const { render, renderer } = createTestRoot({ width: 1200, height: 1600 })
+  it('creates a new task from the sidebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
-    expect(renderer.getPaintedText()).toContain('SWARM RUNNING')
+    const before = testIds(renderer).filter((id) => id.startsWith('thread-task-')).length
+    await app.getByTestId('new-task').click()
+    const after = testIds(renderer).filter((id) => id.startsWith('thread-task-')).length
 
-    // Click pause button
-    await app.getByTestId('swarm-toggle-btn').click()
-    expect(renderer.getPaintedText()).toContain('SWARM PAUSED')
-
-    // Click run button
-    await app.getByTestId('swarm-toggle-btn').click()
-    expect(renderer.getPaintedText()).toContain('SWARM RUNNING')
+    expect(after).toBe(before + 1)
 
     await app.close()
   })
 
-  it('switches active missions between swarms in sidebar', async () => {
-    const { render, renderer } = createTestRoot()
+  it('deletes a thread from the sidebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
-    // Initially on mission 1
-    expect(renderer.getPaintedText()).toContain('Implement Distributed State Synchronization with CRDT in Rust & GPUI')
+    // The delete button belongs to the active thread.
+    await app.getByTestId('thread-c1').click()
+    expect(testIds(renderer)).toContain('delete-c1')
+    expect(renderer.getPaintedText()).not.toContain('What should we build in kale?')
 
-    // Click mission 2 (Security Audit)
-    await app.getByTestId('mission-m-2').click()
-    let painted = renderer.getPaintedText()
-    expect(painted).toContain('Security Audit & Memory Leak Analysis on Canvas Render Loop')
-    expect(painted).toContain('Audit passed: Framebuffer textures are properly unmapped on frame drop.')
+    await app.getByTestId('delete-c1').click()
 
-    // Click back to mission 1
-    await app.getByTestId('mission-m-1').click()
-    painted = renderer.getPaintedText()
-    expect(painted).toContain('Implement Distributed State Synchronization with CRDT in Rust & GPUI')
+    // The deleted thread was the active one, so the empty state is back.
+    // The row itself stays in the tree: the exit animation never settles
+    // without frames, and the test renderer only paints on demand.
+    expect(renderer.getPaintedText()).toContain('What should we build in kale?')
 
     await app.close()
   })
 
-  it('steps to the next swarm turn', async () => {
-    const { render, renderer } = createTestRoot({ width: 1200, height: 1600 })
+  it('opens the command palette from the sidebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
-    // Click step next turn
-    await app.getByTestId('step-next-btn').click()
-    const painted = renderer.getPaintedText()
-    expect(painted).toContain('Sentinel')
-    expect(painted.some((line) => line.includes('zero data races'))).toBe(true)
+    expect(testIds(renderer)).not.toContain('command-palette-input')
+    await app.getByTestId('search').click()
+    expect(testIds(renderer)).toContain('command-palette-input')
+
+    await app.close()
+  })
+
+  it('opens the right panel and switches the active surface', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+
+    // The header gives the panel toggle up when the panel is open.
+    expect(testIds(renderer)).toContain('panel-right-open')
+
+    // The panel slides in, so the cards only hit test once it is settled.
+    // The clock is frozen while the panel opens and then advanced, so the
+    // test does not depend on how fast the machine is.
+    await app.clock.pause()
+    await app.getByTestId('panel-right-open').click()
+    expect(testIds(renderer)).not.toContain('panel-right-open')
+    expect(testIds(renderer)).toContain('surface-panel-toggle')
+    await app.clock.fastForward(300)
+    await app.clock.resume()
+
+    const card = app.getByTestId('surface-card-terminal')
+    await settle(card)
+    await card.click()
+    expect(testIds(renderer)).toContain('surface-close-tab')
+
+    await app.close()
+  })
+
+  it('sends a draft from the composer', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+
+    await app.getByTestId('composer').fill('ship the drag fix')
+    await app.getByTestId('send').click()
+
+    expect(renderer.getPaintedText()).toContain('ship the drag fix')
+
+    await app.close()
+  })
+
+  it('opens the settings view and comes back', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+
+    await app.getByTestId('settings').click()
+    expect(renderer.getPaintedText()).toContain('General')
+    expect(testIds(renderer)).toContain('settings-back')
+
+    await app.getByTestId('settings-back').click()
+    expect(renderer.getPaintedText()).toContain('What should we build in kale?')
 
     await app.close()
   })
