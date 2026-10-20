@@ -79,6 +79,7 @@ import iconGlobe from './assets/icons/globe.svg' with { type: 'text' }
 import iconFileDiff from './assets/icons/file-diff.svg' with { type: 'text' }
 import iconPlus from './assets/icons/plus.svg' with { type: 'text' }
 import iconInfo from './assets/icons/info.svg' with { type: 'text' }
+import { handleTitlebarMouseDown, startWindowDrag, updateWindowDrag, endWindowDrag } from './src/window-drag'
 
 const iconArrowUpRight =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5L11.5 4.5M11.5 4.5H6.5M11.5 4.5V9.5"/></svg>'
@@ -712,8 +713,11 @@ function Sidebar({
           />
         </div>
         <div
-          style={{ flexGrow: 1, height: '100%' }}
+          testId="titlebar-drag-sidebar"
+          style={{ flexGrow: 1, height: '100%', pointerEvents: 'auto' }}
           onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+          onMouseMove={() => updateWindowDrag()}
+          onMouseUp={() => endWindowDrag()}
         />
       </div>
 
@@ -1249,66 +1253,9 @@ const Transcript = memo(function Transcript({
   )
 })
 
-let user32Ffi: any = null
-
-function getWin32Hwnd(): any {
-  if (typeof process === 'undefined' || process.platform !== 'win32') return null
-  try {
-    if (!user32Ffi) {
-      const { dlopen, FFIType } = require('bun:ffi')
-      user32Ffi = dlopen('user32.dll', {
-        FindWindowW: {
-          args: [FFIType.ptr, FFIType.ptr],
-          returns: FFIType.ptr,
-        },
-        GetForegroundWindow: {
-          args: [],
-          returns: FFIType.ptr,
-        },
-        ReleaseCapture: {
-          args: [],
-          returns: FFIType.bool,
-        },
-        SendMessageW: {
-          args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr],
-          returns: FFIType.ptr,
-        },
-      })
-    }
-    const titleBuf = Buffer.from('Hiroshi · Multi-Agent Orchestrator\0', 'utf16le')
-    const found = user32Ffi.symbols.FindWindowW(null, titleBuf)
-    if (found) return found
-    return user32Ffi.symbols.GetForegroundWindow()
-  } catch {
-    return null
-  }
-}
-
-export function startWindowDrag() {
-  if (typeof process === 'undefined' || process.platform !== 'win32') return
-  try {
-    const hwnd = getWin32Hwnd()
-    if (hwnd && user32Ffi) {
-      user32Ffi.symbols.ReleaseCapture()
-      user32Ffi.symbols.SendMessageW(hwnd, 0x0112, 0xF012, 0)
-    }
-  } catch {
-    // ignore
-  }
-}
-
-let lastTitlebarClick = 0
-export function handleTitlebarMouseDown(renderer?: any, e?: any) {
-  if (e && e.button !== 0) return
-  const now = Date.now()
-  if (now - lastTitlebarClick < 300) {
-    lastTitlebarClick = 0
-    renderer?.zoomWindow?.()
-    return
-  }
-  lastTitlebarClick = now
-  startWindowDrag()
-}
+// The native drag lives in its own module so the titlebar press handler and
+// the Win32 plumbing can be tested without a real window.
+export { startWindowDrag, handleTitlebarMouseDown }
 
 function ResizeHandle({
   testId,
@@ -1566,6 +1513,7 @@ function SettingsView({
 }) {
   const [activeSection, setActiveSection] = useState(initialSection)
   const [searchQuery, setSearchQuery] = useState('')
+  const { renderer } = useGpuix()
 
   // General state
   const [shareUsage, setShareUsage] = useState(true)
@@ -1624,27 +1572,43 @@ function SettingsView({
           paddingRight: 12,
         }}
       >
-        {/* Back Button */}
-        <Button
-          testId="settings-back"
-          onClick={onBack}
+        {/* Back Button + caption drag region */}
+        <div
           style={{
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            height: 32,
-            paddingLeft: 6,
-            paddingRight: 10,
-            borderRadius: 7,
-            cursor: 'pointer',
-            hover: { backgroundColor: C.overlay },
+            gap: 6,
             marginBottom: 8,
           }}
         >
-          <Icon name="arrowLeft" size={14} color={C.secondary} />
-          <text style={{ fontSize: 13.5, fontWeight: 500, color: C.text }}>Back</text>
-        </Button>
+          <Button
+            testId="settings-back"
+            onClick={onBack}
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              height: 32,
+              paddingLeft: 6,
+              paddingRight: 10,
+              borderRadius: 7,
+              cursor: 'pointer',
+              hover: { backgroundColor: C.overlay },
+            }}
+          >
+            <Icon name="arrowLeft" size={14} color={C.secondary} />
+            <text style={{ fontSize: 13.5, fontWeight: 500, color: C.text }}>Back</text>
+          </Button>
+          <div
+            testId="titlebar-drag-settings"
+            style={{ flexGrow: 1, height: 32, pointerEvents: 'auto' }}
+            onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+            onMouseMove={() => updateWindowDrag()}
+            onMouseUp={() => endWindowDrag()}
+          />
+        </div>
 
         {/* Search Settings */}
         <div
@@ -2983,36 +2947,52 @@ function Header({
           </div>
         </>
       )}
-      <text
+      {/* Caption drag region — pointerEvents:auto so GPUI inserts a hitbox on an
+          unfilled in-flow div (see gpuix should_occlude). Buttons stay outside. */}
+      <div
+        testId="titlebar-drag-header"
         style={{
-          fontSize: 13,
-          fontWeight: 500,
-          color: C.text,
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          flexGrow: 1,
+          height: '100%',
           minWidth: 0,
-          flexShrink: 1,
+          pointerEvents: 'auto',
         }}
+        onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+        onMouseMove={() => updateWindowDrag()}
+        onMouseUp={() => endWindowDrag()}
       >
-        {title}
-      </text>
-      {turnCount > TURNS.length && (
         <text
           style={{
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: 500,
-            color: C.tertiary,
+            color: C.text,
             whiteSpace: 'nowrap',
-            flexShrink: 0,
+            textOverflow: 'ellipsis',
+            minWidth: 0,
+            flexShrink: 1,
           }}
         >
-          {turnCount.toLocaleString('en-US')} messages
+          {title}
         </text>
-      )}
-      <div
-        style={{ flexGrow: 1, height: '100%' }}
-        onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
-      />
+        {turnCount > TURNS.length && (
+          <text
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: C.tertiary,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            {turnCount.toLocaleString('en-US')} messages
+          </text>
+        )}
+        <div style={{ flexGrow: 1, height: '100%' }} />
+      </div>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <div style={{ position: 'relative' }}>
           <IconButton
@@ -3312,8 +3292,11 @@ function SurfacePanel({
         </AnimatePresence>
 
         <div
-          style={{ flexGrow: 1, height: '100%' }}
+          testId="titlebar-drag-surface"
+          style={{ flexGrow: 1, height: '100%', pointerEvents: 'auto' }}
           onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+          onMouseMove={() => updateWindowDrag()}
+          onMouseUp={() => endWindowDrag()}
         />
 
         {/* Right controls: + dropdown, panelRight toggle, and WindowControls */}

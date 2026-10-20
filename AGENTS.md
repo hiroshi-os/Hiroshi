@@ -7,12 +7,31 @@
 
 ## 2. GPUIX Desktop Framework Rules
 
-### Window Draggability (Windows vs macOS)
-- In the `render()` entry point, set:
+### No Native Titlebar, Draggable Custom Titlebar
+- The native OS titlebar is never shown. In the `render()` entry point set:
   ```tsx
-  titlebarTransparent: process.platform !== 'win32',
+  titlebarTransparent: true,
   ```
-  Setting `titlebarTransparent: true` on Windows breaks native caption hit-testing and loses titlebar draggability.
+  Never condition it on `process.platform`. A conditional value gives Windows a
+  duplicate native titlebar, which is exactly what the custom chrome avoids.
+- The custom titlebar is draggable. `src/window-drag.ts` owns the whole
+  mechanism: the press records the window and cursor position, every move
+  pushes the window by the cursor delta with `SetWindowPos`, and the release
+  lets go.
+- Do not hand the drag to the OS modal move loop. `WM_SYSCOMMAND` with
+  `SC_MOVE|HTCAPTION` and `WM_NCLBUTTONDOWN` with `HTCAPTION` are both
+  ignored by the GPUI Windows backend, so the window never moves. This is a
+  GPUIX gap (no window move API is exposed by the native renderer).
+- A drag region must set `pointerEvents: 'auto'`. An unfilled in-flow `div`
+  gets no GPUI hitbox at all (`should_occlude` in GPUIX), so without it the
+  press never reaches the handler and the titlebar is dead.
+- A drag region needs `onMouseDown`, `onMouseMove` and `onMouseUp` on the same
+  element. GPUIX arms the pointer capture on the press only when the element
+  also listens for moves, which is what keeps the drag alive outside the
+  titlebar.
+- Double click on the titlebar zooms the window. The detection lives in
+  `handleTitlebarMouseDown` and compares the timestamps and the positions of
+  two presses.
 
 ### Centered Modals & DialogPortals
 - When using `DialogPortal` in GPUIX, explicitly pass `position: { x: 0, y: 0 }` and window dimensions to bypass trigger anchoring and ensure full-viewport centering and backdrop dimming:
