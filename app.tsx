@@ -622,6 +622,7 @@ function ConversationRow({
 }
 
 function Sidebar({
+  width = SIDEBAR_WIDTH,
   conversations,
   activeId,
   onSelect,
@@ -637,6 +638,7 @@ function Sidebar({
   filterActive,
   onDelete,
 }: {
+  width?: number
   conversations: Conversation[]
   activeId: string
   onSelect: (id: string) => void
@@ -662,12 +664,14 @@ function Sidebar({
     return out
   }, [conversations])
 
+  const { renderer } = useGpuix()
+
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: SIDEBAR_WIDTH,
+        width,
         flexShrink: 0,
         height: '100%',
         backgroundColor: C.sidebar,
@@ -707,6 +711,10 @@ function Sidebar({
             onClick={onForward}
           />
         </div>
+        <div
+          style={{ flexGrow: 1, height: '100%' }}
+          onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+        />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 10, paddingRight: 10 }}>
@@ -1042,6 +1050,7 @@ function titleFromDraft(text: string) {
 }
 
 function Inspector({
+  width = 260,
   conversation,
   model,
   reasoning,
@@ -1049,6 +1058,7 @@ function Inspector({
   mode,
   project,
 }: {
+  width?: number
   conversation: Conversation | undefined
   model: string
   reasoning: string
@@ -1074,12 +1084,10 @@ function Inspector({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: 260,
+        width,
         flexShrink: 0,
         height: '100%',
         backgroundColor: C.sidebar,
-        borderLeftWidth: 1,
-        borderColor: C.sidebarBorder,
         paddingTop: 14,
         paddingLeft: 14,
         paddingRight: 14,
@@ -1240,6 +1248,109 @@ const Transcript = memo(function Transcript({
     </virtual-list>
   )
 })
+
+let user32Ffi: any = null
+
+function getWin32Hwnd(): any {
+  if (typeof process === 'undefined' || process.platform !== 'win32') return null
+  try {
+    if (!user32Ffi) {
+      const { dlopen, FFIType } = require('bun:ffi')
+      user32Ffi = dlopen('user32.dll', {
+        FindWindowW: {
+          args: [FFIType.ptr, FFIType.ptr],
+          returns: FFIType.ptr,
+        },
+        GetForegroundWindow: {
+          args: [],
+          returns: FFIType.ptr,
+        },
+        ReleaseCapture: {
+          args: [],
+          returns: FFIType.bool,
+        },
+        SendMessageW: {
+          args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr],
+          returns: FFIType.ptr,
+        },
+      })
+    }
+    const titleBuf = Buffer.from('Hiroshi · Multi-Agent Orchestrator\0', 'utf16le')
+    const found = user32Ffi.symbols.FindWindowW(null, titleBuf)
+    if (found) return found
+    return user32Ffi.symbols.GetForegroundWindow()
+  } catch {
+    return null
+  }
+}
+
+export function startWindowDrag() {
+  if (typeof process === 'undefined' || process.platform !== 'win32') return
+  try {
+    const hwnd = getWin32Hwnd()
+    if (hwnd && user32Ffi) {
+      user32Ffi.symbols.ReleaseCapture()
+      user32Ffi.symbols.SendMessageW(hwnd, 0x0112, 0xF012, 0)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+let lastTitlebarClick = 0
+export function handleTitlebarMouseDown(renderer?: any, e?: any) {
+  if (e && e.button !== 0) return
+  const now = Date.now()
+  if (now - lastTitlebarClick < 300) {
+    lastTitlebarClick = 0
+    renderer?.zoomWindow?.()
+    return
+  }
+  lastTitlebarClick = now
+  startWindowDrag()
+}
+
+function ResizeHandle({
+  testId,
+  isResizing,
+  side = 'left',
+  onMouseDown,
+}: {
+  testId?: string
+  isResizing: boolean
+  side?: 'left' | 'right'
+  onMouseDown: (e: any) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      testId={testId}
+      style={{
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        ...(side === 'left' ? { right: 0 } : { left: 0 }),
+        width: 8,
+        cursor: 'col-resize',
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: side === 'left' ? 'flex-end' : 'flex-start',
+        backgroundColor: '#00000000',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onMouseDown={onMouseDown}
+    >
+      <div
+        style={{
+          width: isResizing || hovered ? 2 : 1,
+          height: '100%',
+          backgroundColor: isResizing ? C.accent : hovered ? C.borderStrong : C.sidebarBorder,
+        }}
+      />
+    </div>
+  )
+}
 
 function WindowControls() {
   const { renderer } = useGpuix()
@@ -2836,6 +2947,7 @@ function Header({
   onOpenReview?: () => void
   activeId?: string
 }) {
+  const { renderer } = useGpuix()
   const [envMenuOpen, setEnvMenuOpen] = useState(false)
   const [copiedTaskId, setCopiedTaskId] = useState(false)
 
@@ -2897,7 +3009,10 @@ function Header({
           {turnCount.toLocaleString('en-US')} messages
         </text>
       )}
-      <div style={{ flexGrow: 1 }} />
+      <div
+        style={{ flexGrow: 1, height: '100%' }}
+        onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+      />
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <div style={{ position: 'relative' }}>
           <IconButton
@@ -3116,13 +3231,15 @@ function SurfacePanel({
 
   const currentDef = SURFACES.find((s) => s.id === activeSurface)
 
+  const { renderer } = useGpuix()
+
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
         flexGrow: 1,
-        minWidth: 360,
+        minWidth: 0,
         height: '100%',
         backgroundColor: C.canvas,
         userSelect: 'none',
@@ -3194,7 +3311,10 @@ function SurfacePanel({
           ) : null}
         </AnimatePresence>
 
-        <div style={{ flexGrow: 1 }} />
+        <div
+          style={{ flexGrow: 1, height: '100%' }}
+          onMouseDown={(e: any) => handleTitlebarMouseDown(renderer, e)}
+        />
 
         {/* Right controls: + dropdown, panelRight toggle, and WindowControls */}
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -5272,6 +5392,11 @@ export function ChatApp({
   const [activeId, setActiveId] = useState('task-new')
   const [nav, setNav] = useState({ stack: ['task-new'], index: 0 })
   const [collapsed, setCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [rightPanelWidth, setRightPanelWidth] = useState(380)
+  const [inspectorWidth, setInspectorWidth] = useState(260)
+  const [resizing, setResizing] = useState<'left' | 'right' | 'inspector' | null>(null)
+  const resizeOrigin = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 0 })
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [activeSurface, setActiveSurface] = useState<SurfaceKind>('none')
@@ -5415,17 +5540,19 @@ export function ChatApp({
     >
       <motion.div
         initial={false}
-        animate={{ width: collapsed ? 0 : SIDEBAR_WIDTH + 1 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        animate={{ width: collapsed ? 0 : sidebarWidth }}
+        transition={{ duration: resizing === 'left' ? 0 : 0.2, ease: 'easeOut' }}
         style={{
           display: 'flex',
           flexDirection: 'row',
           height: '100%',
           flexShrink: 0,
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
         <Sidebar
+          width={sidebarWidth}
           conversations={visibleConversations}
           activeId={activeId}
           onSelect={goTo}
@@ -5460,7 +5587,17 @@ export function ChatApp({
           onFilter={() => setProjectOnly((value) => !value)}
           filterActive={projectOnly}
         />
-        <div style={{ width: 1, height: '100%', flexShrink: 0, backgroundColor: C.sidebarBorder }} />
+        <ResizeHandle
+          testId="resize-handle-left"
+          side="left"
+          isResizing={resizing === 'left'}
+          onMouseDown={(e: any) => {
+            if (e.button === 0) {
+              resizeOrigin.current = { startX: e.x ?? 0, startWidth: sidebarWidth }
+              setResizing('left')
+            }
+          }}
+        />
       </motion.div>
       <div
         style={{
@@ -5541,18 +5678,20 @@ export function ChatApp({
       </div>
       <motion.div
         initial={false}
-        animate={{ width: inspectorOpen ? 260 : 0 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        animate={{ width: inspectorOpen ? inspectorWidth : 0 }}
+        transition={{ duration: resizing === 'inspector' ? 0 : 0.2, ease: 'easeOut' }}
         style={{
           display: 'flex',
           flexDirection: 'row',
           height: '100%',
           flexShrink: 0,
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
-        <div style={{ width: 260, height: '100%', flexShrink: 0, display: 'flex' }}>
+        <div style={{ width: inspectorWidth, height: '100%', flexShrink: 0, display: 'flex' }}>
           <Inspector
+            width={inspectorWidth}
             conversation={active}
             model={model}
             reasoning={reasoning}
@@ -5561,21 +5700,32 @@ export function ChatApp({
             project={project}
           />
         </div>
+        <ResizeHandle
+          testId="resize-handle-inspector"
+          side="right"
+          isResizing={resizing === 'inspector'}
+          onMouseDown={(e: any) => {
+            if (e.button === 0) {
+              resizeOrigin.current = { startX: e.x ?? 0, startWidth: inspectorWidth }
+              setResizing('inspector')
+            }
+          }}
+        />
       </motion.div>
       <motion.div
         initial={false}
-        animate={{ width: rightPanelOpen ? 381 : 0 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        animate={{ width: rightPanelOpen ? rightPanelWidth : 0 }}
+        transition={{ duration: resizing === 'right' ? 0 : 0.2, ease: 'easeOut' }}
         style={{
           display: 'flex',
           flexDirection: 'row',
           height: '100%',
           flexShrink: 0,
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
-        <div style={{ width: 1, height: '100%', flexShrink: 0, backgroundColor: C.sidebarBorder }} />
-        <div style={{ width: 380, height: '100%', flexShrink: 0, display: 'flex' }}>
+        <div style={{ width: rightPanelWidth, height: '100%', flexShrink: 0, display: 'flex' }}>
           <SurfacePanel
             open={rightPanelOpen}
             activeSurface={activeSurface}
@@ -5584,6 +5734,17 @@ export function ChatApp({
             project={project}
           />
         </div>
+        <ResizeHandle
+          testId="resize-handle-right"
+          side="right"
+          isResizing={resizing === 'right'}
+          onMouseDown={(e: any) => {
+            if (e.button === 0) {
+              resizeOrigin.current = { startX: e.x ?? 0, startWidth: rightPanelWidth }
+              setResizing('right')
+            }
+          }}
+        />
       </motion.div>
       <CommitPushModal
         open={commitModalOpen}
@@ -5630,6 +5791,35 @@ export function ChatApp({
         conversations={conversations}
         onSelectConversation={goTo}
       />
+      {resizing !== null && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            cursor: 'col-resize',
+            backgroundColor: '#00000001',
+          }}
+          onMouseMove={(e: any) => {
+            const currentX = e.x ?? 0
+            if (resizing === 'left') {
+              const newWidth = Math.max(180, Math.min(460, currentX))
+              setSidebarWidth(newWidth)
+            } else if (resizing === 'right') {
+              const delta = resizeOrigin.current.startX - currentX
+              const newWidth = Math.max(280, Math.min(680, resizeOrigin.current.startWidth + delta))
+              setRightPanelWidth(newWidth)
+            } else if (resizing === 'inspector') {
+              const delta = resizeOrigin.current.startX - currentX
+              const newWidth = Math.max(200, Math.min(450, resizeOrigin.current.startWidth + delta))
+              setInspectorWidth(newWidth)
+            }
+          }}
+          onMouseUp={() => setResizing(null)}
+        />
+      )}
     </div>
   )
 }
