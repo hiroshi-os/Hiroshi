@@ -4236,7 +4236,7 @@ function CommandPaletteModal({
                       key={item.id}
                       testId={`command-${item.id}`}
                       onClick={() => executeItem(item.action)}
-                      onHover={() => setHighlightedId(item.id)}
+                      onMouseEnter={() => setHighlightedId(item.id)}
                       style={{
                         display: 'flex',
                         flexDirection: 'row',
@@ -4301,7 +4301,7 @@ function CommandPaletteModal({
                       key={item.id}
                       testId={`command-${item.id}`}
                       onClick={() => executeItem(item.action)}
-                      onHover={() => setHighlightedId(item.id)}
+                      onMouseEnter={() => setHighlightedId(item.id)}
                       style={{
                         display: 'flex',
                         flexDirection: 'row',
