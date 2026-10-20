@@ -1,0 +1,70 @@
+# Changelog
+
+All notable changes to Hiroshi are recorded here.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project uses [semantic versioning](https://semver.org/).
+
+## Versioning
+
+`0.MINOR.PATCH`
+
+- The major stays `0` until the desktop shell and the app surface are stable.
+  A `1.0.0` would be a promise the project cannot keep yet.
+- The minor counts the feature releases and goes up to `255` before `1.0.0`:
+  `0.1.0` shipped the cockpit, `0.2.0` shipped the window work.
+- The patch counts the fixes inside a feature release.
+
+The version lives in `package.json`. It is the only place that has to change
+for a release.
+
+## [0.2.0] - 2026-10-21
+
+### Added
+
+- The custom titlebar drags the window. The press records the window and the
+  cursor, every move pushes the window by the cursor delta, the release lets
+  go. The titlebar regions are the header title, the sidebar strip, the right
+  panel strip and the settings strip.
+- The maximize button restores the window again, and a double click on the
+  titlebar zooms it. The button shows a restore glyph while the window is
+  maximized.
+- GitHub Actions runs the typecheck and the integration tests on macOS and
+  Windows, with the Bun version pinned in `.bun-version`.
+- `CHANGELOG.md` and the versioning policy.
+
+### Fixed
+
+- The window never moved when the titlebar was dragged. The OS modal move
+  loop (`WM_SYSCOMMAND` with `SC_MOVE|HTCAPTION`) is ignored by the GPUI
+  Windows backend, so the app moves the window itself.
+- The titlebar press never reached the drag handler. An unfilled in-flow
+  `div` gets no GPUI hitbox, so a drag region needs `pointerEvents: 'auto'`.
+- The second click on the maximize button did nothing. The native zoom only
+  maximizes on Windows, the restore goes through `ShowWindow(SW_RESTORE)`.
+- The command palette rows did not follow the pointer. GPUIX has no
+  `onHover` prop, the rows use `onMouseEnter`.
+
+### Changed
+
+- `@gpuix/react` moved to the released 0.11.0. 0.10.0 does not export
+  `Button`, `Dialog`, `DialogPopup` or `DialogPortal`, so the app could not
+  be installed from npm and CI could not typecheck it.
+- The integration suite was rewritten against the current cockpit. It
+  asserted a swarm UI that the app no longer renders, and all five tests
+  failed on a clean checkout.
+
+## [0.1.0] - 2026-10-20
+
+### Added
+
+- The Hiroshi cockpit on GPUIX: the chat transcript, the composer, the
+  workspace footer, the conversation sidebar and the inspector.
+- A custom titlebar with the window controls, and a transparent native
+  titlebar.
+- Six settings views, reachable from the sidebar.
+- The environment menu, the commit and push modal, and the command palette.
+- The right panel with the browser, terminal, files and review surfaces.
+- Resizable sidebars and panels.
+- The opening, closing, tab switching and row addition and deletion
+  animations.
