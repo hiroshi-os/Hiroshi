@@ -40,6 +40,13 @@ for a release.
   needs, with a deadline of its own so a window that never opens fails in
   minutes instead of hanging.
 
+### Fixed
+
+- The surfaces panel opens at 480 instead of 380, and the resize handle floors
+  it at 460. The picker on an empty surface is a 2×2 grid of 196px cards that
+  needs 452px before it fits; at 380 the right column was cut off at the panel
+  edge. Nothing can drag the panel narrow enough to clip the picker again.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added
