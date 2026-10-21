@@ -12,11 +12,36 @@ and the project uses [semantic versioning](https://semver.org/).
 - The major stays `0` until the desktop shell and the app surface are stable.
   A `1.0.0` would be a promise the project cannot keep yet.
 - The minor counts the feature releases and goes up to `255` before `1.0.0`:
-  `0.1.0` shipped the cockpit, `0.2.0` shipped the window work.
+  `0.1.0` shipped the cockpit, `0.2.0` shipped the window work and `0.3.0`
+  shipped the engine.
 - The patch counts the fixes inside a feature release.
 
 The version lives in `package.json`. It is the only place that has to change
 for a release.
+
+## [0.3.0] - 2026-10-21
+
+### Added
+
+- The engine: a detached local daemon that owns runs. It keeps a SQLite event
+  log, exposes HTTP commands and one SSE feed on loopback, and mints a bearer
+  token per start in a discovery file with owner-only permissions.
+- A run is durable before it has any effect: `run.started` commits before the
+  shell spawns, output arrives in batched events, `run.ended` records the exit
+  code. A run a crashed daemon died inside is settled as `interrupted` on the
+  next start.
+- Runs outlive the window. The cockpit spawns the daemon detached with no
+  pipes back to it, adopts a daemon another window started, and never kills one
+  except from the Restart button.
+- The cockpit side of the engine: discovery, a fetch-only client, a pure event
+  reducer and a hook that hydrates at a watermark and follows the feed.
+- The Terminal surface executes through the engine and draws real output, exit
+  codes and truncation. The Daemon settings page shows the process, protocol,
+  database and session count, and restarts it.
+- `bun run test:engine`, the engine's own suite, and a Linux CI job for it. It
+  spawns real daemons and one test starts the engine from a launcher that exits
+  immediately to prove the daemon survives the process that started it.
+- `docs/engine.mdx`.
 
 ## [0.2.0] - 2026-10-21
 

@@ -39,6 +39,33 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  engine:
+    name: engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Cache the bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The engine tests spawn real daemons and read a real SQLite file, but
+      # they need no GPU and no test renderer. A plain Linux box is the honest
+      # place to prove that a run survives the process that started it.
+      - name: Run the engine tests
+        run: bun run test:engine
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

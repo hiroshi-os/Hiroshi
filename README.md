@@ -35,6 +35,28 @@ No Electron. No web view. Paints at 120 FPS directly through GPUI.
 
 ---
 
+## The engine
+
+Runs belong to a detached local daemon, not to the window. The cockpit attaches
+to it, follows one event feed and draws what it is told. Closing the window
+leaves the work running; a second window attaches to the same runs.
+
+```bash
+bun run engine          # start the daemon in the foreground
+bun run engine:status   # port, pid, uptime, protocol, database
+bun run test:engine     # the engine suite: real daemons, real SQLite
+```
+
+State lives in `%LOCALAPPDATA%\Hiroshi` on Windows,
+`~/Library/Application Support/Hiroshi` on macOS and
+`$XDG_STATE_HOME/hiroshi` on Linux; `HIROSHI_HOME` overrides it. The data
+directory holds `engine.db` (the event log), `engine.json` (discovery: url, pid,
+token), `engine.lock` and `logs/engine.log`.
+
+The design and the guarantees are in [docs/engine.mdx](./docs/engine.mdx).
+
+---
+
 ## Development
 
 ```bash
@@ -43,6 +65,9 @@ bun run dev
 
 # Run Vitest suite on GPU test renderer
 bun run test
+
+# Run the engine suite against real daemons
+bun run test:engine
 
 # Typecheck with TypeScript
 bun run typecheck

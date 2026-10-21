@@ -37,11 +37,14 @@ layout.
 | path | what lives there |
 | :--- | :--- |
 | `app.tsx` | the whole cockpit: components, theme, mock data |
+| `engine/src/` | the daemon: the wire, the store, runs, the server |
+| `src/engine/` | the cockpit's side: discovery, client, reducer, hook |
 | `src/window-drag.ts` | the Win32 plumbing behind the draggable titlebar |
 | `assets/icons/` | the icon set, as SVG |
 | `src/theme.ts`, `src/types.ts` | the shared theme and the types |
 | `src/data/mock-data.ts` | the mock conversations and the swarm data |
 | `app.test.tsx`, `titlebar-drag.test.tsx` | the integration suite |
+| `engine/test/` | the engine suite, run by `bun test engine` |
 | `screenshot.ts`, `test-animations.ts` | scripts that drive the running app |
 
 ## The events
@@ -68,7 +71,8 @@ The rules and the reasons behind them live in the repository, in
 The right panel holds four surfaces:
 
 - **Browser**, a local app or a URL
-- **Terminal**, a shell in the workspace, with its own history
+- **Terminal**, a shell in the workspace; every command is a run of the
+  [engine](./engine), not of the window
 - **Files**, the workspace tree
 - **Review**, the changes of the branch
 

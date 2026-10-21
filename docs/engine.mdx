@@ -1,0 +1,131 @@
+---
+title: "The engine"
+sidebarTitle: "The engine"
+description: "The local daemon that owns runs, the database it writes, and how the cockpit attaches to it."
+---
+
+Hiroshi does not run a command inside the window.
+
+A detached local daemon — the engine — owns every run. The cockpit is a client
+of that daemon: it sends commands, follows one event feed and draws what it is
+told. Close the window while a command is running and the command finishes.
+Open a second window and it attaches to the same runs, mid-flight.
+
+```
+cockpit (React)  ──HTTP──▶  hiroshi-engine (bun)  ──▶  SQLite (engine.db)
+        ▲                        │
+        └──────── SSE ───────────┘
+```
+
+## What the engine owns
+
+| concept | what it is |
+| :--- | :--- |
+| session | a workspace, a title, the messages sent in it and the runs started in it |
+| message | a line of operator intent, recorded before anything acts on it |
+| run | one command: its shell, its output, its exit code, its end |
+| event | the append-only log every projection is built from |
+
+The cockpit keeps no state of its own that the engine does not have. A fresh
+window hydrates from one snapshot and then follows the feed from the
+watermark that snapshot carried, so there is no gap and no double-draw.
+
+## Durability
+
+A run is written down before it has any effect:
+
+1. The `run.started` event is committed **before** the shell is spawned.
+2. Output is batched into `run.output` events, so a burst of lines costs one
+   transaction rather than one per line.
+3. `run.ended` records the exit code, the duration and the truncation flag.
+
+If the machine dies in the middle of a run, the next start finds the run still
+marked `running` and settles it as `interrupted`, with a final output line that
+says the run was not resumed. A daemon never silently forgets work, and never
+pretends a dead run is still going.
+
+Output is bounded. A run that prints megabytes does not fill the database: the
+engine keeps the first and last slices and marks the run truncated.
+
+## The wire
+
+- **HTTP** on loopback, one JSON response per request, typed errors with a
+  stable `code`.
+- **One SSE feed** (`/v1/events`) that replays from a sequence number and then
+  follows. Every event carries its `seq`; a client that reconnects asks for
+  everything after the last one it applied.
+- **A bearer token** minted per daemon start, compared in constant time. It
+  lives in the discovery file with owner-only permissions, and it never leaves
+  the machine.
+- **A protocol version** in the handshake. A cockpit that speaks another
+  protocol reports the mismatch and leaves the daemon alone: it may be running
+  commands for someone else.
+
+## The data directory
+
+| platform | directory |
+| :--- | :--- |
+| Windows | `%LOCALAPPDATA%\Hiroshi` |
+| macOS | `~/Library/Application Support/Hiroshi` |
+| Linux | `$XDG_STATE_HOME/hiroshi`, else `~/.local/state/hiroshi` |
+
+`HIROSHI_HOME` overrides it. Inside:
+
+| file | what it is |
+| :--- | :--- |
+| `engine.db` | the event log and the projections, in SQLite |
+| `engine.json` | the discovery file: url, pid, token, protocol, version |
+| `engine.lock` | who is starting a daemon right now |
+| `logs/engine.log` | the daemon's own log, including why it refused to start |
+
+## Lifecycle
+
+The cockpit never kills a daemon it did not need to kill.
+
+- **Start**: the cockpit reads `engine.json`. If it is missing or stale, it
+  spawns the engine detached, with no pipes back to the window, and waits for
+  the file to appear.
+- **Adopt**: two windows starting at the same moment race for a startup lock.
+  The loser finds the winner's registry and attaches instead of starting a
+  second daemon.
+- **Restart**: the daemon settings page stops the process and starts a new one.
+  That is the only place the cockpit asks a daemon to exit.
+- **Crash**: a killed daemon leaves its registry behind. The next start reports
+  the stale pid, discards it and takes over the same database.
+
+## The CLI
+
+The same binary the cockpit spawns is usable on its own:
+
+```bash
+bun engine/src/index.ts serve    # start in the foreground
+bun engine/src/index.ts status   # what is running, on which port, since when
+bun engine/src/index.ts stop     # ask it to shut down
+bun engine/src/index.ts version  # engine version and protocol
+```
+
+`serve` is the default, so `bun run engine` starts the daemon. The cockpit
+looks for a standalone `hiroshi-engine` binary next to itself before it falls
+back to the checkout, which is how a packaged build runs without `bun`.
+
+## In the cockpit
+
+The right panel's **Terminal** surface is the engine's, not a mock: a command
+there becomes a run, its output arrives on the feed, and the footer shows the
+real exit code. The **Daemon** settings page shows the process, the protocol,
+the database and the session count, with the one button that restarts it.
+
+## Tests
+
+The engine has its own suite, because it does not need a GPU, a window or a
+test renderer:
+
+```bash
+bun run test:engine
+```
+
+Those tests spawn real daemons on throwaway data directories and then try to
+break the promise: they close the client, attach a second one, and kill the
+daemon in the middle of a run. One of them starts the engine from a separate
+launcher process that exits immediately, and then asks the engine to run a
+command — the check that a run outlives the window.
