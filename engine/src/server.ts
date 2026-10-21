@@ -14,12 +14,12 @@ import { EngineError, invalid, notFound } from './errors'
 import type { Logger } from './log'
 import type {
   CreateSessionRequest,
-  EventRecord,
+  EngineEvent,
   Health,
   PromptRequest,
   StartRunRequest,
 } from './protocol'
-import { ENGINE_NAME } from './protocol'
+import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
 import type { Store } from './store'
@@ -53,6 +53,11 @@ function json(body: unknown, status = 200): Response {
 
 function failure(code: string, message: string, status: number): Response {
   return json({ error: { code, message } }, status)
+}
+
+/** The handler the switch would reach only if a row had no case of its own. */
+function unhandled(name: never): Response {
+  return failure('internal', `the engine has no handler for ${String(name)}`, 500)
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -130,7 +135,7 @@ export function startServer(
               cleanup()
             }
           }
-          const sendEvent = (event: EventRecord) => send(`data: ${JSON.stringify(event)}\n\n`)
+          const sendEvent = (event: EngineEvent) => send(`data: ${JSON.stringify(event)}\n\n`)
 
           // Replay what the client missed, in order, before it sees anything live.
           for (const event of store.eventsSince(after)) sendEvent(event)
@@ -182,46 +187,57 @@ export function startServer(
       return failure('unauthorized', 'a bearer token is required', 401)
     }
 
-    const parts = url.pathname.split('/').filter(Boolean)
-    if (parts[0] !== 'v1') return failure('not_found', `${method} ${url.pathname} is not a route`, 404)
-    const [, resource, id, action] = parts
+    if (url.pathname === FEED_PATH && method === 'GET') return feed(url, request.signal)
 
-    if (resource === 'health' && !id && method === 'GET') return json(health())
+    const matched = matchOperation(method, url.pathname)
+    if (!matched) return failure('not_found', `${method} ${url.pathname} is not a route`, 404)
 
-    if (resource === 'sessions') {
-      if (!id && method === 'GET') return json({ sessions: sessions.list() })
-      if (!id && method === 'POST') {
+    const { operation, params } = matched
+    // The row says what a success looks like; the switch says what it means.
+    const status = operation.status ?? 200
+
+    switch (operation.name) {
+      case 'health':
+        return json(health(), status)
+
+      case 'listSessions':
+        return json({ sessions: sessions.list() }, status)
+
+      case 'createSession': {
         const input = await body<CreateSessionRequest>(request)
-        return json({ session: sessions.create(input) }, 201)
+        return json({ session: sessions.create(input) }, status)
       }
-      if (id && !action && method === 'GET') return json(sessions.detail(id))
-      if (id && action === 'messages' && method === 'POST') {
+
+      case 'session':
+        return json(sessions.detail(params.id), status)
+
+      case 'prompt': {
         const input = await body<PromptRequest>(request)
-        return json({ message: sessions.prompt(id, input.text ?? '') }, 201)
+        return json({ message: sessions.prompt(params.id, input.text ?? '') }, status)
       }
-      if (id && action === 'runs' && method === 'POST') {
+
+      case 'startRun': {
         const input = await body<StartRunRequest>(request)
-        return json({ run: runs.start(id, input.command ?? '', input.cwd) }, 201)
+        return json({ run: runs.start(params.id, input.command ?? '', input.cwd) }, status)
       }
-    }
 
-    if (resource === 'runs' && id) {
-      if (!action && method === 'GET') {
-        const run = store.run(id)
+      case 'run': {
+        const run = store.run(params.id)
         if (!run) throw notFound('run')
-        return json({ run, chunks: store.chunks(id) })
+        return json({ run, chunks: store.chunks(params.id) }, status)
       }
-      if (action === 'cancel' && method === 'POST') return json({ run: runs.cancel(id) })
+
+      case 'cancelRun':
+        return json({ run: runs.cancel(params.id) }, status)
+
+      case 'shutdown':
+        setTimeout(options.onShutdown, 25)
+        return json({ ok: true }, status)
     }
 
-    if (resource === 'events' && !id && method === 'GET') return feed(url, request.signal)
-
-    if (resource === 'shutdown' && !id && method === 'POST') {
-      setTimeout(options.onShutdown, 25)
-      return json({ ok: true })
-    }
-
-    return failure('not_found', `${method} ${url.pathname} is not a route`, 404)
+    // Unreachable while the table and the switch agree; a new row lands here
+    // as a compile error rather than a route with no handler.
+    return unhandled(operation.name)
   }
 
   const server = Bun.serve({

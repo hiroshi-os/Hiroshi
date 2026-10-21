@@ -10,7 +10,7 @@
 import { describe, expect, test } from 'bun:test'
 import path from 'node:path'
 
-import { EngineClient } from '../../src/engine/client'
+import { engineClient } from '../../src/engine/client'
 import { processAlive } from '../src/registry'
 import { discover } from '../src/registry'
 import { sleep, tempHome, until } from './harness'
@@ -45,16 +45,16 @@ describe('detachment', () => {
       expect(found.record.pid).toBe(started.pid)
 
       // And it is not merely alive: it still accepts work and finishes it.
-      const client = new EngineClient(found.record)
-      const session = await client.createSession({ cwd: home, title: 'detached' })
-      const run = await client.startRun(session.id, 'echo still-here')
+      const client = engineClient(found.record)
+      const { session } = await client.createSession({ cwd: home, title: 'detached' })
+      const { run } = await client.startRun({ id: session.id, command: 'echo still-here' })
 
       await until(
-        async () => (await client.session(session.id)).runs[0]?.status !== 'running',
+        async () => (await client.session({ id: session.id })).runs[0]?.status !== 'running',
         25_000,
       )
 
-      const detail = await client.session(session.id)
+      const detail = await client.session({ id: session.id })
       expect(detail.runs[0]!.id).toBe(run.id)
       expect(detail.runs[0]!.status).toBe('succeeded')
       expect(detail.chunks.map((chunk) => chunk.data).join('')).toContain('still-here')

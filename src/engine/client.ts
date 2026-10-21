@@ -1,20 +1,25 @@
 /**
- * A typed client for the engine.
+ * The generated client for the engine.
  *
- * Plain `fetch`, no runtime imports: the cockpit uses it, the tests use it,
- * and a browser build can carry it without dragging a process API along.
+ * The transport below owns the one `fetch`. Above it, the surface is built by
+ * walking the operations table in the shape module: no command hand writes a
+ * path or a fetch, and the daemon routes on the same rows this client builds
+ * its URLs from, so a route cannot exist on one side and not the other.
+ *
+ * Plain `fetch`, one runtime import (the table itself): the cockpit uses it,
+ * the tests use it, and a browser build can carry it without dragging a
+ * process API along.
  */
 
-import type {
-  CreateSessionRequest,
-  EventRecord,
-  Health,
-  Message,
-  Run,
-  RunDetail,
-  Session,
-  SessionDetail,
-  SessionsResponse,
+import {
+  FEED_PATH,
+  operations,
+  type EngineEvent,
+  type NoInput,
+  type Operation,
+  type OperationName,
+  type OperationRequest,
+  type OperationResponse,
 } from '../../engine/src/protocol'
 
 export interface EngineConnection {
@@ -36,14 +41,22 @@ export class EngineRequestError extends Error {
 export interface FeedOptions {
   after: number
   signal?: AbortSignal
-  onEvent: (event: EventRecord) => void
+  onEvent: (event: EngineEvent) => void
   onOpen?: () => void
   onOverflow?: (reason: string) => void
 }
 
+/** One method per operation, named after the row that declares it. */
+export type EngineSurface = {
+  [Name in OperationName]: OperationRequest<Name> extends NoInput
+    ? () => Promise<OperationResponse<Name>>
+    : (input: OperationRequest<Name>) => Promise<OperationResponse<Name>>
+}
+
 const REQUEST_TIMEOUT_MS = 15_000
 
-export class EngineClient {
+/** URL, token, one request, and the feed's stream reader. */
+class EngineTransport {
   readonly url: string
   readonly token: string
   readonly #fetch: typeof fetch
@@ -62,14 +75,33 @@ export class EngineClient {
     return { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' }
   }
 
-  async #request<T>(method: string, path: string, payload?: unknown): Promise<T> {
+  /**
+   * Turn one table row and one request into one HTTP call.
+   *
+   * The path template names the fields it consumes (`:id`); whatever the
+   * request has left over is the body. That is the whole convention, and it is
+   * why a command's path is declared only in the shape module.
+   */
+  async send<Name extends OperationName>(
+    operation: Operation<Name>,
+    input: OperationRequest<Name>,
+  ): Promise<OperationResponse<Name>> {
+    const fields: Record<string, unknown> = { ...(input as Record<string, unknown>) }
+    let path = operation.path
+    for (const segment of operation.path.split('/')) {
+      if (!segment.startsWith(':')) continue
+      const name = segment.slice(1)
+      path = path.replace(segment, encodeURIComponent(String(fields[name] ?? '')))
+      delete fields[name]
+    }
+
     const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     let response: Response
     try {
       response = await this.#fetch(`${this.url}${path}`, {
-        method,
+        method: operation.method,
         headers: this.#headers(),
-        body: payload === undefined ? undefined : JSON.stringify(payload),
+        body: operation.method === 'GET' ? undefined : JSON.stringify(fields),
         signal,
       })
     } catch (error) {
@@ -86,60 +118,11 @@ export class EngineClient {
 
     if (!response.ok) {
       const code = parsed?.error?.code ?? 'request_failed'
-      const message = parsed?.error?.message ?? `${method} ${path} failed with ${response.status}`
+      const message = parsed?.error?.message ?? `${operation.method} ${path} failed with ${response.status}`
       throw new EngineRequestError(response.status, code, message)
     }
 
-    return parsed as T
-  }
-
-  health(): Promise<Health> {
-    return this.#request<Health>('GET', '/v1/health')
-  }
-
-  async sessions(): Promise<Session[]> {
-    const response = await this.#request<SessionsResponse>('GET', '/v1/sessions')
-    return response.sessions
-  }
-
-  async createSession(input: CreateSessionRequest): Promise<Session> {
-    const response = await this.#request<{ session: Session }>('POST', '/v1/sessions', input)
-    return response.session
-  }
-
-  session(id: string): Promise<SessionDetail> {
-    return this.#request<SessionDetail>('GET', `/v1/sessions/${encodeURIComponent(id)}`)
-  }
-
-  async prompt(id: string, text: string): Promise<Message> {
-    const response = await this.#request<{ message: Message }>(
-      'POST',
-      `/v1/sessions/${encodeURIComponent(id)}/messages`,
-      { text },
-    )
-    return response.message
-  }
-
-  async startRun(sessionID: string, command: string, cwd?: string): Promise<Run> {
-    const response = await this.#request<{ run: Run }>(
-      'POST',
-      `/v1/sessions/${encodeURIComponent(sessionID)}/runs`,
-      { command, cwd },
-    )
-    return response.run
-  }
-
-  run(id: string): Promise<RunDetail> {
-    return this.#request<RunDetail>('GET', `/v1/runs/${encodeURIComponent(id)}`)
-  }
-
-  async cancelRun(id: string): Promise<Run> {
-    const response = await this.#request<{ run: Run }>('POST', `/v1/runs/${encodeURIComponent(id)}/cancel`)
-    return response.run
-  }
-
-  async shutdown(): Promise<void> {
-    await this.#request<{ ok: boolean }>('POST', '/v1/shutdown')
+    return parsed as OperationResponse<Name>
   }
 
   /**
@@ -153,7 +136,7 @@ export class EngineClient {
   async feed(options: FeedOptions): Promise<void> {
     let response: Response
     try {
-      response = await this.#fetch(`${this.url}/v1/events?after=${options.after}`, {
+      response = await this.#fetch(`${this.url}${FEED_PATH}?after=${options.after}`, {
         headers: { authorization: `Bearer ${this.token}`, accept: 'text/event-stream' },
         signal: options.signal,
       })
@@ -222,9 +205,31 @@ export class EngineClient {
 
     if (data.length === 0) return
     try {
-      options.onEvent(JSON.parse(data.join('\n')) as EventRecord)
+      options.onEvent(JSON.parse(data.join('\n')) as EngineEvent)
     } catch {
       // A frame the engine cannot have written. Skip it rather than drop the feed.
     }
   }
+}
+
+export type EngineClient = EngineTransport & EngineSurface
+
+/**
+ * Build the client: the transport, plus one method per operation.
+ *
+ * The loop is the generator, and it is why this file names no command. A row
+ * added to the table appears on every client (the cockpit, the tests, a
+ * command line) with its request and its answer already typed, and nothing
+ * hand written can fall behind the wire.
+ */
+export function engineClient(connection: EngineConnection, fetchImpl: typeof fetch = fetch): EngineClient {
+  const transport = new EngineTransport(connection, fetchImpl)
+  const surface = {} as EngineSurface
+  for (const operation of operations) {
+    Object.defineProperty(surface, operation.name, {
+      enumerable: true,
+      value: (input: never) => transport.send(operation, input),
+    })
+  }
+  return Object.assign(transport, surface)
 }

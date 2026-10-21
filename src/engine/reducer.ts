@@ -9,7 +9,7 @@
  */
 
 import type {
-  EventRecord,
+  EngineEvent,
   Health,
   Message,
   Run,
@@ -94,24 +94,30 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   }
 }
 
-/** Apply one durable event. */
-export function apply(snapshot: Snapshot, event: EventRecord): Snapshot {
-  switch (event.type) {
-    case 'session.created': {
-      const session = (event.data as { session: Session }).session
-      return { ...snapshot, sessions: upsertSession(snapshot.sessions, session) }
-    }
+/**
+ * A type the switch cannot reach.
+ *
+ * The reducer has no catch-all on purpose: a new event in the shape module is
+ * a compile error here until someone decides what it draws, instead of a
+ * silent no-op in the cockpit.
+ */
+function unreachable(event: never): never {
+  throw new Error(`the cockpit does not know this event: ${JSON.stringify(event)}`)
+}
 
+/** Apply one durable event. */
+export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
+  switch (event.type) {
+    case 'session.created':
     case 'session.updated': {
-      const session = (event.data as { session: Session }).session
-      return { ...snapshot, sessions: upsertSession(snapshot.sessions, session) }
+      return { ...snapshot, sessions: upsertSession(snapshot.sessions, event.data.session) }
     }
 
     case 'message.created': {
-      const message = (event.data as { message: Message }).message
+      const { message } = event.data
       if (message.sessionID !== snapshot.sessionID) {
         // Another session's transcript must not leak into this one.
-        return { ...snapshot, sessions: snapshot.sessions }
+        return snapshot
       }
       if (snapshot.messages.some((existing) => existing.id === message.id)) return snapshot
       const messages = [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
@@ -119,7 +125,7 @@ export function apply(snapshot: Snapshot, event: EventRecord): Snapshot {
     }
 
     case 'run.started': {
-      const run = (event.data as { run: Run }).run
+      const { run } = event.data
       if (run.sessionID !== snapshot.sessionID) return snapshot
       return {
         ...snapshot,
@@ -129,31 +135,30 @@ export function apply(snapshot: Snapshot, event: EventRecord): Snapshot {
     }
 
     case 'run.output': {
-      const payload = event.data as { runID: string; data: string }
-      const current = snapshot.output[payload.runID] ?? { text: '', truncated: false }
-      const text = (current.text + payload.data).slice(-MEMORY_OUTPUT_LIMIT)
+      const { runID, data } = event.data
+      const current = snapshot.output[runID] ?? { text: '', truncated: false }
+      const text = (current.text + data).slice(-MEMORY_OUTPUT_LIMIT)
       return {
         ...snapshot,
-        output: { ...snapshot.output, [payload.runID]: { ...current, text } },
+        output: { ...snapshot.output, [runID]: { ...current, text } },
       }
     }
 
     case 'run.truncated': {
-      const payload = event.data as { runID: string }
-      const current = snapshot.output[payload.runID] ?? { text: '', truncated: false }
+      const { runID } = event.data
+      const current = snapshot.output[runID] ?? { text: '', truncated: false }
       return {
         ...snapshot,
-        output: { ...snapshot.output, [payload.runID]: { ...current, truncated: true } },
+        output: { ...snapshot.output, [runID]: { ...current, truncated: true } },
       }
     }
 
     case 'run.ended': {
-      const run = (event.data as { run: Run }).run
-      return { ...snapshot, runs: upsertRun(snapshot.runs, run) }
+      return { ...snapshot, runs: upsertRun(snapshot.runs, event.data.run) }
     }
 
     default:
-      return snapshot
+      return unreachable(event)
   }
 }
 

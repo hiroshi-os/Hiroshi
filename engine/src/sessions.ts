@@ -92,11 +92,14 @@ export class Sessions {
       },
     })
 
-    if (rename) {
+    // The rename happened inside the message's transaction, so this reads the
+    // row back rather than inventing the new title a second time.
+    const updated = rename ? this.#store.session(id) : null
+    if (updated) {
       this.#store.record({
         type: 'session.updated',
         sessionID: id,
-        data: { session: this.#store.session(id) },
+        data: { session: updated },
         at,
       })
     }

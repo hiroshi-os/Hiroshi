@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { EngineClient, EngineRequestError } from './client'
+import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 
@@ -89,18 +89,17 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
           continue
         }
 
-        const connection = new EngineClient(attached)
+        const connection = engineClient(attached)
         client.current = connection
         update((current) => ({ ...current, status: 'ready', health: attached.health, error: null }))
 
         let after = 0
         try {
-          const sessions = await connection.sessions()
+          const { sessions } = await connection.listSessions()
+          const existing = sessions.find((candidate) => candidate.cwd === workspace) ?? sessions[0]
           const chosen =
-            sessions.find((candidate) => candidate.cwd === workspace) ??
-            sessions[0] ??
-            (await connection.createSession({ cwd: workspace, title: 'Workspace' }))
-          const detail = await connection.session(chosen.id)
+            existing ?? (await connection.createSession({ cwd: workspace, title: 'Workspace' })).session
+          const detail = await connection.session({ id: chosen.id })
           if (stopped) return
           session.current = chosen.id
           after = detail.seq
@@ -150,7 +149,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     const connection = client.current
     const sessionID = session.current
     if (!connection || !sessionID) return
-    void connection.startRun(sessionID, command).catch((error) => {
+    void connection.startRun({ id: sessionID, command }).catch((error) => {
       setSnapshot((current) => ({ ...current, error: describe(error) }))
     })
   }, [])
@@ -158,7 +157,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
   const cancel = useCallback((runID: string) => {
     const connection = client.current
     if (!connection) return
-    void connection.cancelRun(runID).catch((error) => {
+    void connection.cancelRun({ id: runID }).catch((error) => {
       setSnapshot((current) => ({ ...current, error: describe(error) }))
     })
   }, [])

@@ -54,6 +54,13 @@ engine keeps the first and last slices and marks the run truncated.
 - **One SSE feed** (`/v1/events`) that replays from a sequence number and then
   follows. Every event carries its `seq`; a client that reconnects asks for
   everything after the last one it applied.
+- **One shape module** (`engine/src/protocol.ts`): the shapes, the event union
+  and the operations table. The daemon routes on the table and the cockpit's
+  client is built from it, so a command cannot exist on one side of the wire
+  and not the other, and no client hand writes a path or a `fetch`.
+- **One event union**: `EventPayloads` maps every event type to its body, so a
+  subscriber sees the payload without a cast and the store refuses to record an
+  event whose body does not belong to its type.
 - **A bearer token** minted per daemon start, compared in constant time. It
   lives in the discovery file with owner-only permissions, and it never leaves
   the machine.

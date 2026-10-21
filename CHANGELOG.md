@@ -23,6 +23,13 @@ for a release.
 
 ### Added
 
+- The protocol: one shape module. `engine/src/protocol.ts` now holds the
+  operations table and the event union, and the cockpit's client is generated
+  from that table: no command hand writes a path or a `fetch`, and the daemon
+  routes on the same rows. `EventPayloads` replaced the `data: unknown` event
+  bodies, so the store checks every payload it records and the reducer reads
+  each event without a cast, failing to compile when an event has no
+  projection.
 - `bun run test:integration`: the windowed integration test. It starts the app
   as a real process, drives the real window to the Terminal surface, runs a
   command through it, and then closes the window while a second command is
