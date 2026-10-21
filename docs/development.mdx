@@ -1,0 +1,93 @@
+---
+title: "Development"
+sidebarTitle: "Development"
+description: "The integration suite, the CI, and the automation API."
+---
+
+## The test suite
+
+`bun run test` runs the integration suite on the GPU test renderer. The real
+app is mounted, painted and hit tested, so the tests drive the same tree the
+user sees.
+
+```bash
+bun run test
+bunx vitest run titlebar-drag.test.tsx   # one file
+```
+
+| file | what it covers |
+| :--- | :--- |
+| `app.test.tsx` | the cockpit: the sidebar, the threads, the palette, the right panel, the composer, the settings |
+| `titlebar-drag.test.tsx` | the window: the drag, the double click, the maximize button |
+
+### Two things the test renderer cannot do
+
+- **Exit animations never settle.** The renderer only paints on demand, so an
+  `AnimatePresence` exit keeps the element in the tree forever. Assert on the
+  painted state when a row is removed.
+- **A sliding panel has to settle before it is clicked.** The automation
+  clicks the last painted bounds, so freeze the clock, advance it, and wait
+  until the element stops moving.
+
+```ts
+await app.clock.pause()
+await app.getByTestId('panel-right-open').click()
+await app.clock.fastForward(300)
+await app.clock.resume()
+```
+
+## The CI
+
+`.github/workflows/ci.yml` runs two jobs:
+
+| job | runner | what it runs |
+| :--- | :--- | :--- |
+| `typecheck` | `ubuntu-latest` | `bun run typecheck` |
+| `test` | `macos-latest`, `windows-latest` | `bun run test` |
+
+The test job is not on Linux: the native test renderer only ships with the
+GPUIX builds that carry the `test-support` feature, and on Linux the suites
+skip themselves.
+
+The install is `bun install --frozen-lockfile`, so the lockfile and
+`package.json` cannot drift apart. `.bun-version` pins Bun for the local
+runtime and for CI.
+
+## Driving the app
+
+`@gpuix/react/automation` gives a Playwright shaped API over the GPU
+renderer. It drives the real input pipeline, not a DOM.
+
+```ts
+import { launch } from '@gpuix/react/automation'
+
+const app = await launch({
+  command: 'bun',
+  args: ['app.tsx'],
+  env: { GPUIX_BACKGROUND: '1' },
+})
+
+await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
+await app.getByTestId('send').click()
+await app.screenshot({ path: 'screenshots/after-send.png' })
+await app.close()
+```
+
+`GPUIX_BACKGROUND=1` opens the window without taking the keyboard. Use it
+whenever you drive the app yourself.
+
+`screenshot.ts` and `test-animations.ts` in the repository root are built on
+it. They are local scripts: a real window needs a desktop session and a GPU,
+which the hosted runners do not have.
+
+## The rules that matter
+
+The repository carries its own rules, in `AGENTS.md` and in the
+`hiroshi-gpuix` skill. The ones that bite most often:
+
+- A drag region needs `pointerEvents: 'auto'` and the three mouse handlers.
+- An unfilled `div` has no hitbox, so an empty region is dead.
+- There is no `zIndex`; the tree order is the stacking order.
+- A `<text>` with several children wraps. Use one template literal.
+- Never use Unicode symbols for icons; they resolve to Windows emojis. Use
+  the SVG set in `assets/icons/`.
