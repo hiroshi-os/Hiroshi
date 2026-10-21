@@ -69,6 +69,9 @@ bun run test
 # Run the engine suite against real daemons
 bun run test:engine
 
+# Drive the real window: the cockpit, the daemon it spawns, a durable run
+bun run test:integration
+
 # Typecheck with TypeScript
 bun run typecheck
 
@@ -78,6 +81,11 @@ bun run screenshot
 # Bundle for the browser
 bun run web:dev
 ```
+
+`bun run test` drives the tree through the GPUIX native test renderer, so it
+needs no window; it is what CI runs on macOS and Windows. `bun run
+test:integration` starts the app for real, so it needs a desktop session: a
+machine someone is sitting at, or a hosted Windows runner.
 
 ---
 

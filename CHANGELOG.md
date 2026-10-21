@@ -19,6 +19,20 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [Unreleased]
+
+### Added
+
+- `bun run test:integration`: the windowed integration test. It starts the app
+  as a real process, drives the real window to the Terminal surface, runs a
+  command through it, and then closes the window while a second command is
+  still going: that one has to finish, succeeded, with its output in the
+  daemon's durable log. Nothing in the in-process suite can prove that.
+- `.github/workflows/integration.yml`: runs the windowed test on
+  `windows-latest`, where a hosted runner has the desktop session a window
+  needs, with a deadline of its own so a window that never opens fails in
+  minutes instead of hanging.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

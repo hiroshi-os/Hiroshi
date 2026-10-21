@@ -11,6 +11,7 @@
     "screenshot": "bun screenshot.ts",
     "test": "vitest run",
     "test:engine": "bun test engine",
+    "test:integration": "bun integration.ts",
     "engine": "bun engine/src/index.ts",
     "engine:status": "bun engine/src/index.ts status",
     "typecheck": "tsc --noEmit"
