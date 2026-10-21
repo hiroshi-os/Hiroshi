@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { EngineClient } from '../../src/engine/client'
+import { engineClient, type EngineClient } from '../../src/engine/client'
 import { enginePaths, type EnginePaths } from '../src/paths'
 import { discover } from '../src/registry'
 import type { Health, RegistryRecord } from '../src/protocol'
@@ -92,7 +92,7 @@ export async function startDaemon(options: { home?: string; workspace?: string; 
   const stop = async () => {
     try {
       const fresh = await discover(paths.registry)
-      if (fresh.state === 'running') await new EngineClient(fresh.record).shutdown()
+      if (fresh.state === 'running') await engineClient(fresh.record).shutdown()
     } catch {
       // Already gone.
     }
@@ -118,7 +118,7 @@ export async function startDaemon(options: { home?: string; workspace?: string; 
     home,
     paths,
     workspace,
-    client: new EngineClient(found.record),
+    client: engineClient(found.record),
     record: found.record,
     health: found.health,
     stop,

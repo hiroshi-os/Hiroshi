@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { silentLogger } from '../src/log'
 import { Sessions } from '../src/sessions'
 import { Store } from '../src/store'
-import type { Session } from '../src/protocol'
+import type { Run, Session } from '../src/protocol'
 
 function setup() {
   const store = Store.open(':memory:')
@@ -62,7 +62,7 @@ describe('store', () => {
 
     sessions.prompt(session.id, 'hello')
 
-    store.insertRun({
+    const running: Run = {
       id: 'run_projection',
       sessionID: session.id,
       command: 'true',
@@ -72,13 +72,16 @@ describe('store', () => {
       exitCode: null,
       startedAt: Date.now(),
       endedAt: null,
-    })
+    }
+    store.insertRun(running)
+
+    const ended: Run = { ...running, status: 'succeeded', exitCode: 0, endedAt: Date.now() }
     store.record({
       type: 'run.ended',
       sessionID: session.id,
-      runID: 'run_projection',
-      data: { run: { id: 'run_projection', status: 'succeeded' } },
-      project: () => store.finishRun('run_projection', 'succeeded', 0, Date.now()),
+      runID: ended.id,
+      data: { run: ended },
+      project: () => store.finishRun(ended.id, 'succeeded', 0, ended.endedAt ?? Date.now()),
     })
 
     expect(sawMessage).toBe(true)

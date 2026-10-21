@@ -16,7 +16,8 @@ import { dirname } from 'node:path'
 import { mkdirSync } from 'node:fs'
 
 import type {
-  EventRecord,
+  EngineEvent,
+  EventPayloads,
   EventType,
   Message,
   MessageRole,
@@ -150,7 +151,10 @@ function toChunk(row: Row): RunChunk {
   }
 }
 
-function toEvent(row: Row): EventRecord {
+function toEvent(row: Row): EngineEvent {
+  // The daemon wrote the type and the payload together, in one insert, from a
+  // record the compiler checked. Reading the pair back is the one place that
+  // has to take the row's word for it.
   return {
     seq: row.seq,
     type: row.type as EventType,
@@ -158,22 +162,25 @@ function toEvent(row: Row): EventRecord {
     sessionID: row.session_id ?? null,
     runID: row.run_id ?? null,
     data: JSON.parse(row.data),
-  }
+  } as EngineEvent
 }
 
-export interface RecordInput {
-  type: EventType
+/** One event, minus what the store fills in. `data` is checked per type. */
+export type RecordInputOf<Type extends EventType> = {
+  type: Type
+  data: EventPayloads[Type]
   sessionID?: string | null
   runID?: string | null
-  data: unknown
   at?: number
   /** Runs inside the same transaction as the event insert. */
   project?: () => void
 }
 
+export type RecordInput = { [Type in EventType]: RecordInputOf<Type> }[EventType]
+
 export class Store {
   readonly #db: Database
-  readonly #listeners = new Set<(event: EventRecord) => void>()
+  readonly #listeners = new Set<(event: EngineEvent) => void>()
   #closed = false
 
   private constructor(file: string) {
@@ -224,7 +231,7 @@ export class Store {
     this.#db.close()
   }
 
-  subscribe(listener: (event: EventRecord) => void): () => void {
+  subscribe(listener: (event: EngineEvent) => void): () => void {
     this.#listeners.add(listener)
     return () => {
       this.#listeners.delete(listener)
@@ -237,7 +244,7 @@ export class Store {
    * The listener call happens after the transaction returns, so no subscriber
    * can observe an event whose projection is not visible yet.
    */
-  record(input: RecordInput): EventRecord {
+  record<Type extends EventType>(input: RecordInputOf<Type>): EngineEvent {
     const at = input.at ?? Date.now()
     const sessionID = input.sessionID ?? null
     const runID = input.runID ?? null
@@ -253,7 +260,16 @@ export class Store {
     })
 
     const seq = commit()
-    const event: EventRecord = { seq, type: input.type, at, sessionID, runID, data: input.data }
+    // `type` and `data` were checked against the same `EventPayloads` row by
+    // the generic input, which is what this assertion restates for the union.
+    const event = {
+      seq,
+      type: input.type,
+      at,
+      sessionID,
+      runID,
+      data: input.data,
+    } as EngineEvent
     for (const listener of [...this.#listeners]) {
       try {
         listener(event)
@@ -265,7 +281,7 @@ export class Store {
     return event
   }
 
-  eventsSince(after: number, limit = 2000): EventRecord[] {
+  eventsSince(after: number, limit = 2000): EngineEvent[] {
     const rows = this.#db
       .query('select * from event where seq > ? order by seq asc limit ?')
       .all(after, limit) as Row[]

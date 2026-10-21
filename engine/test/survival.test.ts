@@ -9,7 +9,7 @@
 import { describe, expect, test } from 'bun:test'
 import path from 'node:path'
 
-import { EngineClient } from '../../src/engine/client'
+import { engineClient } from '../../src/engine/client'
 import { discover, processAlive } from '../src/registry'
 import { sleep, startDaemon, until } from './harness'
 
@@ -24,8 +24,8 @@ describe('survival', () => {
     const daemon = await startDaemon()
 
     try {
-      const session = await daemon.client.createSession({ cwd: daemon.workspace, title: 'survives' })
-      const run = await daemon.client.startRun(session.id, longCommand(2))
+      const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'survives' })
+      const { run } = await daemon.client.startRun({ id: session.id, command: longCommand(2) })
 
       // The cockpit closes: nothing holds the run, nothing is subscribed.
       await sleep(700)
@@ -35,16 +35,18 @@ describe('survival', () => {
       if (found.state !== 'running') throw new Error('the daemon vanished')
 
       // A second cockpit attaches from the discovery file alone.
-      const second = new EngineClient(found.record)
-      const midway = await second.session(session.id)
+      const second = engineClient(found.record)
+      const midway = await second.session({ id: session.id })
       expect(midway.runs.find((candidate) => candidate.id === run.id)?.status).toBe('running')
 
       await until(
-        async () => (await second.session(session.id)).runs.find((candidate) => candidate.id === run.id)?.status !== 'running',
+        async () =>
+          (await second.session({ id: session.id })).runs.find((candidate) => candidate.id === run.id)?.status !==
+          'running',
         20_000,
       )
 
-      const finished = await second.session(session.id)
+      const finished = await second.session({ id: session.id })
       const record = finished.runs.find((candidate) => candidate.id === run.id)!
       expect(record.status).toBe('succeeded')
 
@@ -55,7 +57,7 @@ describe('survival', () => {
       expect(output).toContain('done')
 
       // And the client that never closed the window sees the same ending.
-      const fromFirst = await daemon.client.session(session.id)
+      const fromFirst = await daemon.client.session({ id: session.id })
       expect(fromFirst.runs.find((candidate) => candidate.id === run.id)?.status).toBe('succeeded')
     } finally {
       await daemon.stop()
@@ -67,15 +69,15 @@ describe('survival', () => {
 
     let restarted: Awaited<ReturnType<typeof startDaemon>> | null = null
     try {
-      const session = await daemon.client.createSession({ cwd: daemon.workspace, title: 'crash' })
-      const run = await daemon.client.startRun(session.id, longCommand(30))
+      const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'crash' })
+      const { run } = await daemon.client.startRun({ id: session.id, command: longCommand(30) })
       await sleep(600)
 
       // No shutdown, no cleanup: this is what a kill or a power cut looks like.
       await daemon.crash()
 
       restarted = await startDaemon({ home: daemon.home })
-      const detail = await restarted.client.session(session.id)
+      const detail = await restarted.client.session({ id: session.id })
       const record = detail.runs.find((candidate) => candidate.id === run.id)!
 
       expect(record.status).toBe('interrupted')
@@ -97,8 +99,8 @@ describe('survival', () => {
 
     let restarted: Awaited<ReturnType<typeof startDaemon>> | null = null
     try {
-      const session = await daemon.client.createSession({ cwd: daemon.workspace, title: 'shutdown' })
-      const run = await daemon.client.startRun(session.id, longCommand(30))
+      const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'shutdown' })
+      const { run } = await daemon.client.startRun({ id: session.id, command: longCommand(30) })
       await sleep(600)
 
       // A graceful stop still owns the run: it may not hand the next start a
@@ -107,7 +109,7 @@ describe('survival', () => {
       await until(() => !processAlive(daemon.record.pid), 15_000)
 
       restarted = await startDaemon({ home: daemon.home })
-      const detail = await restarted.client.session(session.id)
+      const detail = await restarted.client.session({ id: session.id })
       const record = detail.runs.find((candidate) => candidate.id === run.id)!
 
       // An asked-for stop cancels the run; it does not leave a `running` row

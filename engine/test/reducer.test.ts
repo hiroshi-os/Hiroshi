@@ -1,10 +1,30 @@
 import { describe, expect, test } from 'bun:test'
 
 import { apply, hydrate, initialSnapshot, type Snapshot } from '../../src/engine/reducer'
-import type { EventRecord, Message, Run, Session, SessionDetail } from '../src/protocol'
+import type { EngineEvent, EventPayloads, EventType, Message, Run, Session, SessionDetail } from '../src/protocol'
 
-function event(seq: number, type: EventRecord['type'], data: unknown, extra: Partial<EventRecord> = {}): EventRecord {
-  return { seq, type, at: seq, sessionID: extra.sessionID ?? 'ses_one', runID: extra.runID ?? null, data }
+let clock = 0
+
+/**
+ * One event, with its payload checked against the shape module.
+ *
+ * The cast assembles the union member from the two halves the caller passes;
+ * a payload that does not belong to the type is a compile error at the call.
+ */
+function event<Type extends EventType>(
+  type: Type,
+  data: EventPayloads[Type],
+  extra: { sessionID?: string | null; runID?: string | null } = {},
+): EngineEvent {
+  clock += 1
+  return {
+    seq: clock,
+    type,
+    at: clock,
+    sessionID: extra.sessionID === undefined ? 'ses_one' : extra.sessionID,
+    runID: extra.runID ?? null,
+    data,
+  } as EngineEvent
 }
 
 const session: Session = {
@@ -38,17 +58,17 @@ describe('the projection', () => {
   test('a run grows from started to ended, and its output accumulates', () => {
     let snapshot = ready()
 
-    snapshot = apply(snapshot, event(2, 'run.started', { run }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.started', { run }, { runID: run.id }))
     expect(snapshot.runs).toHaveLength(1)
     expect(snapshot.runs[0]!.status).toBe('running')
 
-    snapshot = apply(snapshot, event(3, 'run.output', { runID: run.id, stream: 'stdout', data: 'hel' }, { runID: run.id }))
-    snapshot = apply(snapshot, event(4, 'run.output', { runID: run.id, stream: 'stdout', data: 'lo\n' }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.output', { runID: run.id, stream: 'stdout', data: 'hel' }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.output', { runID: run.id, stream: 'stdout', data: 'lo\n' }, { runID: run.id }))
     expect(snapshot.output[run.id]!.text).toBe('hello\n')
 
     snapshot = apply(
       snapshot,
-      event(5, 'run.ended', { run: { ...run, status: 'succeeded', exitCode: 0, endedAt: 20 } }, { runID: run.id }),
+      event('run.ended', { run: { ...run, status: 'succeeded', exitCode: 0, endedAt: 20 } }, { runID: run.id }),
     )
     expect(snapshot.runs[0]!.status).toBe('succeeded')
     expect(snapshot.runs[0]!.exitCode).toBe(0)
@@ -56,20 +76,20 @@ describe('the projection', () => {
 
   test('a run from another session never lands in this one', () => {
     const other = { ...run, id: 'run_other', sessionID: 'ses_two' }
-    const snapshot = apply(ready(), event(2, 'run.started', { run: other }, { sessionID: 'ses_two', runID: other.id }))
+    const snapshot = apply(ready(), event('run.started', { run: other }, { sessionID: 'ses_two', runID: other.id }))
     expect(snapshot.runs).toHaveLength(0)
   })
 
   test('a message from another session is ignored, and a duplicate is not drawn twice', () => {
     const message: Message = { id: 'msg_one', sessionID: 'ses_one', seq: 0, role: 'user', text: 'hi', at: 1 }
-    let snapshot = apply(ready(), event(2, 'message.created', { message }))
+    let snapshot = apply(ready(), event('message.created', { message }))
     expect(snapshot.messages).toHaveLength(1)
 
-    snapshot = apply(snapshot, event(3, 'message.created', { message }))
+    snapshot = apply(snapshot, event('message.created', { message }))
     expect(snapshot.messages).toHaveLength(1)
 
     const foreign: Message = { ...message, id: 'msg_two', sessionID: 'ses_two' }
-    snapshot = apply(snapshot, event(4, 'message.created', { message: foreign }, { sessionID: 'ses_two' }))
+    snapshot = apply(snapshot, event('message.created', { message: foreign }, { sessionID: 'ses_two' }))
     expect(snapshot.messages).toHaveLength(1)
   })
 
@@ -95,11 +115,11 @@ describe('the projection', () => {
 
   test('the in-memory copy keeps the tail, not the head', () => {
     let snapshot = ready()
-    snapshot = apply(snapshot, event(2, 'run.started', { run }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.started', { run }, { runID: run.id }))
 
     const chunk = 'x'.repeat(64 * 1024)
     for (let index = 0; index < 6; index += 1) {
-      snapshot = apply(snapshot, event(3 + index, 'run.output', { runID: run.id, stream: 'stdout', data: chunk }, { runID: run.id }))
+      snapshot = apply(snapshot, event('run.output', { runID: run.id, stream: 'stdout', data: chunk }, { runID: run.id }))
     }
 
     const drawn = snapshot.output[run.id]!.text

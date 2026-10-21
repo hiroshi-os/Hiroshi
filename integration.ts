@@ -37,7 +37,7 @@ import path from 'node:path'
 
 import { connectStdio, type App, type TreeNode } from '@gpuix/react/automation'
 
-import { EngineClient } from './src/engine/client'
+import { engineClient, type EngineClient } from './src/engine/client'
 import { localPaths, readRegistry, type LocalPaths } from './src/engine/discovery'
 
 /** How long the window may take to appear before the wait is called a hang. */
@@ -338,9 +338,9 @@ async function driveTheWindow(home: string): Promise<void> {
 async function readTheSurvivor(client: EngineClient): Promise<{ exitCode: number | null; status: string; output: string }> {
   return waitUntil(
     async () => {
-      const sessions = await client.sessions()
+      const { sessions } = await client.listSessions()
       for (const session of sessions) {
-        const detail = await client.session(session.id)
+        const detail = await client.session({ id: session.id })
         const run = detail.runs.find((candidate) => candidate.command.includes(SURVIVOR))
         if (!run) continue
         if (run.status === 'running') return false
@@ -373,7 +373,7 @@ async function stopTheDaemon(home: string): Promise<void> {
     const record = readRegistry(registry)
     if (record) {
       try {
-        await new EngineClient({ url: record.url, token: record.token }).shutdown()
+        await engineClient({ url: record.url, token: record.token }).shutdown()
         note(`the daemon is shut down (pid ${record.pid})`)
       } catch (error) {
         note(`the daemon did not answer the shutdown: ${error instanceof Error ? error.message : String(error)}`)
@@ -403,7 +403,7 @@ async function main(): Promise<void> {
       'the discovery file the cockpit left behind',
       STEP_DEADLINE_MS,
     )
-    const client = new EngineClient({ url: record.url, token: record.token })
+    const client = engineClient({ url: record.url, token: record.token })
     const survivor = await readTheSurvivor(client)
 
     check(survivor.status === 'succeeded', `the run ended as ${survivor.status}, not succeeded`)
