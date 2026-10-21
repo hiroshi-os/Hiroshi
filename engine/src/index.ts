@@ -160,7 +160,9 @@ async function serve(flags: Flags): Promise<number> {
       // Already stopped.
     }
     await runs.stopAll()
-    runs.settleInterrupted('hiroshi-engine: the engine was shut down while this command was running')
+    // A backstop: a run nothing was holding any more is genuinely unaccounted
+    // for, so it gets the crash wording rather than the shutdown one.
+    runs.settleInterrupted('hiroshi-engine: the engine stopped while this command was running; it was not resumed')
     clearRegistry(paths.registry, process.pid)
     releaseStartLock(paths.lock)
     store.close()

@@ -193,14 +193,27 @@ export class Runs {
     return stale.length
   }
 
-  /** Kill every child before the daemon goes away. */
-  async stopAll(): Promise<void> {
+  /**
+   * End every run the daemon is still holding, then kill the children.
+   *
+   * A shutdown the operator asked for is not an accident: each held run ends as
+   * `cancelled`, with a line that says why, and the row is written before the
+   * kill so it is on disk even if the process goes away immediately after. The
+   * next start then finds nothing to guess about.
+   */
+  async stopAll(note = 'hiroshi-engine: the engine was shut down while this command was running'): Promise<void> {
     const active = [...this.#active.values()]
     for (const entry of active) {
       entry.cancelled = true
+      this.#write(entry.run, 'stderr', `${note}\n`)
+      this.#finish(entry.run, 'cancelled', null)
       killTree(entry.proc)
     }
-    if (active.length > 0) await sleep(60)
+    this.#active.clear()
+    if (active.length > 0) {
+      // Let the children die, but never hang the shutdown on one that will not.
+      await Promise.race([Promise.all(active.map((entry) => entry.proc.exited)), sleep(1500)])
+    }
   }
 
   // -- internals -----------------------------------------------------------

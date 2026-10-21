@@ -10,7 +10,7 @@ import { describe, expect, test } from 'bun:test'
 import path from 'node:path'
 
 import { EngineClient } from '../../src/engine/client'
-import { discover } from '../src/registry'
+import { discover, processAlive } from '../src/registry'
 import { sleep, startDaemon, until } from './harness'
 
 const ENTRY = path.resolve(import.meta.dir, '../src/index.ts')
@@ -86,6 +86,40 @@ describe('survival', () => {
         .map((chunk) => chunk.data)
         .join('')
       expect(output).toContain('was not resumed')
+    } finally {
+      if (restarted) await restarted.stop()
+      else await daemon.stop()
+    }
+  }, 90_000)
+
+  test('a shut down engine settles the run it was holding', async () => {
+    const daemon = await startDaemon()
+
+    let restarted: Awaited<ReturnType<typeof startDaemon>> | null = null
+    try {
+      const session = await daemon.client.createSession({ cwd: daemon.workspace, title: 'shutdown' })
+      const run = await daemon.client.startRun(session.id, longCommand(30))
+      await sleep(600)
+
+      // A graceful stop still owns the run: it may not hand the next start a
+      // row that claims to be running.
+      await daemon.client.shutdown().catch(() => {})
+      await until(() => !processAlive(daemon.record.pid), 15_000)
+
+      restarted = await startDaemon({ home: daemon.home })
+      const detail = await restarted.client.session(session.id)
+      const record = detail.runs.find((candidate) => candidate.id === run.id)!
+
+      // An asked-for stop cancels the run; it does not leave a `running` row
+      // for the next start to reinterpret as a crash.
+      expect(record.status).toBe('cancelled')
+      expect(record.endedAt).not.toBeNull()
+
+      const output = detail.chunks
+        .filter((chunk) => chunk.runID === run.id)
+        .map((chunk) => chunk.data)
+        .join('')
+      expect(output).toContain('was shut down')
     } finally {
       if (restarted) await restarted.stop()
       else await daemon.stop()

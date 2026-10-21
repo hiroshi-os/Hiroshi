@@ -107,7 +107,10 @@ export async function startDaemon(options: { home?: string; workspace?: string; 
   }
 
   const crash = async () => {
-    proc.kill()
+    // SIGTERM is a shutdown the engine handles; a crash is the kill it cannot.
+    // Without this the test would exercise the graceful path on Linux and the
+    // crash path on Windows, and pass for the wrong reason on one of them.
+    proc.kill(process.platform === 'win32' ? undefined : 'SIGKILL')
     await Promise.race([proc.exited, sleep(3000)])
   }
 
