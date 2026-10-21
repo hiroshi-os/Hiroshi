@@ -68,6 +68,30 @@ engine keeps the first and last slices and marks the run truncated.
   protocol reports the mismatch and leaves the daemon alone: it may be running
   commands for someone else.
 
+## The feed
+
+The feed is one hub, not one subscription per window. The engine encodes an
+event once, as it is recorded, and hands the same bytes to every connection: a
+second window costs a pointer, not a `JSON.stringify`.
+
+Each connection has its own queue, and the queue has a capacity. A window that
+stops reading fills its queue and is closed with an `overflow` frame that names
+the reason; the run, the other windows and the order they see never change. The
+client knows the last sequence it applied, so it reconnects from there.
+
+Every connection opens with a `hello` frame carrying `lastSeq`, the durable edge
+at that moment. The feed replays from the client's watermark to that edge, one
+page at a time as the socket asks for a frame, then follows live. The connection
+joins the live fan-out *before* the watermark is read, and on the daemon's single
+thread nothing can be recorded in between, so an event is either in the replay
+or on the live feed: never both, never neither. A `lastSeq` **behind** the
+watermark the client asked from means the log lost ground (a different
+database), and the client takes a fresh snapshot instead of waiting for events
+that cannot come.
+
+An idle connection gets a comment heartbeat every fifteen seconds, so a proxy or
+a sleeping laptop does not silently turn a live feed into a dead one.
+
 ## The data directory
 
 | platform | directory |

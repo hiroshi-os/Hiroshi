@@ -112,6 +112,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
           continue
         }
 
+        let dropped = ''
         try {
           await connection.feed({
             after,
@@ -120,12 +121,23 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
               after = event.seq
               update((current) => apply(current, event))
             },
+            onOverflow: (reason) => {
+              // Only this window lost its place. The loop below reconnects
+              // from `after` and the replay fills the gap from the log.
+              dropped = reason
+              update((current) => ({
+                ...current,
+                error: `the engine dropped this window's feed (${reason}); resuming from ${after}`,
+              }))
+            },
           })
           if (stopped) return
           update((current) => ({
             ...current,
             status: 'unreachable',
-            error: 'the engine closed the event feed',
+            error: dropped
+              ? `the engine dropped this window's feed (${dropped}); resuming from ${after}`
+              : 'the engine closed the event feed',
           }))
         } catch (error) {
           if (stopped) return

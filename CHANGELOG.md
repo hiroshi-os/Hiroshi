@@ -39,9 +39,24 @@ for a release.
   `windows-latest`, where a hosted runner has the desktop session a window
   needs, with a deadline of its own so a window that never opens fails in
   minutes instead of hanging.
+- The feed is one hub, not one subscription per window: each event is encoded
+  once and the same bytes go to every connection, and each connection has its
+  own bounded queue. A window that stops reading loses its connection with an
+  `overflow` frame and nothing else; the run and the other windows carry on.
+- Every feed connection opens with a `hello` frame carrying the durable edge
+  (`lastSeq`), replays the gap to that edge a page at a time as the socket asks
+  for frames, then follows live. A log that ends behind the watermark a client
+  asked from is a typed `feed_behind` error rather than a feed that waits
+  forever, and an idle connection gets a heartbeat.
 
 ### Fixed
 
+- A replay longer than 2000 events was silently cut short. `eventsSince` no
+  longer has a default limit: the caller either asks for everything or names a
+  page and pages to its watermark.
+- A slow window made every event cost one `JSON.stringify` per connection, and
+  the daemon's own stream buffer was the only bound. The queue is now per
+  connection and the encoding is once per event.
 - The surfaces panel opens at 480 instead of 380, and the resize handle floors
   it at 460. The picker on an empty surface is a 2×2 grid of 196px cards that
   needs 452px before it fits; at 380 the right column was cut off at the panel

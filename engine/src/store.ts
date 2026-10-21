@@ -281,10 +281,22 @@ export class Store {
     return event
   }
 
-  eventsSince(after: number, limit = 2000): EngineEvent[] {
-    const rows = this.#db
-      .query('select * from event where seq > ? order by seq asc limit ?')
-      .all(after, limit) as Row[]
+  /**
+   * Durable events after `after`, oldest first.
+   *
+   * The limit is what the caller asks for; there is no default, because a
+   * default is a cap nobody named and a replay silently cut short. A caller
+   * that wants a page passes one and keeps asking until it reaches its
+   * watermark: the feed pages so one long replay cannot block the daemon.
+   */
+  eventsSince(after: number, limit?: number): EngineEvent[] {
+    const statement =
+      limit === undefined
+        ? this.#db.query('select * from event where seq > ? order by seq asc')
+        : this.#db.query('select * from event where seq > ? order by seq asc limit ?')
+    const rows = (
+      limit === undefined ? statement.all(after) : statement.all(after, limit)
+    ) as Row[]
     return rows.map(toEvent)
   }
 

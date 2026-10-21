@@ -126,4 +126,43 @@ describe('store', () => {
 
     store.close()
   })
+
+  test('the replay limit is the caller’s, never a cap nobody named', () => {
+    const { store, sessions } = setup()
+    for (let index = 0; index < 25; index += 1) sessions.create({ title: `s${index}` })
+
+    // No limit means everything after the watermark.
+    expect(store.eventsSince(0)).toHaveLength(25)
+    expect(store.eventsSince(10)).toHaveLength(15)
+
+    // An explicit page is a page, and paging covers the log exactly once.
+    expect(store.eventsSince(0, 4).map((event) => event.seq)).toEqual([1, 2, 3, 4])
+
+    const seen: number[] = []
+    let cursor = 0
+    while (true) {
+      const page = store.eventsSince(cursor, 7)
+      if (page.length === 0) break
+      for (const event of page) {
+        expect(event.seq).toBeGreaterThan(cursor)
+        cursor = event.seq
+        seen.push(event.seq)
+      }
+    }
+    expect(seen).toEqual(Array.from({ length: 25 }, (_, index) => index + 1))
+
+    store.close()
+  })
+
+  test('a replay longer than the old default is not silently cut short', () => {
+    const { store, sessions } = setup()
+    // The feed used to ask for 2000 and drop the rest without saying so.
+    for (let index = 0; index < 2100; index += 1) sessions.create({ title: `s${index}` })
+
+    expect(store.eventsSince(0)).toHaveLength(2100)
+    expect(store.eventsSince(0, 2000)).toHaveLength(2000)
+    expect(store.eventsSince(2000)).toHaveLength(100)
+
+    store.close()
+  }, 30_000)
 })

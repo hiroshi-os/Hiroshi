@@ -1,24 +1,19 @@
 /**
  * The HTTP surface.
  *
- * Commands go in over `POST`, state goes out over one event feed. The feed is
- * a single stream: the client names the last sequence it has and gets every
- * durable event after it, then everything that happens next. A client that
- * stops reading is disconnected instead of being allowed to grow the daemon's
- * memory, and the other clients never notice.
+ * Commands go in over `POST`, state goes out over one event feed. The feed
+ * encodes each event once and gives every connection its own bounded queue: a
+ * client that stops reading is closed with an `overflow` frame instead of
+ * being allowed to grow the daemon's memory, and the other clients never
+ * notice. Replay and live delivery share the same encoder and the same order.
  */
 
 import { timingSafeEqual } from 'node:crypto'
 
 import { EngineError, invalid, notFound } from './errors'
+import { Feed } from './feed'
 import type { Logger } from './log'
-import type {
-  CreateSessionRequest,
-  EngineEvent,
-  Health,
-  PromptRequest,
-  StartRunRequest,
-} from './protocol'
+import type { CreateSessionRequest, Health, PromptRequest, StartRunRequest } from './protocol'
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
@@ -93,6 +88,8 @@ export function startServer(
   listen: { hostname: string; port: number },
 ): StartedServer {
   const { store, runs, sessions, log } = options
+  // One subscription to the store, one encoding per event, one queue per client.
+  const hub = new Feed(store)
 
   function health(): Health {
     return {
@@ -111,72 +108,11 @@ export function startServer(
   function feed(url: URL, signal?: AbortSignal): Response {
     const requested = Number(url.searchParams.get('after') ?? '0')
     const after = Number.isFinite(requested) && requested > 0 ? requested : 0
-    const encoder = new TextEncoder()
 
-    let unsubscribe: (() => void) | null = null
-    let heartbeat: ReturnType<typeof setInterval> | null = null
-    let closed = false
-
-    const cleanup = () => {
-      if (closed) return
-      closed = true
-      unsubscribe?.()
-      if (heartbeat) clearInterval(heartbeat)
-    }
-
-    const stream = new ReadableStream<Uint8Array>(
-      {
-        start(controller) {
-          const send = (frame: string) => {
-            if (closed) return
-            try {
-              controller.enqueue(encoder.encode(frame))
-            } catch {
-              cleanup()
-            }
-          }
-          const sendEvent = (event: EngineEvent) => send(`data: ${JSON.stringify(event)}\n\n`)
-
-          // Replay what the client missed, in order, before it sees anything live.
-          for (const event of store.eventsSince(after)) sendEvent(event)
-          send(': listening\n\n')
-
-          unsubscribe = store.subscribe((event) => {
-            // The queue is bounded by the stream's high water mark. A client
-            // that has not read for 1024 events is dropped: only that client.
-            if (controller.desiredSize !== null && controller.desiredSize <= 0) {
-              send('event: overflow\ndata: {"reason":"client_too_slow"}\n\n')
-              cleanup()
-              try {
-                controller.close()
-              } catch {
-                // Already closed by the client.
-              }
-              return
-            }
-            sendEvent(event)
-          })
-
-          heartbeat = setInterval(() => send(': heartbeat\n\n'), 15_000)
-          ;(heartbeat as unknown as { unref?: () => void }).unref?.()
-
-          signal?.addEventListener('abort', () => {
-            cleanup()
-            try {
-              controller.close()
-            } catch {
-              // Already closed.
-            }
-          })
-        },
-        cancel() {
-          cleanup()
-        },
-      },
-      new CountQueuingStrategy({ highWaterMark: 1024 }),
-    )
-
-    return new Response(stream, { headers: SSE_HEADERS })
+    const connection = hub.open(after)
+    // `request.signal` is the client hanging up. The queue goes with it.
+    signal?.addEventListener('abort', () => connection.close(), { once: true })
+    return new Response(connection.stream, { headers: SSE_HEADERS })
   }
 
   async function handle(request: Request): Promise<Response> {
@@ -265,6 +201,9 @@ export function startServer(
   return {
     url: `http://${host}:${port}`,
     port,
-    stop: () => server.stop(true),
+    stop: () => {
+      hub.close()
+      server.stop(true)
+    },
   }
 }
