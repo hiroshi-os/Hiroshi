@@ -235,6 +235,43 @@ export const operations: readonly Operation[] = [
  */
 export const FEED_PATH = '/v1/events'
 
+/**
+ * The frame names the feed sends besides events.
+ *
+ * An event frame has no name and carries one `EngineEvent` in its `data`. The
+ * two named frames are the feed talking about itself: the watermark it opened
+ * at, and the reason a connection is about to close.
+ */
+export const FEED_HELLO = 'hello'
+export const FEED_OVERFLOW = 'overflow'
+
+/**
+ * The first frame on every feed: the durable edge the connection opened at.
+ *
+ * A client compares `lastSeq` with the watermark it asked from. `lastSeq`
+ * ahead of `after` means the replay will fill the gap; `lastSeq` behind
+ * `after` means the log lost ground (a different database) and replaying
+ * cannot help, so the client has to take a fresh snapshot instead.
+ */
+export interface FeedHello {
+  /** The newest durable sequence when this connection opened. */
+  lastSeq: number
+  /** The watermark the client asked from, echoed for the log. */
+  after: number
+}
+
+/**
+ * The last frame a connection sees before the feed closes it.
+ *
+ * A queue that overflows loses one connection, not the run: the client knows
+ * the last sequence it applied and reconnects from it.
+ */
+export interface FeedOverflow {
+  reason: 'client_too_slow'
+  /** Frames one connection's queue holds before it is dropped. */
+  capacity: number
+}
+
 export interface OperationMatch {
   operation: Operation
   /** The path segments the template named. */

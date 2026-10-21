@@ -12,9 +12,13 @@
  */
 
 import {
+  FEED_HELLO,
+  FEED_OVERFLOW,
   FEED_PATH,
   operations,
   type EngineEvent,
+  type FeedHello,
+  type FeedOverflow,
   type NoInput,
   type Operation,
   type OperationName,
@@ -43,6 +47,8 @@ export interface FeedOptions {
   signal?: AbortSignal
   onEvent: (event: EngineEvent) => void
   onOpen?: () => void
+  /** The daemon's durable edge when the connection opened. */
+  onWatermark?: (lastSeq: number) => void
   onOverflow?: (reason: string) => void
 }
 
@@ -172,6 +178,9 @@ class EngineTransport {
     } catch (error) {
       // An aborted feed is a feed the caller meant to close.
       if (options.signal?.aborted) return
+      // A frame the client cannot use ends this connection; close the socket
+      // instead of leaving the daemon feeding a reader nobody owns.
+      await reader.cancel().catch(() => {})
       throw error
     } finally {
       try {
@@ -182,8 +191,16 @@ class EngineTransport {
     }
   }
 
+  /**
+   * One SSE frame, routed by name.
+   *
+   * An event frame has no name. `hello` is the feed's watermark, `overflow`
+   * is the feed closing this connection because the reader fell behind, and
+   * any other name is a frame from a newer daemon: skip it rather than drop
+   * the feed the client can still use.
+   */
   #dispatch(frame: string, options: FeedOptions): void {
-    let eventName = 'message'
+    let eventName = ''
     const data: string[] = []
 
     for (const line of frame.split('\n')) {
@@ -192,10 +209,32 @@ class EngineTransport {
       else if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart())
     }
 
-    if (eventName === 'overflow') {
+    if (eventName === FEED_HELLO) {
+      let hello: FeedHello | null = null
+      try {
+        hello = JSON.parse(data.join('\n')) as FeedHello
+      } catch {
+        hello = null
+      }
+      if (!hello || typeof hello.lastSeq !== 'number') return
+      // The log ends behind the watermark this client asked from: replaying
+      // cannot fill a gap that is not there anymore, so the caller has to
+      // take a fresh snapshot instead of waiting for events that will not come.
+      if (hello.lastSeq < options.after) {
+        throw new EngineRequestError(
+          0,
+          'feed_behind',
+          `the engine log ends at ${hello.lastSeq}, behind this client's watermark of ${options.after}`,
+        )
+      }
+      options.onWatermark?.(hello.lastSeq)
+      return
+    }
+
+    if (eventName === FEED_OVERFLOW) {
       let reason = 'client_too_slow'
       try {
-        reason = (JSON.parse(data.join('\n')) as { reason?: string }).reason ?? reason
+        reason = (JSON.parse(data.join('\n')) as FeedOverflow).reason ?? reason
       } catch {
         // Keep the default reason.
       }
@@ -203,6 +242,7 @@ class EngineTransport {
       return
     }
 
+    if (eventName !== '') return
     if (data.length === 0) return
     try {
       options.onEvent(JSON.parse(data.join('\n')) as EngineEvent)

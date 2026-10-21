@@ -158,6 +158,34 @@ describe('the event feed', () => {
     await feed.catch(() => {})
   }, 30_000)
 
+  test('opens with the watermark it will replay to, then follows', async () => {
+    // Taken before the feed opens, so the next event must land exactly after it.
+    const head = await daemon.client.health()
+    let watermark = -1
+    const seen: EngineEvent[] = []
+    const controller = new AbortController()
+
+    const feed = daemon.client.feed({
+      after: head.lastSeq,
+      signal: controller.signal,
+      onWatermark: (lastSeq) => {
+        watermark = lastSeq
+      },
+      onEvent: (event) => seen.push(event),
+    })
+
+    await until(() => watermark >= 0)
+    expect(watermark).toBe(head.lastSeq)
+
+    const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'watermark' })
+    await until(() => seen.length > 0)
+    expect(seen[0]!.seq).toBe(head.lastSeq + 1)
+    expect(seen[0]!.sessionID).toBe(session.id)
+
+    controller.abort()
+    await feed.catch(() => {})
+  }, 30_000)
+
   test('two clients on one feed see the same run', async () => {
     const first: EngineEvent[] = []
     const second: EngineEvent[] = []
