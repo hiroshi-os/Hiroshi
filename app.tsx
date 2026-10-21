@@ -5645,7 +5645,9 @@ export function ChatApp({
   const [nav, setNav] = useState({ stack: ['task-new'], index: 0 })
   const [collapsed, setCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
-  const [rightPanelWidth, setRightPanelWidth] = useState(380)
+  // The surface picker is a 2×2 grid of 196px cards inside 24px padding, so
+  // the panel needs 452px before it can show the picker without clipping.
+  const [rightPanelWidth, setRightPanelWidth] = useState(480)
   const [inspectorWidth, setInspectorWidth] = useState(260)
   const [resizing, setResizing] = useState<'left' | 'right' | 'inspector' | null>(null)
   const resizeOrigin = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 0 })
@@ -6072,7 +6074,7 @@ export function ChatApp({
               setSidebarWidth(newWidth)
             } else if (resizing === 'right') {
               const delta = resizeOrigin.current.startX - currentX
-              const newWidth = Math.max(280, Math.min(680, resizeOrigin.current.startWidth + delta))
+              const newWidth = Math.max(460, Math.min(680, resizeOrigin.current.startWidth + delta))
               setRightPanelWidth(newWidth)
             } else if (resizing === 'inspector') {
               const delta = resizeOrigin.current.startX - currentX
