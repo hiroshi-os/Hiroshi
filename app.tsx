@@ -37,6 +37,9 @@ import {
 import { SafeMdxRenderer } from 'safe-mdx'
 import { mdxParse } from 'safe-mdx/parse'
 import type { Root } from 'mdast'
+import { useEngine, type EngineHandle } from './src/engine/use-engine'
+import type { Snapshot as EngineSnapshot } from './src/engine/reducer'
+import type { Run as EngineRun, Session as EngineSession } from './engine/src/protocol'
 import iconCompose from './assets/icons/compose.svg' with { type: 'text' }
 import iconSearch from './assets/icons/search.svg' with { type: 'text' }
 import iconSidebar from './assets/icons/panel-left.svg' with { type: 'text' }
@@ -1524,12 +1527,143 @@ function SettingsDropdown({
   )
 }
 
+/**
+ * The daemon, as the engine reports it.
+ *
+ * Nothing here is simulated: the version, the pid and the database path come
+ * from the running process, and "Restart" really stops it and starts it again.
+ */
+function DaemonPanel({
+  engine,
+  onRestart,
+}: {
+  engine?: EngineSnapshot
+  onRestart?: () => void
+}) {
+  const status = engine?.status ?? 'off'
+  const health = engine?.health ?? null
+  const connected = status === 'ready' && health !== null
+  const starting = status === 'starting'
+  const dotColor = connected ? '#4ADE80' : starting ? '#FBBF24' : '#EF4444'
+  const word = connected ? 'Running' : starting ? 'Starting' : status === 'off' ? 'Not attached' : 'Disconnected'
+  const sessions = engine?.sessions.length ?? 0
+  const running = (engine?.sessions ?? []).reduce((total, entry) => total + entry.running, 0)
+
+  const facts: { label: string; value: string }[] =
+    connected && health
+      ? [
+          { label: 'Process', value: `pid ${health.pid}` },
+          { label: 'Wire', value: `protocol ${health.protocol} · engine ${health.version}` },
+          { label: 'Started', value: new Date(health.startedAt).toLocaleTimeString() },
+          { label: 'Sessions', value: running > 0 ? `${sessions} · ${running} running` : String(sessions) },
+          { label: 'Database', value: health.database },
+        ]
+      : []
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 720 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          backgroundColor: '#202020',
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: '#E6EAF20A',
+          padding: 18,
+        }}
+      >
+        <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor, flexShrink: 0 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1, minWidth: 0 }}>
+          <text testId="daemon-status" style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+            {`Hiroshi daemon · ${word}`}
+          </text>
+          <text style={{ fontSize: 12.5, lineHeight: 18, color: C.secondary }}>
+            {connected && health
+              ? `${health.name} ${health.version} is listening on this machine, protocol ${health.protocol}`
+              : engine?.error ?? 'This build has no engine attached.'}
+          </text>
+        </div>
+        <Button
+          testId="daemon-restart"
+          onClick={() => onRestart?.()}
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            height: 30,
+            paddingLeft: 12,
+            paddingRight: 12,
+            borderRadius: 6,
+            backgroundColor: '#2A2A2A',
+            borderWidth: 1,
+            borderColor: '#383838',
+            cursor: 'pointer',
+            hover: { backgroundColor: '#333333' },
+          }}
+        >
+          <text style={{ fontSize: 12.5, color: C.text }}>{starting ? 'Starting…' : 'Restart'}</text>
+        </Button>
+      </div>
+
+      {facts.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            backgroundColor: '#202020',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#E6EAF20A',
+            padding: 18,
+          }}
+        >
+          {facts.map((fact) => (
+            <div
+              key={fact.label}
+              style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}
+            >
+              <text style={{ fontSize: 12, color: C.ghost, width: 76, flexShrink: 0 }}>{fact.label}</text>
+              <text
+                testId={`daemon-${fact.label.toLowerCase()}`}
+                style={{
+                  fontSize: 12,
+                  fontFamily: FONT_MONO,
+                  color: C.secondary,
+                  flexGrow: 1,
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {fact.value}
+              </text>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <text style={{ fontSize: 13, lineHeight: 19, color: C.secondary, maxWidth: 620 }}>
+        The daemon is its own process. A run keeps going when this window closes, and a second window
+        attaches to the same runs. It listens on loopback only, and every request carries the token
+        from its discovery file.
+      </text>
+    </div>
+  )
+}
+
 function SettingsView({
   onBack,
   initialSection = 'general',
+  engine,
+  onRestartEngine,
 }: {
   onBack: () => void
   initialSection?: string
+  engine?: EngineSnapshot
+  onRestartEngine?: () => void
 }) {
   const [activeSection, setActiveSection] = useState(initialSection)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1548,7 +1682,7 @@ function SettingsView({
 
   // Providers state
   const [cursorEnabled, setCursorEnabled] = useState(true)
-  const [openCodeEnabled, setOpenCodeEnabled] = useState(true)
+  const [aiderEnabled, setAiderEnabled] = useState(true)
   const [grokEnabled, setGrokEnabled] = useState(true)
 
   // Skills state
@@ -1559,9 +1693,6 @@ function SettingsView({
   const [usagePeriod, setUsagePeriod] = useState<'daily' | 'monthly' | 'projects'>('daily')
   const [usageCostType, setUsageCostType] = useState<'cost' | 'tokens'>('cost')
   const [usageBreakdownTab, setUsageBreakdownTab] = useState<'model' | 'day'>('model')
-
-  // Daemon state
-  const [daemonExposed, setDaemonExposed] = useState(false)
 
   return (
     <div
@@ -2159,12 +2290,12 @@ function SettingsView({
                         icon: 'wrench' as const,
                       },
                       {
-                        name: 'OpenCode v1.18.35',
-                        status: '~/.bun\\bin\\opencode.EXE · 115 models',
+                        name: 'Aider v0.86.2',
+                        status: '~/.local\\bin\\aider.EXE · 72 models',
                         installed: true,
                         icon: 'laptop' as const,
-                        toggle: openCodeEnabled,
-                        onToggle: setOpenCodeEnabled,
+                        toggle: aiderEnabled,
+                        onToggle: setAiderEnabled,
                       },
                       {
                         name: 'Grok Build v1.0.34',
@@ -2549,55 +2680,7 @@ function SettingsView({
                     Daemon
                   </text>
 
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 16,
-                      backgroundColor: '#202020',
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#E6EAF20A',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexGrow: 1 }}>
-                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                          Expose managed daemon
-                        </text>
-                        <div
-                          style={{
-                            paddingLeft: 6,
-                            paddingRight: 6,
-                            paddingTop: 2,
-                            paddingBottom: 2,
-                            borderRadius: 4,
-                            backgroundColor: '#2B2B2B',
-                          }}
-                        >
-                          <text style={{ fontSize: 11, color: C.secondary }}>Local only</text>
-                        </div>
-                      </div>
-                      <text
-                        style={{
-                          fontSize: 13,
-                          lineHeight: 18,
-                          color: C.secondary,
-                          maxWidth: 540,
-                        }}
-                      >
-                        Listen beyond this machine so another Hiroshi client can connect. Changing this restarts only the daemon.
-                      </text>
-                    </div>
-                    <ToggleSwitch
-                      checked={daemonExposed}
-                      onChange={setDaemonExposed}
-                      testId="toggle-daemon"
-                    />
-                  </div>
+                  <DaemonPanel engine={engine} onRestart={onRestartEngine} />
                 </>
               )}
             </div>
@@ -3180,54 +3263,134 @@ const SURFACES: { id: SurfaceKind; label: string; icon: IconName; desc: string }
   { id: 'review', label: 'Review', icon: 'fileDiff', desc: 'Review file changes' },
 ]
 
+/** One durable run, drawn from the engine's events. */
+function TerminalRun({
+  run,
+  output,
+  truncated,
+  onCancel,
+}: {
+  run: EngineRun
+  output: string
+  truncated: boolean
+  onCancel: () => void
+}) {
+  const lines = output.replace(/\r\n/g, '\n').split('\n')
+  // A runaway command cannot blow the paint budget: the terminal shows the tail.
+  const shown = lines.length > 400 ? lines.slice(-400) : lines
+  const seconds = ((run.endedAt ?? Date.now()) - run.startedAt) / 1000
+  const color =
+    run.status === 'running'
+      ? '#FBBF24'
+      : run.status === 'succeeded'
+        ? '#4ADE80'
+        : run.status === 'failed'
+          ? '#F87171'
+          : '#A3A3A3'
+  const footer =
+    run.status === 'running'
+      ? 'running…'
+      : run.status === 'succeeded'
+        ? `exit ${run.exitCode ?? 0} · ${seconds.toFixed(1)}s`
+        : run.status === 'failed'
+          ? `exit ${run.exitCode ?? '?'} · failed · ${seconds.toFixed(1)}s`
+          : `${run.status} · ${seconds.toFixed(1)}s`
+
+  return (
+    <div
+      testId="terminal-run"
+      style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 10 }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <text
+          style={{
+            fontSize: 13,
+            lineHeight: 18,
+            fontFamily: FONT_MONO,
+            color: C.text,
+            whiteSpace: 'nowrap',
+            flexShrink: 1,
+          }}
+        >
+          {`> ${run.command}`}
+        </text>
+        {run.status === 'running' && (
+          <Button
+            testId={`terminal-cancel-${run.id}`}
+            onClick={onCancel}
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              height: 20,
+              paddingLeft: 8,
+              paddingRight: 8,
+              borderRadius: 5,
+              backgroundColor: '#2A2A2A',
+              borderWidth: 1,
+              borderColor: '#383838',
+              cursor: 'pointer',
+              hover: { backgroundColor: '#333333' },
+            }}
+          >
+            <text style={{ fontSize: 11, color: C.secondary }}>Stop</text>
+          </Button>
+        )}
+      </div>
+      {shown.map((line, index) => (
+        <text
+          key={index}
+          style={{
+            fontSize: 13,
+            lineHeight: 18,
+            fontFamily: FONT_MONO,
+            color: C.secondary,
+          }}
+        >
+          {line || ' '}
+        </text>
+      ))}
+      {truncated && (
+        <text style={{ fontSize: 11.5, lineHeight: 16, fontFamily: FONT_MONO, color: C.ghost }}>
+          output was truncated by the engine
+        </text>
+      )}
+      <text style={{ fontSize: 11.5, lineHeight: 16, fontFamily: FONT_MONO, color }}>{footer}</text>
+    </div>
+  )
+}
+
 function SurfacePanel({
   activeSurface,
   onChangeSurface,
   onClose,
   project,
   open = true,
+  engine,
 }: {
   activeSurface: SurfaceKind
   onChangeSurface: (surface: SurfaceKind) => void
   onClose: () => void
   project: string
   open?: boolean
+  engine: EngineHandle
 }) {
   const [surfaceMenuOpen, setSurfaceMenuOpen] = useState(false)
   const [termInput, setTermInput] = useState('')
-  const [termHistory, setTermHistory] = useState<string[]>([])
 
+  // Every line the terminal shows is the engine's. A command leaves the window
+  // as one request and comes back as durable events on the feed.
   const handleTermSubmit = (val: string) => {
     const cmd = val.trim()
     if (!cmd) return
-    if (cmd === 'clear' || cmd === 'cls') {
-      setTermHistory([])
-    } else if (cmd === 'ls' || cmd === 'dir') {
-      setTermHistory((prev) => [
-        ...prev,
-        `PS E:\\hiroshi> ${cmd}`,
-        '    Directory: E:\\hiroshi',
-        '',
-        'Mode                 LastWriteTime         Length Name',
-        '----                 -------------         ------ ----',
-        'd-----        10/19/2026   3:20 AM                assets',
-        'd-----        10/19/2026   3:00 AM                screenshots',
-        '-a----        10/19/2026   3:30 AM         140200 app.tsx',
-        '-a----        10/19/2026   1:45 AM            450 package.json',
-        '-a----        10/19/2026   1:45 AM            520 tsconfig.json',
-        '-a----        10/19/2026   3:15 AM           2100 screenshot.ts',
-        '',
-      ])
-    } else {
-      setTermHistory((prev) => [
-        ...prev,
-        `PS E:\\hiroshi> ${cmd}`,
-        `[hiroshi-daemon] executed: ${cmd}`,
-        '',
-      ])
-    }
     setTermInput('')
+    engine.exec(cmd)
   }
+
+  const engineStatus = engine.snapshot.status
+  const engineError = engine.snapshot.error
+  const engineRuns = engine.snapshot.runs
+  const engineReady = engineStatus === 'ready'
 
   const currentDef = SURFACES.find((s) => s.id === activeSurface)
 
@@ -3584,7 +3747,7 @@ function SurfacePanel({
                   width: 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: '#E2795B',
+                  backgroundColor: engineReady ? '#4ADE80' : '#EF4444',
                   flexShrink: 0,
                 }}
               />
@@ -3598,7 +3761,7 @@ function SurfacePanel({
                   minWidth: 0,
                 }}
               >
-                C:\Program Files\WindowsApps\Microsoft.PowerShell_7.4.5.0_x64__8wekyb3d8bbwe\pwsh.exe
+                {engine.snapshot.health?.workspace ?? project}
               </text>
             </div>
             <text style={{ fontSize: 11.5, color: C.ghost, flexShrink: 0 }}>
@@ -3618,19 +3781,87 @@ function SurfacePanel({
               fontFamily: FONT_MONO,
             }}
           >
-            {termHistory.map((line, idx) => (
-              <text
-                key={idx}
+            {engineReady ? (
+              engineRuns.length === 0 ? (
+                <text
+                  style={{
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    fontFamily: FONT_MONO,
+                    color: C.ghost,
+                  }}
+                >
+                  {`The daemon is listening for ${project}. A command runs in the engine, not in this window.`}
+                </text>
+              ) : (
+                engineRuns.map((run) => (
+                  <TerminalRun
+                    key={run.id}
+                    run={run}
+                    output={engine.snapshot.output[run.id]?.text ?? ''}
+                    truncated={engine.snapshot.output[run.id]?.truncated ?? false}
+                    onCancel={() => engine.cancel(run.id)}
+                  />
+                ))
+              )
+            ) : (
+              <div
                 style={{
-                  fontSize: 13,
-                  lineHeight: 18,
-                  fontFamily: FONT_MONO,
-                  color: line.startsWith('PS ') ? C.text : C.secondary,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 6,
                 }}
               >
-                {line || ' '}
-              </text>
-            ))}
+                <text
+                  testId="terminal-offline"
+                  style={{
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    fontFamily: FONT_MONO,
+                    color: '#FCD34D',
+                  }}
+                >
+                  {engineStatus === 'starting'
+                    ? 'Starting the daemon…'
+                    : engineStatus === 'off'
+                      ? 'This build has no engine attached.'
+                      : 'The daemon is not reachable.'}
+                </text>
+                {engineError && (
+                  <text
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 17,
+                      fontFamily: FONT_MONO,
+                      color: C.tertiary,
+                    }}
+                  >
+                    {engineError}
+                  </text>
+                )}
+                <Button
+                  testId="terminal-retry"
+                  onClick={() => engine.restart()}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    height: 26,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    borderRadius: 6,
+                    backgroundColor: '#2A2A2A',
+                    borderWidth: 1,
+                    borderColor: '#383838',
+                    cursor: 'pointer',
+                    hover: { backgroundColor: '#333333' },
+                  }}
+                >
+                  <text style={{ fontSize: 12, color: C.text }}>Restart the daemon</text>
+                </Button>
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
               <text
@@ -3789,11 +4020,16 @@ function CommitPushModal({
   onClose,
   branch = 'master',
   taskId = 'task-1949cf8c6b5b557f',
+  engineReady = true,
+  engineError = null,
 }: {
   open: boolean
   onClose: () => void
   branch?: string
   taskId?: string
+  /** The commit belongs to the daemon, so the modal says when there is none. */
+  engineReady?: boolean
+  engineError?: string | null
 }) {
   const [message, setMessage] = useState('')
   const [includeUnstaged, setIncludeUnstaged] = useState(true)
@@ -3958,25 +4194,32 @@ function CommitPushModal({
           </div>
 
           {/* Hiroshi daemon is disconnected */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingLeft: 10,
-              paddingRight: 10,
-              paddingTop: 8,
-              paddingBottom: 8,
-              borderRadius: 6,
-              backgroundColor: '#261F18',
-              borderWidth: 1,
-              borderColor: '#4A3828',
-            }}
-          >
-            <Icon name="contrast" size={13} color="#F59E0B" />
-            <text style={{ fontSize: 12, color: '#FCD34D' }}>Hiroshi daemon is disconnected</text>
-          </div>
+          {!engineReady && (
+            <div
+              testId="daemon-disconnected"
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingLeft: 10,
+                paddingRight: 10,
+                paddingTop: 8,
+                paddingBottom: 8,
+                borderRadius: 6,
+                backgroundColor: '#261F18',
+                borderWidth: 1,
+                borderColor: '#4A3828',
+              }}
+            >
+              <Icon name="contrast" size={13} color="#F59E0B" />
+              <text style={{ fontSize: 12, color: '#FCD34D' }}>
+                {engineError
+                  ? `Hiroshi daemon is disconnected: ${engineError}`
+                  : 'Hiroshi daemon is disconnected'}
+              </text>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div
@@ -5382,9 +5625,15 @@ export function SafeMdxTranscript() {
 export function ChatApp({
   turnCount = TURNS.length,
   includeSafeMdx = false,
+  engine: engineEnabled = false,
 }: {
   turnCount?: number
   includeSafeMdx?: boolean
+  /**
+   * Attach the local engine daemon. Off by default so the integration tests and
+   * a browser build stay hermetic; the desktop entry point turns it on.
+   */
+  engine?: boolean
 } = {}) {
   const [conversations, setConversations] = useState(() =>
     CONVERSATIONS.map((conversation) => ({
@@ -5519,11 +5768,19 @@ export function ChatApp({
     renderer.scrollToItem(id, Math.max(0, rowCount - 1))
   }, [renderer, rowCount, tailTick])
 
+  // The daemon is the only owner of a run. The cockpit attaches and draws.
+  const engineView = useEngine({
+    enabled: engineEnabled,
+    workspace: typeof process !== 'undefined' ? process.cwd() : '',
+  })
+
   if (currentView === 'settings') {
     return (
       <SettingsView
         onBack={() => setCurrentView('chat')}
         initialSection={settingsInitialSection}
+        engine={engineView.snapshot}
+        onRestartEngine={engineView.restart}
       />
     )
   }
@@ -5735,6 +5992,7 @@ export function ChatApp({
             onChangeSurface={setActiveSurface}
             onClose={() => setRightPanelOpen(false)}
             project={project}
+            engine={engineView}
           />
         </div>
         <ResizeHandle
@@ -5754,6 +6012,8 @@ export function ChatApp({
         onClose={() => setCommitModalOpen(false)}
         branch={branch}
         taskId={active?.id ?? 'task-1949cf8c6b5b557f'}
+        engineReady={engineView.snapshot.status === 'ready'}
+        engineError={engineView.snapshot.error}
       />
       <CommandPaletteModal
         open={overlay === 'search'}
@@ -5838,7 +6098,7 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   applyMacCpuThrottleFromEnv()
-  render(<ChatApp turnCount={0} includeSafeMdx={false} />, {
+  render(<ChatApp turnCount={0} includeSafeMdx={false} engine />, {
     title: 'Hiroshi · Multi-Agent Orchestrator',
     width: 1180,
     height: 820,
