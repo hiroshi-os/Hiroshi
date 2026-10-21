@@ -63,3 +63,16 @@ surface are stable, and the minor counts the feature releases up to `255`
 before `1.0.0`. The version lives in `package.json` and nowhere else.
 
 What changed in every release is in [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
+## Documentation
+
+The docs site lives in [`docs/`](./docs) and is a [Mintlify](https://mintlify.com)
+project. `docs/docs.json` holds the navigation and the theme, the `.mdx`
+files next to it are the pages.
+
+```bash
+npm i -g mint
+cd docs && mint dev
+```
