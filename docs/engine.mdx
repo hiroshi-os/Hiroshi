@@ -104,8 +104,9 @@ bun engine/src/index.ts stop     # ask it to shut down
 bun engine/src/index.ts version  # engine version and protocol
 ```
 
-Packages ship a standalone `hiroshi-engine` next to the app, so a release has no
-`bun` requirement at runtime.
+`serve` is the default, so `bun run engine` starts the daemon. The cockpit
+looks for a standalone `hiroshi-engine` binary next to itself before it falls
+back to the checkout, which is how a packaged build runs without `bun`.
 
 ## In the cockpit
 
