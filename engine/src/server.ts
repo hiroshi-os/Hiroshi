@@ -13,7 +13,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { EngineError, invalid, notFound } from './errors'
 import { Feed } from './feed'
 import type { Logger } from './log'
-import type { CreateSessionRequest, Health, PromptRequest, StartRunRequest } from './protocol'
+import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, StartRunRequest } from './protocol'
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
@@ -149,7 +149,12 @@ export function startServer(
 
       case 'prompt': {
         const input = await body<PromptRequest>(request)
-        return json({ message: sessions.prompt(params.id, input.text ?? '') }, status)
+        return json(sessions.prompt(params.id, input), status)
+      }
+
+      case 'interrupt': {
+        const input = await body<InterruptRequest>(request)
+        return json({ runs: runs.interrupt(params.id, input.reason) }, status)
       }
 
       case 'startRun': {

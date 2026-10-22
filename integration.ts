@@ -53,6 +53,10 @@ const FIRST_COMMAND = `echo ${MARKER}`
 /** The second one outlives the window, which is the whole point. */
 const SURVIVOR = 'survived-the-window'
 const SECOND_COMMAND = `bun -e "setTimeout(() => console.log('${SURVIVOR}'), 4000)"`
+/** A command the session's inbox can be steered past. */
+const INBOX_COMMAND = process.platform === 'win32' ? 'Start-Sleep -Seconds 30' : 'sleep 30'
+/** The prompt admitted while that command is going, delivered by the interrupt. */
+const INBOX_PROMPT = 'also-update-the-changelog'
 
 function note(line: string): void {
   console.log(`[integration] ${line}`)
@@ -303,6 +307,41 @@ async function driveTheWindow(home: string): Promise<void> {
     )
     check(first.includes(`> ${FIRST_COMMAND}`), `the terminal did not show the command it ran:\n${first}`)
     note(`the first command came back with exit 0: ${FIRST_COMMAND}`)
+
+    // The inbox, through the window: a prompt admitted while a command is going
+    // waits, and the interrupt stops the command and delivers it.
+    await submit(app, INBOX_COMMAND)
+    await app.getByTestId('interrupt-session').waitFor({ timeoutMs: STEP_DEADLINE_MS })
+
+    await app.getByTestId('prompt-mode-steer').click()
+    const promptInput = app.getByTestId('prompt-input')
+    await promptInput.fill(INBOX_PROMPT)
+    await promptInput.press('enter')
+
+    await waitUntil(
+      async () => {
+        const text = await treeText(app)
+        return text.includes('1 PENDING') && text.includes(INBOX_PROMPT) ? text : false
+      },
+      'the prompt to wait in the session inbox',
+      STEP_DEADLINE_MS,
+    )
+    note('the prompt is waiting in the inbox, and the command is still running')
+
+    await app.getByTestId('interrupt-session').click()
+    const delivered = await waitUntil(
+      async () => {
+        const text = await treeText(app)
+        return text.includes('0 PENDING') && text.includes('1 DELIVERED') ? text : false
+      },
+      'the interrupt to deliver the pending prompt',
+      STEP_DEADLINE_MS,
+    )
+    check(
+      delivered.includes('the operator stopped this command'),
+      `the stopped run does not say why it stopped:\n${delivered}`,
+    )
+    note('the interrupt stopped the run and delivered the pending prompt')
 
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.

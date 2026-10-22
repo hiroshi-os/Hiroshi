@@ -22,6 +22,7 @@ cockpit (React)  ──HTTP──▶  hiroshi-engine (bun)  ──▶  SQLite (e
 | concept | what it is |
 | :--- | :--- |
 | session | a workspace, a title, the messages sent in it and the runs started in it |
+| prompt | an admitted intent: waiting in the inbox, or delivered as a message |
 | message | a line of operator intent, recorded before anything acts on it |
 | run | one command: its shell, its output, its exit code, its end |
 | event | the append-only log every projection is built from |
@@ -46,6 +47,41 @@ pretends a dead run is still going.
 
 Output is bounded. A run that prints megabytes does not fill the database: the
 engine keeps the first and last slices and marks the run truncated.
+
+## The session inbox
+
+A prompt is not a message yet when it arrives. It is admitted to the session's
+inbox first, as its own durable fact (`prompt.admitted`), and delivered to the
+transcript later (`prompt.delivered`) when the engine reaches a safe boundary.
+That ordering is what makes steering possible: the client can keep talking
+while a command is going, and the prompt is on disk before anything can act on
+it.
+
+- **Admission is idempotent.** A client sends a `key` with each prompt. The
+  first admission wins; a retry with the same key returns the same item,
+  whether it is still waiting or already delivered, and never turns into a
+  second prompt.
+- **Two modes.** `steer` and `queue`. Both wait while a run is executing; at
+  the boundary every steer is delivered before anything queued, each in
+  admission order. A steer does not stop the run it is steered past: it lands
+  after the step that was already going.
+- **A boundary is a step ending.** Today the engine's only step is a run, so
+  the boundary is `run.ended` and the session is idle when no run is executing.
+  When a step grows tool calls of its own, the boundary moves inside the step
+  and the law does not change: nothing is delivered while a tool call is in
+  flight.
+- **An interrupt stops the runs, not the queue.** `POST
+  /v1/sessions/:id/interrupt` writes a `cancelled` ending for every run the
+  session holds, with a line carrying the operator's reason, and the queue is
+  left as it was. The ending is a boundary, so whatever was waiting is
+  delivered immediately after it.
+- **A crash does not strand the queue.** On startup the engine settles the runs
+  a dead process left behind, then delivers the pending inbox: a prompt
+  admitted before the crash is in the transcript instead of waiting for a
+  boundary that will never come.
+
+`GET /v1/sessions/:id` carries the pending `inbox`, so a fresh window knows
+what is waiting before it follows the feed.
 
 ## The wire
 
@@ -142,9 +178,13 @@ back to the checkout, which is how a packaged build runs without `bun`.
 ## In the cockpit
 
 The right panel's **Terminal** surface is the engine's, not a mock: a command
-there becomes a run, its output arrives on the feed, and the footer shows the
-real exit code. The **Daemon** settings page shows the process, the protocol,
-the database and the session count, with the one button that restarts it.
+there becomes a run, its output arrives on the feed, and the composer shows the
+real exit code. Below it is the session's inbox: what was admitted and is still
+waiting, with its mode, a `STEER`/`QUEUE` switch and an interrupt action while a
+run is going. The chat transcript on the demo workspace is not engine-backed;
+the terminal is the surface that shows the inbox today. The **Daemon** settings
+page shows the process, the protocol, the database and the session count, with
+the one button that restarts it.
 
 ## Tests
 

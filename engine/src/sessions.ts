@@ -2,16 +2,21 @@
  * Sessions: the durable unit a client attaches to.
  *
  * Creating one and prompting one are both recorded facts, not rows inserted
- * behind the client's back. The title is derived once from the first prompt so
- * the sidebar has something to show, and it is never derived again.
+ * behind the client's back. A prompt is admitted to the session's inbox first
+ * (see `Inbox`); delivery to the transcript happens at a safe boundary, not
+ * when the request arrives.
+ *
+ * The title is derived once from the first admitted prompt so the sidebar has
+ * something to show, and it is never derived again.
  */
 
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { invalid, notFound } from './errors'
+import { Inbox, type Admitted } from './inbox'
 import type { Logger } from './log'
-import type { CreateSessionRequest, Message, Session, SessionDetail } from './protocol'
+import type { CreateSessionRequest, PromptRequest, Session, SessionDetail } from './protocol'
 import type { Store } from './store'
 
 const DEFAULT_TITLE = 'New task'
@@ -31,11 +36,13 @@ export class Sessions {
   readonly #store: Store
   readonly #log: Logger
   readonly #defaultCwd: string
+  readonly #inbox: Inbox
 
-  constructor(store: Store, log: Logger, defaults: { cwd: string }) {
+  constructor(store: Store, log: Logger, defaults: { cwd: string; inbox?: Inbox }) {
     this.#store = store
     this.#log = log.child('sessions')
     this.#defaultCwd = defaults.cwd
+    this.#inbox = defaults.inbox ?? new Inbox(store, log)
   }
 
   create(input: CreateSessionRequest = {}): Session {
@@ -71,39 +78,36 @@ export class Sessions {
     return detail
   }
 
-  prompt(id: string, text: string): Message {
+  /**
+   * Admit a prompt and, if the session is idle, deliver it.
+   *
+   * The title is renamed inside the admission transaction when this is the
+   * first prompt the session has ever been given. A retry of an already
+   * admitted prompt is a no-op and does not rename anything.
+   */
+  prompt(id: string, input: PromptRequest): Admitted {
     const session = this.#store.session(id)
     if (!session) throw notFound('session')
-    const body = text.trim()
-    if (!body) throw invalid('empty_prompt', 'text is required')
 
-    const at = Date.now()
-    const message = this.#store.appendMessage(id, 'user', body, at)
-    const rename = session.title === DEFAULT_TITLE ? titleFromText(body) : null
+    const rename = session.title === DEFAULT_TITLE ? titleFromText(input.text ?? '') : null
+    const admitted = this.#inbox.admit(
+      id,
+      input,
+      rename && rename !== DEFAULT_TITLE ? (at) => this.#store.renameSession(id, rename, at) : undefined,
+    )
 
-    this.#store.record({
-      type: 'message.created',
-      sessionID: id,
-      data: { message },
-      at,
-      project: () => {
-        if (rename) this.#store.renameSession(id, rename, at)
-        else this.#store.touchSession(id, at)
-      },
-    })
-
-    // The rename happened inside the message's transaction, so this reads the
-    // row back rather than inventing the new title a second time.
-    const updated = rename ? this.#store.session(id) : null
-    if (updated) {
+    // The rename happened inside the admission transaction, so the row is read
+    // back rather than the new title being invented a second time.
+    const updated = this.#store.session(id)
+    if (updated && updated.title !== session.title) {
       this.#store.record({
         type: 'session.updated',
         sessionID: id,
         data: { session: updated },
-        at,
+        at: admitted.item.admittedAt,
       })
     }
 
-    return message
+    return admitted
   }
 }

@@ -94,6 +94,50 @@ describe('survival', () => {
     }
   }, 90_000)
 
+  test('a prompt admitted before a crash is delivered on the next start', async () => {
+    const daemon = await startDaemon()
+
+    let restarted: Awaited<ReturnType<typeof startDaemon>> | null = null
+    try {
+      const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'inbox crash' })
+      await daemon.client.startRun({ id: session.id, command: longCommand(30) })
+
+      const admitted = await daemon.client.prompt({
+        id: session.id,
+        text: 'after the crash, do the next thing',
+        mode: 'queue',
+        key: 'crash-send',
+      })
+      expect(admitted.item.state).toBe('pending')
+      expect(admitted.message).toBeNull()
+
+      // The prompt was admitted, not delivered: crash the daemon at exactly
+      // the moment nothing may be delivered.
+      await daemon.crash()
+
+      restarted = await startDaemon({ home: daemon.home })
+      const detail = await restarted.client.session({ id: session.id })
+
+      expect(detail.inbox).toEqual([])
+      expect(detail.messages.map((message) => message.text)).toEqual(['after the crash, do the next thing'])
+      expect(detail.messages[0]!.mode).toBe('queue')
+      // The run it was waiting behind is settled, not silently kept alive.
+      expect(detail.runs[0]!.status).toBe('interrupted')
+
+      const retried = await restarted.client.prompt({
+        id: session.id,
+        text: 'a retry of the same send',
+        mode: 'queue',
+        key: 'crash-send',
+      })
+      expect(retried.item.id).toBe(admitted.item.id)
+      expect(retried.message?.id).toBe(detail.messages[0]!.id)
+    } finally {
+      if (restarted) await restarted.stop()
+      else await daemon.stop()
+    }
+  }, 90_000)
+
   test('a shut down engine settles the run it was holding', async () => {
     const daemon = await startDaemon()
 

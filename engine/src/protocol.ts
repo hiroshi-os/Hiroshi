@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.3.0'
+export const ENGINE_VERSION = '0.4.0'
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
@@ -56,6 +56,39 @@ export interface Session {
 
 export type MessageRole = 'user' | 'system'
 
+/**
+ * How a prompt waits in a session's inbox.
+ *
+ * `steer` wants the next safe boundary and is delivered ahead of anything
+ * queued. `queue` waits for the session to go idle. Neither one interrupts a
+ * run: the command that is going keeps going, and the prompt lands after it.
+ */
+export type DeliveryMode = 'steer' | 'queue'
+
+export type InboxState = 'pending' | 'delivered'
+
+/**
+ * One prompt, from the moment it is admitted to the moment it is delivered.
+ *
+ * The item is durable before the message exists: `pending` means the model
+ * has not been shown it yet, `delivered` means the transcript has it. `key` is
+ * the client's idempotency key: admitting the same key twice returns the first
+ * item instead of writing a second one.
+ */
+export interface InboxItem {
+  id: string
+  sessionID: string
+  /** Admission order inside the session. */
+  seq: number
+  text: string
+  mode: DeliveryMode
+  state: InboxState
+  key: string | null
+  admittedAt: number
+  deliveredAt: number | null
+  messageID: string | null
+}
+
 export interface Message {
   id: string
   sessionID: string
@@ -64,6 +97,8 @@ export interface Message {
   role: MessageRole
   text: string
   at: number
+  /** The delivery mode the prompt arrived with, when it came through the inbox. */
+  mode?: DeliveryMode
 }
 
 export interface Run {
@@ -100,7 +135,8 @@ export interface RunChunk {
 export interface EventPayloads {
   'session.created': { session: Session }
   'session.updated': { session: Session }
-  'message.created': { message: Message }
+  'prompt.admitted': { item: InboxItem }
+  'prompt.delivered': { item: InboxItem; message: Message }
   'run.started': { run: Run }
   'run.output': { runID: string; stream: OutputStream; data: string }
   'run.truncated': { runID: string; limit: number }
@@ -133,6 +169,8 @@ export interface SessionDetail {
   messages: Message[]
   runs: Run[]
   chunks: RunChunk[]
+  /** Prompts admitted but not delivered yet, oldest first. */
+  inbox: InboxItem[]
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }
@@ -149,6 +187,18 @@ export interface CreateSessionRequest {
 
 export interface PromptRequest {
   text: string
+  /** Defaults to `queue`: it waits until the session has no run going. */
+  mode?: DeliveryMode
+  /**
+   * The client's idempotency key. A retry with the same key is a no-op: the
+   * first admission wins, even after it has been delivered.
+   */
+  key?: string
+}
+
+export interface InterruptRequest {
+  /** Why the operator stopped the session; it is written into each run. */
+  reason?: string
 }
 
 export interface StartRunRequest {
@@ -175,6 +225,8 @@ export type NoInput = Record<string, never>
 
 export type PromptInput = SessionRef & PromptRequest
 
+export type InterruptInput = SessionRef & InterruptRequest
+
 export type StartRunInput = SessionRef & StartRunRequest
 
 /**
@@ -189,7 +241,8 @@ export interface OperationShapes {
   listSessions: { request: NoInput; response: SessionsResponse }
   createSession: { request: CreateSessionRequest; response: { session: Session } }
   session: { request: SessionRef; response: SessionDetail }
-  prompt: { request: PromptInput; response: { message: Message } }
+  prompt: { request: PromptInput; response: { item: InboxItem; message: Message | null } }
+  interrupt: { request: InterruptInput; response: { runs: Run[] } }
   startRun: { request: StartRunInput; response: { run: Run } }
   run: { request: RunRef; response: RunDetail }
   cancelRun: { request: RunRef; response: { run: Run } }
@@ -223,6 +276,7 @@ export const operations: readonly Operation[] = [
   { name: 'createSession', method: 'POST', path: '/v1/sessions', status: 201 },
   { name: 'session', method: 'GET', path: '/v1/sessions/:id' },
   { name: 'prompt', method: 'POST', path: '/v1/sessions/:id/messages', status: 201 },
+  { name: 'interrupt', method: 'POST', path: '/v1/sessions/:id/interrupt' },
   { name: 'startRun', method: 'POST', path: '/v1/sessions/:id/runs', status: 201 },
   { name: 'run', method: 'GET', path: '/v1/runs/:id' },
   { name: 'cancelRun', method: 'POST', path: '/v1/runs/:id/cancel' },

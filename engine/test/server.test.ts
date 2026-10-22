@@ -54,14 +54,65 @@ describe('the HTTP surface', () => {
 
   test('a prompt is recorded and names the session', async () => {
     const { session } = await daemon.client.createSession({ cwd: daemon.workspace })
-    const { message } = await daemon.client.prompt({ id: session.id, text: 'make the drag feel native' })
+    const { item, message } = await daemon.client.prompt({ id: session.id, text: 'make the drag feel native' })
 
-    expect(message.role).toBe('user')
-    expect(message.text).toBe('make the drag feel native')
+    expect(item.state).toBe('delivered')
+    expect(message?.role).toBe('user')
+    expect(message?.text).toBe('make the drag feel native')
 
     const detail = await daemon.client.session({ id: session.id })
-    expect(detail.messages.map((entry) => entry.id)).toEqual([message.id])
+    expect(detail.messages.map((entry) => entry.id)).toEqual([message!.id])
     expect(detail.session.title).toBe('make the drag feel native')
+    expect(detail.inbox).toEqual([])
+  })
+
+  test('a prompt sent while a run is going waits, and an interrupt delivers it', async () => {
+    const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'inbox' })
+    const command = process.platform === 'win32' ? 'Start-Sleep -Seconds 30' : 'sleep 30'
+    const { run } = await daemon.client.startRun({ id: session.id, command })
+
+    const admitted = await daemon.client.prompt({
+      id: session.id,
+      text: 'also update the changelog',
+      mode: 'steer',
+      key: 'http-send-1',
+    })
+
+    expect(admitted.message).toBeNull()
+    expect(admitted.item.state).toBe('pending')
+    expect(admitted.item.mode).toBe('steer')
+
+    // The same send twice is one prompt: the first one wins.
+    const retried = await daemon.client.prompt({
+      id: session.id,
+      text: 'a different text that must be ignored',
+      mode: 'steer',
+      key: 'http-send-1',
+    })
+    expect(retried.item.id).toBe(admitted.item.id)
+
+    const mid = await daemon.client.session({ id: session.id })
+    expect(mid.inbox.map((item) => item.id)).toEqual([admitted.item.id])
+    expect(mid.messages).toEqual([])
+    expect(mid.runs[0]!.status).toBe('running')
+
+    const { runs } = await daemon.client.interrupt({ id: session.id, reason: 'the build is wedged' })
+    expect(runs.map((entry) => entry.id)).toEqual([run.id])
+    expect(runs[0]!.status).toBe('cancelled')
+
+    const detail = await daemon.client.session({ id: session.id })
+    expect(detail.inbox).toEqual([])
+    expect(detail.messages.map((entry) => entry.text)).toEqual(['also update the changelog'])
+    expect(detail.messages[0]!.mode).toBe('steer')
+    expect(detail.runs[0]!.status).toBe('cancelled')
+
+    const output = detail.chunks.filter((chunk) => chunk.runID === run.id).map((chunk) => chunk.data).join('')
+    expect(output).toContain('the build is wedged')
+  }, 30_000)
+
+  test('an interrupt with nothing running answers with an empty list', async () => {
+    const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'idle' })
+    expect(await daemon.client.interrupt({ id: session.id })).toEqual({ runs: [] })
   })
 
   test('a run started over HTTP lands in the session snapshot', async () => {

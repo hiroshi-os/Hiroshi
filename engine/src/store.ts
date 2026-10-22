@@ -16,9 +16,12 @@ import { dirname } from 'node:path'
 import { mkdirSync } from 'node:fs'
 
 import type {
+  DeliveryMode,
   EngineEvent,
   EventPayloads,
   EventType,
+  InboxItem,
+  InboxState,
   Message,
   MessageRole,
   OutputStream,
@@ -92,6 +95,29 @@ const MIGRATIONS: Migration[] = [
       create index event_session on event (session_id, seq);
     `,
   },
+  {
+    id: 2,
+    name: 'inbox',
+    sql: `
+      alter table message add column mode text;
+
+      create table inbox (
+        id           text primary key,
+        session_id   text not null references session(id) on delete cascade,
+        seq          integer not null,
+        text         text not null,
+        mode         text not null,
+        state        text not null,
+        key          text,
+        admitted_at  integer not null,
+        delivered_at integer,
+        message_id   text references message(id) on delete set null,
+        unique (session_id, seq)
+      );
+      create unique index inbox_key on inbox (session_id, key) where key is not null;
+      create index inbox_pending on inbox (session_id, state, seq);
+    `,
+  },
 ]
 
 type Row = Record<string, any>
@@ -117,13 +143,30 @@ function toSession(row: Row): Session {
 }
 
 function toMessage(row: Row): Message {
-  return {
+  const message: Message = {
     id: row.id,
     sessionID: row.session_id,
     seq: row.seq,
     role: row.role as MessageRole,
     text: row.text,
     at: row.at,
+  }
+  if (row.mode) message.mode = row.mode as DeliveryMode
+  return message
+}
+
+function toInboxItem(row: Row): InboxItem {
+  return {
+    id: row.id,
+    sessionID: row.session_id,
+    seq: row.seq,
+    text: row.text,
+    mode: row.mode as DeliveryMode,
+    state: row.state as InboxState,
+    key: row.key ?? null,
+    admittedAt: row.admitted_at,
+    deliveredAt: row.delivered_at ?? null,
+    messageID: row.message_id ?? null,
   }
 }
 
@@ -337,7 +380,8 @@ export class Store {
 
   // -- transcript ----------------------------------------------------------
 
-  appendMessage(sessionID: string, role: MessageRole, text: string, at: number): Message {
+  /** Reserve the identity and sequence of a message that is not written yet. */
+  newMessage(sessionID: string, role: MessageRole, text: string, at: number, mode?: DeliveryMode): Message {
     const next = this.#db
       .query('select coalesce(max(seq), -1) + 1 as seq from message where session_id = ?')
       .get(sessionID) as Row
@@ -349,20 +393,94 @@ export class Store {
       text,
       at,
     }
-    this.#db.run('insert into message (id, session_id, seq, role, text, at) values (?, ?, ?, ?, ?, ?)', [
-      message.id,
-      message.sessionID,
-      message.seq,
-      message.role,
-      message.text,
-      message.at,
-    ])
+    if (mode) message.mode = mode
     return message
+  }
+
+  /**
+   * Write a reserved message. Called by the projector of the event that made
+   * it durable, so the row and the event commit together.
+   */
+  insertMessage(message: Message): void {
+    this.#db.run(
+      'insert into message (id, session_id, seq, role, text, at, mode) values (?, ?, ?, ?, ?, ?, ?)',
+      [message.id, message.sessionID, message.seq, message.role, message.text, message.at, message.mode ?? null],
+    )
   }
 
   messages(sessionID: string): Message[] {
     const rows = this.#db.query('select * from message where session_id = ? order by seq asc').all(sessionID) as Row[]
     return rows.map(toMessage)
+  }
+
+  message(id: string): Message | null {
+    const row = this.#db.query('select * from message where id = ?').get(id) as Row | null
+    return row ? toMessage(row) : null
+  }
+
+  // -- inbox ---------------------------------------------------------------
+
+  /** The next admission sequence inside a session. */
+  inboxSeq(sessionID: string): number {
+    const next = this.#db
+      .query('select coalesce(max(seq), -1) + 1 as seq from inbox where session_id = ?')
+      .get(sessionID) as Row
+    return next.seq as number
+  }
+
+  insertInboxItem(item: InboxItem): void {
+    this.#db.run(
+      `insert into inbox (id, session_id, seq, text, mode, state, key, admitted_at, delivered_at, message_id)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.sessionID,
+        item.seq,
+        item.text,
+        item.mode,
+        item.state,
+        item.key,
+        item.admittedAt,
+        item.deliveredAt,
+        item.messageID,
+      ],
+    )
+  }
+
+  deliverInboxItem(id: string, messageID: string, at: number): void {
+    this.#db.run("update inbox set state = 'delivered', delivered_at = ?, message_id = ? where id = ?", [
+      at,
+      messageID,
+      id,
+    ])
+  }
+
+  inboxItem(id: string): InboxItem | null {
+    const row = this.#db.query('select * from inbox where id = ?').get(id) as Row | null
+    return row ? toInboxItem(row) : null
+  }
+
+  inboxByKey(sessionID: string, key: string): InboxItem | null {
+    const row = this.#db.query('select * from inbox where session_id = ? and key = ?').get(sessionID, key) as Row | null
+    return row ? toInboxItem(row) : null
+  }
+
+  /** A session's inbox, oldest first. `state` narrows it to what is waiting. */
+  inbox(sessionID: string, state?: InboxState): InboxItem[] {
+    const statement =
+      state === undefined
+        ? this.#db.query('select * from inbox where session_id = ? order by seq asc')
+        : this.#db.query('select * from inbox where session_id = ? and state = ? order by seq asc')
+    const rows = (state === undefined ? statement.all(sessionID) : statement.all(sessionID, state)) as Row[]
+    return rows.map(toInboxItem)
+  }
+
+  /** Sessions with anything still waiting, for the startup delivery sweep. */
+  inboxSessions(): string[] {
+    const rows = this.#db
+      .query("select distinct session_id from inbox where state = 'pending' order by session_id")
+      .all() as Row[]
+    return rows.map((row) => row.session_id as string)
   }
 
   // -- runs ----------------------------------------------------------------
@@ -390,8 +508,12 @@ export class Store {
   }
 
   /** Runs a dead process left behind, for the startup sweep. */
-  runningRuns(): Run[] {
-    const rows = this.#db.query("select * from run where status = 'running' order by started_at asc").all() as Row[]
+  runningRuns(sessionID?: string): Run[] {
+    const statement =
+      sessionID === undefined
+        ? this.#db.query("select * from run where status = 'running' order by started_at asc")
+        : this.#db.query("select * from run where status = 'running' and session_id = ? order by started_at asc")
+    const rows = (sessionID === undefined ? statement.all() : statement.all(sessionID)) as Row[]
     return rows.map(toRun)
   }
 
@@ -443,6 +565,7 @@ export class Store {
         messages: this.messages(sessionID),
         runs: this.runs(sessionID),
         chunks: this.chunksForSession(sessionID),
+        inbox: this.inbox(sessionID, 'pending'),
         seq: this.lastSeq(),
       }
     })

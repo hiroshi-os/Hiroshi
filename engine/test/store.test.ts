@@ -40,10 +40,10 @@ describe('store', () => {
     const session = sessions.create({})
     expect(session.title).toBe('New task')
 
-    sessions.prompt(session.id, 'ship the drag fix\nand then the rest')
+    sessions.prompt(session.id, { text: 'ship the drag fix\nand then the rest' })
     expect(store.session(session.id)?.title).toBe('ship the drag fix')
 
-    sessions.prompt(session.id, 'something else entirely')
+    sessions.prompt(session.id, { text: 'something else entirely' })
     expect(store.session(session.id)?.title).toBe('ship the drag fix')
 
     store.close()
@@ -53,14 +53,16 @@ describe('store', () => {
     const { store, sessions } = setup()
     const session = sessions.create({})
 
-    let sawMessage = false
+    let sawAdmitted = false
+    let sawDelivered = false
     let sawRun = false
     store.subscribe((event) => {
-      if (event.type === 'message.created') sawMessage = store.messages(session.id).length === 1
+      if (event.type === 'prompt.admitted') sawAdmitted = store.inbox(session.id, 'pending').length === 1
+      if (event.type === 'prompt.delivered') sawDelivered = store.messages(session.id).length === 1
       if (event.type === 'run.ended') sawRun = store.run(event.runID!)?.status === 'succeeded'
     })
 
-    sessions.prompt(session.id, 'hello')
+    sessions.prompt(session.id, { text: 'hello' })
 
     const running: Run = {
       id: 'run_projection',
@@ -84,7 +86,8 @@ describe('store', () => {
       project: () => store.finishRun(ended.id, 'succeeded', 0, ended.endedAt ?? Date.now()),
     })
 
-    expect(sawMessage).toBe(true)
+    expect(sawAdmitted).toBe(true)
+    expect(sawDelivered).toBe(true)
     expect(sawRun).toBe(true)
 
     store.close()
@@ -116,8 +119,8 @@ describe('store', () => {
   test('the snapshot carries the watermark it was read at', () => {
     const { store, sessions } = setup()
     const session = sessions.create({})
-    sessions.prompt(session.id, 'one')
-    sessions.prompt(session.id, 'two')
+    sessions.prompt(session.id, { text: 'one' })
+    sessions.prompt(session.id, { text: 'two' })
 
     const detail = store.snapshot(session.id)!
     expect(detail.seq).toBe(store.lastSeq())

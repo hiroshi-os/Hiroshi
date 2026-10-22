@@ -19,6 +19,7 @@ import { ENGINE_NAME, ENGINE_VERSION, PROTOCOL_VERSION, type RegistryRecord } fr
 import { enginePaths, type EnginePaths } from './paths'
 import { createLogger, type Logger } from './log'
 import { Store } from './store'
+import { Inbox } from './inbox'
 import { Sessions } from './sessions'
 import { Runs } from './runs'
 import { startServer } from './server'
@@ -135,12 +136,18 @@ async function serve(flags: Flags): Promise<number> {
   store.migrate()
 
   const workspace = stringFlag(flags, 'workspace') || process.cwd()
-  const sessions = new Sessions(store, log, { cwd: workspace })
-  const runs = new Runs(store, log)
+  const inbox = new Inbox(store, log)
+  const sessions = new Sessions(store, log, { cwd: workspace, inbox })
+  // A run ending is the engine's safe boundary: the inbox reads the database
+  // after `run.ended` is committed and delivers only when nothing is running.
+  const runs = new Runs(store, log, { onIdle: (sessionID) => void inbox.deliver(sessionID) })
 
   // A previous process may have died mid-command. Say so rather than pretend
   // the command is still running.
   runs.settleInterrupted('hiroshi-engine: the engine stopped while this command was running; it was not resumed')
+  // Settlement is a boundary of its own: prompts admitted before the crash get
+  // delivered instead of waiting for a run that will never end.
+  inbox.deliverIdle()
 
   const hostname = stringFlag(flags, 'host') || '127.0.0.1'
   const port = numberFlag(flags, 'port') ?? 0

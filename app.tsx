@@ -39,7 +39,7 @@ import { mdxParse } from 'safe-mdx/parse'
 import type { Root } from 'mdast'
 import { useEngine, type EngineHandle } from './src/engine/use-engine'
 import type { Snapshot as EngineSnapshot } from './src/engine/reducer'
-import type { Run as EngineRun, Session as EngineSession } from './engine/src/protocol'
+import type { DeliveryMode, Run as EngineRun, Session as EngineSession } from './engine/src/protocol'
 import iconCompose from './assets/icons/compose.svg' with { type: 'text' }
 import iconSearch from './assets/icons/search.svg' with { type: 'text' }
 import iconSidebar from './assets/icons/panel-left.svg' with { type: 'text' }
@@ -82,6 +82,7 @@ import iconTerminal from './assets/icons/terminal.svg' with { type: 'text' }
 import iconGlobe from './assets/icons/globe.svg' with { type: 'text' }
 import iconFileDiff from './assets/icons/file-diff.svg' with { type: 'text' }
 import iconPlus from './assets/icons/plus.svg' with { type: 'text' }
+import iconInbox from './assets/icons/inbox.svg' with { type: 'text' }
 import iconInfo from './assets/icons/info.svg' with { type: 'text' }
 import {
   endWindowDrag,
@@ -170,6 +171,7 @@ const ICONS = {
   globe: iconGlobe,
   fileDiff: iconFileDiff,
   plus: iconPlus,
+  inbox: iconInbox,
   info: iconInfo,
   arrowUpRight: iconArrowUpRight,
   xai: iconXai,
@@ -3377,6 +3379,8 @@ function SurfacePanel({
 }) {
   const [surfaceMenuOpen, setSurfaceMenuOpen] = useState(false)
   const [termInput, setTermInput] = useState('')
+  const [promptInput, setPromptInput] = useState('')
+  const [promptMode, setPromptMode] = useState<DeliveryMode>('queue')
 
   // Every line the terminal shows is the engine's. A command leaves the window
   // as one request and comes back as durable events on the feed.
@@ -3387,10 +3391,20 @@ function SurfacePanel({
     engine.exec(cmd)
   }
 
+  const handlePromptSubmit = (val: string) => {
+    const text = val.trim()
+    if (!text) return
+    setPromptInput('')
+    engine.prompt(text, promptMode)
+  }
+
   const engineStatus = engine.snapshot.status
   const engineError = engine.snapshot.error
   const engineRuns = engine.snapshot.runs
+  const engineInbox = engine.snapshot.inbox
   const engineReady = engineStatus === 'ready'
+  const engineRunning = engineRuns.some((run) => run.status === 'running')
+  const delivered = engine.snapshot.messages.length
 
   const currentDef = SURFACES.find((s) => s.id === activeSurface)
 
@@ -3764,9 +3778,37 @@ function SurfacePanel({
                 {engine.snapshot.health?.workspace ?? project}
               </text>
             </div>
-            <text style={{ fontSize: 11.5, color: C.ghost, flexShrink: 0 }}>
-              {project}
-            </text>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {engineRunning && (
+                <Button
+                  testId="interrupt-session"
+                  onClick={() => engine.interrupt()}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    height: 20,
+                    paddingLeft: 7,
+                    paddingRight: 8,
+                    borderRadius: 4,
+                    backgroundColor: '#E2795B1A',
+                    borderWidth: 1,
+                    borderColor: '#E2795B44',
+                    cursor: 'pointer',
+                    hover: { backgroundColor: '#E2795B2A' },
+                  }}
+                >
+                  <div style={{ width: 6, height: 6, borderRadius: 1, backgroundColor: C.accent, flexShrink: 0 }} />
+                  <text style={{ fontSize: 10.5, fontWeight: '600', color: C.accent, whiteSpace: 'nowrap' }}>
+                    Interrupt
+                  </text>
+                </Button>
+              )}
+              <text style={{ fontSize: 11.5, color: C.ghost, flexShrink: 0 }}>
+                {project}
+              </text>
+            </div>
           </div>
 
           {/* Monospace Shell Output & Input */}
@@ -3894,6 +3936,215 @@ function SurfacePanel({
                 onChange={(e) => setTermInput(e.value ?? '')}
                 onSubmit={(e) => handleTermSubmit(e.value ?? termInput)}
               />
+            </div>
+          </div>
+
+          {/* The session's inbox: prompts the engine has admitted, not delivered. */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flexShrink: 0,
+              borderTopWidth: 1,
+              borderColor: C.border,
+              backgroundColor: C.composer,
+              paddingLeft: 14,
+              paddingRight: 14,
+              paddingTop: 8,
+              paddingBottom: 10,
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <Icon name="inbox" size={12} color={engineInbox.length > 0 ? C.accent : C.ghost} />
+                <text
+                  testId="session-inbox-title"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    color: C.tertiary,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {`INBOX · ${engineInbox.length} PENDING · ${delivered} DELIVERED`}
+                </text>
+              </div>
+              <text style={{ fontSize: 10, color: C.ghost, fontFamily: FONT_MONO, whiteSpace: 'nowrap' }}>
+                {engineInbox.length > 0 ? 'delivered at the next safe boundary' : 'a prompt waits for the run to end'}
+              </text>
+            </div>
+
+            {engineInbox.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 96, overflowY: 'scroll' }}>
+                {engineInbox.map((item) => (
+                  <div
+                    key={item.id}
+                    testId={`inbox-item-${item.id}`}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      paddingLeft: 8,
+                      paddingRight: 8,
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                      borderRadius: 5,
+                      backgroundColor: C.item,
+                    }}
+                  >
+                    <div
+                      style={{
+                        paddingLeft: 5,
+                        paddingRight: 5,
+                        paddingTop: 1,
+                        paddingBottom: 1,
+                        borderRadius: 3,
+                        flexShrink: 0,
+                        backgroundColor: item.mode === 'steer' ? '#E2795B22' : '#E6EAF217',
+                      }}
+                    >
+                      <text
+                        style={{
+                          fontSize: 9.5,
+                          fontWeight: '700',
+                          fontFamily: FONT_MONO,
+                          color: item.mode === 'steer' ? C.accent : C.tertiary,
+                        }}
+                      >
+                        {item.mode === 'steer' ? 'STEER' : 'QUEUE'}
+                      </text>
+                    </div>
+                    <text
+                      style={{
+                        flexGrow: 1,
+                        minWidth: 0,
+                        fontSize: 11.5,
+                        color: C.text,
+                        fontFamily: FONT_MONO,
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {item.text}
+                    </text>
+                    <text style={{ flexShrink: 0, fontSize: 10, color: C.ghost, fontFamily: FONT_MONO }}>
+                      {`#${item.seq}`}
+                    </text>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  flexShrink: 0,
+                  borderRadius: 5,
+                  backgroundColor: C.raised,
+                  borderWidth: 1,
+                  borderColor: C.border,
+                  overflow: 'hidden',
+                }}
+              >
+                {(['steer', 'queue'] as const).map((mode) => (
+                  <div
+                    key={mode}
+                    testId={`prompt-mode-${mode}`}
+                    onClick={() => setPromptMode(mode)}
+                    style={{
+                      paddingLeft: 8,
+                      paddingRight: 8,
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                      cursor: 'pointer',
+                      backgroundColor: promptMode === mode ? '#E2795B22' : '#00000000',
+                      hover: { backgroundColor: promptMode === mode ? '#E2795B2A' : C.item },
+                    }}
+                  >
+                    <text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '600',
+                        fontFamily: FONT_MONO,
+                        color: promptMode === mode ? C.accent : C.tertiary,
+                      }}
+                    >
+                      {mode === 'steer' ? 'STEER' : 'QUEUE'}
+                    </text>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  flexGrow: 1,
+                  minWidth: 0,
+                  height: 28,
+                  gap: 6,
+                  borderRadius: 6,
+                  backgroundColor: C.canvas,
+                  borderWidth: 1,
+                  borderColor: C.borderStrong,
+                  paddingLeft: 8,
+                  paddingRight: 4,
+                }}
+              >
+                <input
+                  testId="prompt-input"
+                  value={promptInput}
+                  theme={CHAT_THEME}
+                  placeholder={
+                    promptMode === 'steer'
+                      ? 'Steer the session at the next boundary…'
+                      : 'Queue a prompt for when the session is idle…'
+                  }
+                  style={{
+                    flexGrow: 1,
+                    minWidth: 0,
+                    fontSize: 11.5,
+                    fontFamily: FONT_MONO,
+                    color: C.text,
+                    backgroundColor: '#00000000',
+                    borderWidth: 0,
+                    padding: 0,
+                  }}
+                  onChange={(e) => setPromptInput(e.value ?? '')}
+                  onSubmit={(e) => handlePromptSubmit(e.value ?? promptInput)}
+                />
+                <div
+                  testId="prompt-send"
+                  onClick={() => handlePromptSubmit(promptInput)}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    flexShrink: 0,
+                    borderRadius: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: promptInput.trim() ? C.accent : C.overlayStrong,
+                    cursor: promptInput.trim() ? 'pointer' : 'default',
+                    hover: promptInput.trim() ? { backgroundColor: '#EA8A6E' } : undefined,
+                  }}
+                >
+                  <Icon name="send" size={11} color={promptInput.trim() ? C.onInverse : C.tertiary} />
+                </div>
+              </div>
             </div>
           </div>
         </div>
