@@ -48,6 +48,17 @@ for a release.
   for frames, then follows live. A log that ends behind the watermark a client
   asked from is a typed `feed_behind` error rather than a feed that waits
   forever, and an idle connection gets a heartbeat.
+- Sessions have an inbox. A prompt is admitted to it as a durable fact before
+  anything can see it, then delivered to the transcript at a safe boundary: the
+  end of a run, which is the engine's only step for now. `steer` is delivered
+  ahead of `queue` at the same boundary and never stops the run it is steered
+  past. A retry is a no-op through the client's idempotency key, an interrupt
+  stops every run in the session with a reason and keeps the queue intact, and
+  a prompt left pending by a crash is delivered on the next start. The terminal
+  surface shows the pending input, both modes and an interrupt action.
+  `prompt` now answers `{ item, message }` (`message` is `null` while the item
+  waits), `POST /v1/sessions/:id/interrupt` is new, and the protocol is
+  version 2.
 
 ### Fixed
 

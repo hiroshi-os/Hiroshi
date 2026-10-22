@@ -11,6 +11,7 @@
 import type {
   EngineEvent,
   Health,
+  InboxItem,
   Message,
   Run,
   Session,
@@ -38,6 +39,8 @@ export interface Snapshot {
   sessions: Session[]
   sessionID: string | null
   messages: Message[]
+  /** Prompts admitted but not delivered yet, oldest first. */
+  inbox: InboxItem[]
   runs: Run[]
   output: Record<string, OutputState>
 }
@@ -53,6 +56,7 @@ export function initialSnapshot(): Snapshot {
     sessions: [],
     sessionID: null,
     messages: [],
+    inbox: [],
     runs: [],
     output: {},
   }
@@ -88,6 +92,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     sessionID: detail.session.id,
     sessions: upsertSession(snapshot.sessions, detail.session),
     messages: detail.messages,
+    inbox: detail.inbox ?? [],
     runs: detail.runs,
     output,
     error: null,
@@ -113,15 +118,24 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       return { ...snapshot, sessions: upsertSession(snapshot.sessions, event.data.session) }
     }
 
-    case 'message.created': {
-      const { message } = event.data
-      if (message.sessionID !== snapshot.sessionID) {
-        // Another session's transcript must not leak into this one.
-        return snapshot
-      }
-      if (snapshot.messages.some((existing) => existing.id === message.id)) return snapshot
-      const messages = [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
-      return { ...snapshot, messages }
+    case 'prompt.admitted': {
+      const { item } = event.data
+      if (item.sessionID !== snapshot.sessionID) return snapshot
+      if (snapshot.inbox.some((existing) => existing.id === item.id)) return snapshot
+      const inbox = [...snapshot.inbox, item].sort((a, b) => a.seq - b.seq)
+      return { ...snapshot, inbox }
+    }
+
+    case 'prompt.delivered': {
+      const { item, message } = event.data
+      if (item.sessionID !== snapshot.sessionID) return snapshot
+      const inbox = snapshot.inbox.filter((existing) => existing.id !== item.id)
+      // A delivery carries its message: the transcript line and the end of the
+      // wait are one durable fact, so neither can be drawn without the other.
+      const messages = snapshot.messages.some((existing) => existing.id === message.id)
+        ? snapshot.messages
+        : [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
+      return { ...snapshot, inbox, messages }
     }
 
     case 'run.started': {

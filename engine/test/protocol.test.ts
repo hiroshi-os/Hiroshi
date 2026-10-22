@@ -32,6 +32,7 @@ const everyOperation: { [Name in OperationName]: Name } = {
   createSession: 'createSession',
   session: 'session',
   prompt: 'prompt',
+  interrupt: 'interrupt',
   startRun: 'startRun',
   run: 'run',
   cancelRun: 'cancelRun',
@@ -41,7 +42,8 @@ const everyOperation: { [Name in OperationName]: Name } = {
 const everyEvent: { [Type in EventType]: Type } = {
   'session.created': 'session.created',
   'session.updated': 'session.updated',
-  'message.created': 'message.created',
+  'prompt.admitted': 'prompt.admitted',
+  'prompt.delivered': 'prompt.delivered',
   'run.started': 'run.started',
   'run.output': 'run.output',
   'run.truncated': 'run.truncated',
@@ -128,7 +130,8 @@ describe('the generated client', () => {
     }) as unknown as typeof fetch
 
     const client = engineClient({ url: 'http://engine.test/', token: 'test' }, fake)
-    await client.prompt({ id: 'ses_1', text: 'hello' })
+    await client.prompt({ id: 'ses_1', text: 'hello', mode: 'steer', key: 'k1' })
+    await client.interrupt({ id: 'ses_1', reason: 'the build is broken' })
     await client.session({ id: 'ses_1' })
     await client.health()
     await client.shutdown()
@@ -137,7 +140,12 @@ describe('the generated client', () => {
       {
         method: 'POST',
         url: 'http://engine.test/v1/sessions/ses_1/messages',
-        body: JSON.stringify({ text: 'hello' }),
+        body: JSON.stringify({ text: 'hello', mode: 'steer', key: 'k1' }),
+      },
+      {
+        method: 'POST',
+        url: 'http://engine.test/v1/sessions/ses_1/interrupt',
+        body: JSON.stringify({ reason: 'the build is broken' }),
       },
       { method: 'GET', url: 'http://engine.test/v1/sessions/ses_1', body: undefined },
       { method: 'GET', url: 'http://engine.test/v1/health', body: undefined },

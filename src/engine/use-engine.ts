@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { DeliveryMode } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
@@ -17,6 +18,10 @@ export interface EngineHandle {
   snapshot: Snapshot
   /** Run a command in the engine's session for this workspace. */
   exec: (command: string) => void
+  /** Admit a prompt to the session's inbox; it is delivered at a boundary. */
+  prompt: (text: string, mode?: DeliveryMode) => void
+  /** Stop every run the session is holding, keeping the pending inbox. */
+  interrupt: () => void
   cancel: (runID: string) => void
   restart: () => void
 }
@@ -174,6 +179,28 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     })
   }, [])
 
+  const prompt = useCallback((text: string, mode: DeliveryMode = 'queue') => {
+    const connection = client.current
+    const sessionID = session.current
+    if (!connection || !sessionID) return
+    const body = text.trim()
+    if (!body) return
+    // One key per send. A retry of the same send is a no-op in the engine.
+    const key = `k_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+    void connection.prompt({ id: sessionID, text: body, mode, key }).catch((error) => {
+      setSnapshot((current) => ({ ...current, error: describe(error) }))
+    })
+  }, [])
+
+  const interrupt = useCallback(() => {
+    const connection = client.current
+    const sessionID = session.current
+    if (!connection || !sessionID) return
+    void connection.interrupt({ id: sessionID }).catch((error) => {
+      setSnapshot((current) => ({ ...current, error: describe(error) }))
+    })
+  }, [])
+
   const restart = useCallback(() => {
     void (async () => {
       const connection = client.current
@@ -183,5 +210,5 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     })()
   }, [])
 
-  return { snapshot, exec, cancel, restart }
+  return { snapshot, exec, prompt, interrupt, cancel, restart }
 }

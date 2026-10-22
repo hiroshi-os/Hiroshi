@@ -1,7 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
 import { apply, hydrate, initialSnapshot, type Snapshot } from '../../src/engine/reducer'
-import type { EngineEvent, EventPayloads, EventType, Message, Run, Session, SessionDetail } from '../src/protocol'
+import type {
+  EngineEvent,
+  EventPayloads,
+  EventType,
+  InboxItem,
+  Message,
+  Run,
+  Session,
+  SessionDetail,
+} from '../src/protocol'
 
 let clock = 0
 
@@ -80,17 +89,60 @@ describe('the projection', () => {
     expect(snapshot.runs).toHaveLength(0)
   })
 
-  test('a message from another session is ignored, and a duplicate is not drawn twice', () => {
-    const message: Message = { id: 'msg_one', sessionID: 'ses_one', seq: 0, role: 'user', text: 'hi', at: 1 }
-    let snapshot = apply(ready(), event('message.created', { message }))
-    expect(snapshot.messages).toHaveLength(1)
+  test('a prompt sits in the inbox until one event delivers it with its message', () => {
+    const item: InboxItem = {
+      id: 'inb_one',
+      sessionID: 'ses_one',
+      seq: 0,
+      text: 'ship it',
+      mode: 'steer',
+      state: 'pending',
+      key: 'k1',
+      admittedAt: 5,
+      deliveredAt: null,
+      messageID: null,
+    }
 
-    snapshot = apply(snapshot, event('message.created', { message }))
-    expect(snapshot.messages).toHaveLength(1)
+    let snapshot = apply(ready(), event('prompt.admitted', { item }))
+    expect(snapshot.inbox).toHaveLength(1)
+    expect(snapshot.messages).toHaveLength(0)
 
-    const foreign: Message = { ...message, id: 'msg_two', sessionID: 'ses_two' }
-    snapshot = apply(snapshot, event('message.created', { message: foreign }, { sessionID: 'ses_two' }))
+    const message: Message = {
+      id: 'msg_one',
+      sessionID: 'ses_one',
+      seq: 0,
+      role: 'user',
+      text: 'ship it',
+      at: 6,
+      mode: 'steer',
+    }
+    const delivered: InboxItem = { ...item, state: 'delivered', deliveredAt: 6, messageID: message.id }
+    snapshot = apply(snapshot, event('prompt.delivered', { item: delivered, message }))
+
+    expect(snapshot.inbox).toHaveLength(0)
     expect(snapshot.messages).toHaveLength(1)
+    expect(snapshot.messages[0]!.mode).toBe('steer')
+
+    // A replay of the same delivery draws nothing a second time.
+    snapshot = apply(snapshot, event('prompt.delivered', { item: delivered, message }))
+    expect(snapshot.messages).toHaveLength(1)
+  })
+
+  test('another session’s inbox never leaks into this one', () => {
+    const item: InboxItem = {
+      id: 'inb_two',
+      sessionID: 'ses_two',
+      seq: 0,
+      text: 'not mine',
+      mode: 'queue',
+      state: 'pending',
+      key: null,
+      admittedAt: 1,
+      deliveredAt: null,
+      messageID: null,
+    }
+    const snapshot = apply(ready(), event('prompt.admitted', { item }, { sessionID: 'ses_two' }))
+    expect(snapshot.inbox).toHaveLength(0)
   })
 
   test('hydrating a snapshot rebuilds the output from the engine chunks', () => {
@@ -103,6 +155,7 @@ describe('the projection', () => {
         { runID: run.id, seq: 1, stream: 'stdout', data: 'lo\n', at: 12 },
         { runID: run.id, seq: 2, stream: 'stderr', data: 'warn\n', at: 13 },
       ],
+      inbox: [],
       seq: 9,
     }
 
@@ -111,6 +164,7 @@ describe('the projection', () => {
     expect(snapshot.messages).toHaveLength(1)
     expect(snapshot.runs[0]!.status).toBe('succeeded')
     expect(snapshot.output[run.id]!.text).toBe('hello\nwarn\n')
+    expect(snapshot.inbox).toEqual([])
   })
 
   test('the in-memory copy keeps the tail, not the head', () => {

@@ -89,11 +89,13 @@ export class Runs {
   readonly #log: Logger
   readonly #active = new Map<string, ActiveRun>()
   readonly #limit: number
+  readonly #onIdle: ((sessionID: string) => void) | undefined
 
-  constructor(store: Store, log: Logger, options: { outputLimit?: number } = {}) {
+  constructor(store: Store, log: Logger, options: { outputLimit?: number; onIdle?: (sessionID: string) => void } = {}) {
     this.#store = store
     this.#log = log.child('runs')
     this.#limit = options.outputLimit ?? DEFAULT_OUTPUT_LIMIT
+    this.#onIdle = options.onIdle
   }
 
   /** The number of commands currently executing, for status output and tests. */
@@ -178,6 +180,42 @@ export class Runs {
   }
 
   /**
+   * Stop every run a session is holding, as one decision by the operator.
+   *
+   * The end row is written before the kill, so the database never claims a
+   * stopped command is still going even if the process dies immediately after.
+   * The inbox is untouched: pending input survives the interruption, and the
+   * boundary this creates is what delivers it to the transcript.
+   */
+  interrupt(sessionID: string, reason?: string): Run[] {
+    const session = this.#store.session(sessionID)
+    if (!session) throw notFound('session')
+
+    const why = (reason ?? '').trim()
+    if (why.length > 200) throw invalid('bad_reason', 'the reason is longer than 200 characters')
+    const note = why
+      ? `hiroshi-engine: the operator stopped this command: ${why}`
+      : 'hiroshi-engine: the operator stopped this command'
+
+    const stopped: Run[] = []
+    for (const run of this.#store.runningRuns(sessionID)) {
+      const active = this.#active.get(run.id)
+      if (active) active.cancelled = true
+      this.#write(run, 'stderr', `${note}\n`)
+      this.#finish(run, 'cancelled', null)
+      if (active) killTree(active.proc)
+      stopped.push(this.#store.run(run.id) ?? run)
+    }
+
+    if (stopped.length > 0) {
+      this.#log.info('session interrupted', { session: sessionID, runs: stopped.length, reason: why || null })
+    } else {
+      this.#log.info('interrupt found nothing running', { session: sessionID })
+    }
+    return stopped
+  }
+
+  /**
    * Settle every run the previous process left behind. Called once on startup
    * and once on shutdown, and safe to call twice: a run is only settled while
    * it is still `running`.
@@ -257,6 +295,10 @@ export class Runs {
       },
     })
     this.#log.info('run ended', { run: run.id, status, exitCode })
+    // The boundary: a run just ended, so the session may be idle again. The
+    // inbox decides whether anything may be delivered; it reads the database,
+    // not `#active`, which still holds this run until `#execute` unwinds.
+    this.#onIdle?.(run.sessionID)
   }
 
   async #execute(run: Run, proc: Proc, shell: ResolvedShell): Promise<void> {
