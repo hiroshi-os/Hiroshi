@@ -30,6 +30,11 @@ import type {
   RunStatus,
   Session,
   SessionDetail,
+  Step,
+  StepError,
+  StepStatus,
+  ToolCall,
+  ToolStatus,
 } from './protocol'
 
 interface Migration {
@@ -118,6 +123,49 @@ const MIGRATIONS: Migration[] = [
       create index inbox_pending on inbox (session_id, state, seq);
     `,
   },
+  {
+    id: 3,
+    name: 'step',
+    sql: `
+      alter table run add column error text;
+
+      create table step (
+        id              text primary key,
+        session_id      text not null references session(id) on delete cascade,
+        message_id      text references message(id) on delete set null,
+        provider        text not null,
+        model           text not null,
+        attempt         integer not null,
+        status          text not null,
+        claim           integer,
+        output          text not null default '',
+        truncated       integer not null default 0,
+        error_code      text,
+        error_message   text,
+        error_retryable integer,
+        started_at      integer not null,
+        ended_at        integer
+      );
+      create unique index step_message on step (message_id) where message_id is not null;
+      create index step_session on step (session_id, started_at);
+      create index step_status on step (status);
+
+      create table tool_call (
+        id         text primary key,
+        session_id text not null references session(id) on delete cascade,
+        step_id    text references step(id) on delete set null,
+        run_id     text references run(id) on delete set null,
+        tool       text not null,
+        input      text not null,
+        status     text not null,
+        error      text,
+        created_at integer not null,
+        ended_at   integer
+      );
+      create index tool_call_session on tool_call (session_id, created_at);
+      create index tool_call_run on tool_call (run_id);
+    `,
+  },
 ]
 
 type Row = Record<string, any>
@@ -179,7 +227,50 @@ function toRun(row: Row): Run {
     shell: row.shell,
     status: row.status as RunStatus,
     exitCode: row.exit_code ?? null,
+    error: row.error ?? null,
     startedAt: row.started_at,
+    endedAt: row.ended_at ?? null,
+  }
+}
+
+function toStepError(row: Row): StepError | null {
+  if (!row.error_code) return null
+  return {
+    code: row.error_code,
+    message: row.error_message ?? '',
+    retryable: Boolean(row.error_retryable),
+  }
+}
+
+function toStep(row: Row): Step {
+  return {
+    id: row.id,
+    sessionID: row.session_id,
+    messageID: row.message_id ?? null,
+    provider: row.provider,
+    model: row.model,
+    attempt: row.attempt,
+    status: row.status as StepStatus,
+    claim: row.claim ?? null,
+    output: row.output ?? '',
+    truncated: Boolean(row.truncated),
+    error: toStepError(row),
+    startedAt: row.started_at,
+    endedAt: row.ended_at ?? null,
+  }
+}
+
+function toToolCall(row: Row): ToolCall {
+  return {
+    id: row.id,
+    sessionID: row.session_id,
+    stepID: row.step_id ?? null,
+    runID: row.run_id ?? null,
+    tool: row.tool,
+    input: row.input,
+    status: row.status as ToolStatus,
+    error: row.error ?? null,
+    createdAt: row.created_at,
     endedAt: row.ended_at ?? null,
   }
 }
@@ -487,14 +578,31 @@ export class Store {
 
   insertRun(run: Run): void {
     this.#db.run(
-      `insert into run (id, session_id, command, cwd, shell, status, exit_code, started_at, ended_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [run.id, run.sessionID, run.command, run.cwd, run.shell, run.status, run.exitCode, run.startedAt, run.endedAt],
+      `insert into run (id, session_id, command, cwd, shell, status, exit_code, error, started_at, ended_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.id,
+        run.sessionID,
+        run.command,
+        run.cwd,
+        run.shell,
+        run.status,
+        run.exitCode,
+        run.error,
+        run.startedAt,
+        run.endedAt,
+      ],
     )
   }
 
-  finishRun(id: string, status: RunStatus, exitCode: number | null, at: number): void {
-    this.#db.run('update run set status = ?, exit_code = ?, ended_at = ? where id = ?', [status, exitCode, at, id])
+  finishRun(id: string, status: RunStatus, exitCode: number | null, at: number, error: string | null = null): void {
+    this.#db.run('update run set status = ?, exit_code = ?, error = ?, ended_at = ? where id = ?', [
+      status,
+      exitCode,
+      error,
+      at,
+      id,
+    ])
   }
 
   run(id: string): Run | null {
@@ -547,6 +655,133 @@ export class Store {
     return rows.map(toChunk)
   }
 
+  // -- steps ---------------------------------------------------------------
+
+  insertStep(step: Step): void {
+    this.#db.run(
+      `insert into step (id, session_id, message_id, provider, model, attempt, status, claim,
+        output, truncated, error_code, error_message, error_retryable, started_at, ended_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        step.id,
+        step.sessionID,
+        step.messageID,
+        step.provider,
+        step.model,
+        step.attempt,
+        step.status,
+        step.claim,
+        step.output,
+        step.truncated ? 1 : 0,
+        step.error?.code ?? null,
+        step.error?.message ?? null,
+        step.error === null ? null : step.error.retryable ? 1 : 0,
+        step.startedAt,
+        step.endedAt,
+      ],
+    )
+  }
+
+  updateStep(step: Step): void {
+    this.#db.run(
+      `update step set attempt = ?, status = ?, claim = ?, output = ?, truncated = ?,
+        error_code = ?, error_message = ?, error_retryable = ?, ended_at = ?
+       where id = ?`,
+      [
+        step.attempt,
+        step.status,
+        step.claim,
+        step.output,
+        step.truncated ? 1 : 0,
+        step.error?.code ?? null,
+        step.error?.message ?? null,
+        step.error === null ? null : step.error.retryable ? 1 : 0,
+        step.endedAt,
+        step.id,
+      ],
+    )
+  }
+
+  step(id: string): Step | null {
+    const row = this.#db.query('select * from step where id = ?').get(id) as Row | null
+    return row ? toStep(row) : null
+  }
+
+  stepForMessage(messageID: string): Step | null {
+    const row = this.#db.query('select * from step where message_id = ?').get(messageID) as Row | null
+    return row ? toStep(row) : null
+  }
+
+  steps(sessionID: string): Step[] {
+    const rows = this.#db
+      .query('select * from step where session_id = ? order by started_at asc, rowid asc')
+      .all(sessionID) as Row[]
+    return rows.map(toStep)
+  }
+
+  /** Steps a dead process left claimed, for the startup resume. */
+  runningSteps(): Step[] {
+    const rows = this.#db
+      .query("select * from step where status = 'running' order by started_at asc, rowid asc")
+      .all() as Row[]
+    return rows.map(toStep)
+  }
+
+  /** The newest prompt in a session, for the turn the next step answers. */
+  lastUserMessage(sessionID: string): Message | null {
+    const row = this.#db
+      .query("select * from message where session_id = ? and role = 'user' order by seq desc limit 1")
+      .get(sessionID) as Row | null
+    return row ? toMessage(row) : null
+  }
+
+  // -- tool calls ----------------------------------------------------------
+
+  insertToolCall(call: ToolCall): void {
+    this.#db.run(
+      `insert into tool_call (id, session_id, step_id, run_id, tool, input, status, error, created_at, ended_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        call.id,
+        call.sessionID,
+        call.stepID,
+        call.runID,
+        call.tool,
+        call.input,
+        call.status,
+        call.error,
+        call.createdAt,
+        call.endedAt,
+      ],
+    )
+  }
+
+  updateToolCall(call: ToolCall): void {
+    this.#db.run('update tool_call set status = ?, error = ?, ended_at = ? where id = ?', [
+      call.status,
+      call.error,
+      call.endedAt,
+      call.id,
+    ])
+  }
+
+  toolCall(id: string): ToolCall | null {
+    const row = this.#db.query('select * from tool_call where id = ?').get(id) as Row | null
+    return row ? toToolCall(row) : null
+  }
+
+  toolCallForRun(runID: string): ToolCall | null {
+    const row = this.#db.query('select * from tool_call where run_id = ?').get(runID) as Row | null
+    return row ? toToolCall(row) : null
+  }
+
+  toolCalls(sessionID: string): ToolCall[] {
+    const rows = this.#db
+      .query('select * from tool_call where session_id = ? order by created_at asc, rowid asc')
+      .all(sessionID) as Row[]
+    return rows.map(toToolCall)
+  }
+
   // -- snapshots -----------------------------------------------------------
 
   /**
@@ -566,6 +801,8 @@ export class Store {
         runs: this.runs(sessionID),
         chunks: this.chunksForSession(sessionID),
         inbox: this.inbox(sessionID, 'pending'),
+        steps: this.steps(sessionID),
+        toolCalls: this.toolCalls(sessionID),
         seq: this.lastSeq(),
       }
     })

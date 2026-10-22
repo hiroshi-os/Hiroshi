@@ -16,6 +16,8 @@ import type {
   Run,
   Session,
   SessionDetail,
+  Step,
+  ToolCall,
 } from '../../engine/src/protocol'
 
 export type EngineStatus =
@@ -42,6 +44,10 @@ export interface Snapshot {
   /** Prompts admitted but not delivered yet, oldest first. */
   inbox: InboxItem[]
   runs: Run[]
+  /** Model calls, oldest first. */
+  steps: Step[]
+  /** Effects recorded before they ran, oldest first. */
+  toolCalls: ToolCall[]
   output: Record<string, OutputState>
 }
 
@@ -58,6 +64,8 @@ export function initialSnapshot(): Snapshot {
     messages: [],
     inbox: [],
     runs: [],
+    steps: [],
+    toolCalls: [],
     output: {},
   }
 }
@@ -78,6 +86,22 @@ function upsertRun(runs: Run[], next: Run): Run[] {
   return copy
 }
 
+function upsertStep(steps: Step[], next: Step): Step[] {
+  const index = steps.findIndex((step) => step.id === next.id)
+  if (index < 0) return [...steps, next]
+  const copy = steps.slice()
+  copy[index] = { ...copy[index], ...next }
+  return copy
+}
+
+function upsertToolCall(calls: ToolCall[], next: ToolCall): ToolCall[] {
+  const index = calls.findIndex((call) => call.id === next.id)
+  if (index < 0) return [...calls, next]
+  const copy = calls.slice()
+  copy[index] = { ...copy[index], ...next }
+  return copy
+}
+
 /** Merge a snapshot from the engine into the view. */
 export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   const output: Record<string, OutputState> = {}
@@ -94,6 +118,8 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     messages: detail.messages,
     inbox: detail.inbox ?? [],
     runs: detail.runs,
+    steps: detail.steps ?? [],
+    toolCalls: detail.toolCalls ?? [],
     output,
     error: null,
   }
@@ -138,12 +164,42 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       return { ...snapshot, inbox, messages }
     }
 
+    case 'step.started':
+    case 'step.resumed':
+    case 'step.retry':
+    case 'step.failed':
+    case 'step.cancelled': {
+      const { step } = event.data
+      if (step.sessionID !== snapshot.sessionID) return snapshot
+      return { ...snapshot, steps: upsertStep(snapshot.steps, step) }
+    }
+
+    case 'step.output': {
+      if (event.sessionID !== snapshot.sessionID) return snapshot
+      const { stepID, data } = event.data
+      const steps = snapshot.steps.map((step) =>
+        step.id === stepID ? { ...step, output: (step.output + data).slice(-MEMORY_OUTPUT_LIMIT) } : step,
+      )
+      return { ...snapshot, steps }
+    }
+
+    case 'step.completed': {
+      const { step, message } = event.data
+      if (step.sessionID !== snapshot.sessionID) return snapshot
+      const messages =
+        message && !snapshot.messages.some((existing) => existing.id === message.id)
+          ? [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
+          : snapshot.messages
+      return { ...snapshot, steps: upsertStep(snapshot.steps, step), messages }
+    }
+
     case 'run.started': {
-      const { run } = event.data
+      const { run, toolCall } = event.data
       if (run.sessionID !== snapshot.sessionID) return snapshot
       return {
         ...snapshot,
         runs: upsertRun(snapshot.runs, run),
+        toolCalls: toolCall ? upsertToolCall(snapshot.toolCalls, toolCall) : snapshot.toolCalls,
         output: snapshot.output[run.id] ? snapshot.output : { ...snapshot.output, [run.id]: { text: '', truncated: false } },
       }
     }
@@ -168,7 +224,13 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
     }
 
     case 'run.ended': {
-      return { ...snapshot, runs: upsertRun(snapshot.runs, event.data.run) }
+      const { run, toolCall } = event.data
+      if (run.sessionID !== snapshot.sessionID) return snapshot
+      return {
+        ...snapshot,
+        runs: upsertRun(snapshot.runs, run),
+        toolCalls: toolCall ? upsertToolCall(snapshot.toolCalls, toolCall) : snapshot.toolCalls,
+      }
     }
 
     default:

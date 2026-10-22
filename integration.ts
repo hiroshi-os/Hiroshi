@@ -343,6 +343,23 @@ async function driveTheWindow(home: string): Promise<void> {
     )
     note('the interrupt stopped the run and delivered the pending prompt')
 
+    // The delivered prompt is a durable step: the local provider's answer is
+    // in the transcript, and the strip shows which provider, attempt and
+    // status produced it.
+    const stepped = await waitUntil(
+      async () => {
+        const text = await treeText(app)
+        return text.includes('STEP · LOCAL · SUCCEEDED') &&
+          text.includes('The local provider received: also-update-the-changelog')
+          ? text
+          : false
+      },
+      'the step that answers the delivered prompt to finish',
+      STEP_DEADLINE_MS,
+    )
+    check(stepped.includes('ATTEMPT 1'), `the step strip does not show its attempt:\n${stepped}`)
+    note('the delivered prompt ran as a durable step and its answer is in the strip')
+
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.
     await submit(app, SECOND_COMMAND)

@@ -49,6 +49,8 @@ describe('the HTTP surface', () => {
     expect(detail.session.id).toBe(session.id)
     expect(detail.messages).toEqual([])
     expect(detail.runs).toEqual([])
+    expect(detail.steps).toEqual([])
+    expect(detail.toolCalls).toEqual([])
     expect(detail.seq).toBeGreaterThan(0)
   })
 
@@ -60,10 +62,21 @@ describe('the HTTP surface', () => {
     expect(message?.role).toBe('user')
     expect(message?.text).toBe('make the drag feel native')
 
+    // Delivery starts a step: the local provider answers, and the answer is a
+    // durable assistant message, not a client-side placeholder.
+    await until(async () => {
+      const current = await daemon.client.session({ id: session.id })
+      return current.steps.length === 1 && current.steps[0]?.status !== 'running'
+    })
+
     const detail = await daemon.client.session({ id: session.id })
-    expect(detail.messages.map((entry) => entry.id)).toEqual([message!.id])
+    expect(detail.messages[0]!.id).toBe(message!.id)
+    expect(detail.messages.map((entry) => entry.role)).toEqual(['user', 'assistant'])
+    expect(detail.messages[1]!.text).toContain('make the drag feel native')
     expect(detail.session.title).toBe('make the drag feel native')
     expect(detail.inbox).toEqual([])
+    expect(detail.steps[0]!.status).toBe('succeeded')
+    expect(detail.steps[0]!.attempt).toBe(1)
   })
 
   test('a prompt sent while a run is going waits, and an interrupt delivers it', async () => {
@@ -96,15 +109,27 @@ describe('the HTTP surface', () => {
     expect(mid.messages).toEqual([])
     expect(mid.runs[0]!.status).toBe('running')
 
-    const { runs } = await daemon.client.interrupt({ id: session.id, reason: 'the build is wedged' })
+    const { runs, steps } = await daemon.client.interrupt({ id: session.id, reason: 'the build is wedged' })
     expect(runs.map((entry) => entry.id)).toEqual([run.id])
     expect(runs[0]!.status).toBe('cancelled')
+    // The run was the only work in flight, so no step was cancelled here. The
+    // boundary it creates delivers the steer, which starts one.
+    expect(steps).toEqual([])
+
+    await until(async () => {
+      const current = await daemon.client.session({ id: session.id })
+      return current.steps.length === 1 && current.steps[0]?.status !== 'running'
+    })
 
     const detail = await daemon.client.session({ id: session.id })
     expect(detail.inbox).toEqual([])
-    expect(detail.messages.map((entry) => entry.text)).toEqual(['also update the changelog'])
+    expect(detail.messages.map((entry) => entry.role)).toEqual(['user', 'assistant'])
+    expect(detail.messages[0]!.text).toBe('also update the changelog')
     expect(detail.messages[0]!.mode).toBe('steer')
+    expect(detail.messages[1]!.text).toContain('also update the changelog')
     expect(detail.runs[0]!.status).toBe('cancelled')
+    expect(detail.toolCalls[0]!.status).toBe('cancelled')
+    expect(detail.toolCalls[0]!.error).toContain('the build is wedged')
 
     const output = detail.chunks.filter((chunk) => chunk.runID === run.id).map((chunk) => chunk.data).join('')
     expect(output).toContain('the build is wedged')
@@ -112,7 +137,7 @@ describe('the HTTP surface', () => {
 
   test('an interrupt with nothing running answers with an empty list', async () => {
     const { session } = await daemon.client.createSession({ cwd: daemon.workspace, title: 'idle' })
-    expect(await daemon.client.interrupt({ id: session.id })).toEqual({ runs: [] })
+    expect(await daemon.client.interrupt({ id: session.id })).toEqual({ runs: [], steps: [] })
   })
 
   test('a run started over HTTP lands in the session snapshot', async () => {
@@ -125,6 +150,10 @@ describe('the HTTP surface', () => {
     expect(detail.runs).toHaveLength(1)
     expect(detail.runs[0]!.id).toBe(run.id)
     expect(detail.runs[0]!.status).toBe('succeeded')
+    expect(detail.toolCalls).toHaveLength(1)
+    expect(detail.toolCalls[0]!.tool).toBe('shell')
+    expect(detail.toolCalls[0]!.runID).toBe(run.id)
+    expect(detail.toolCalls[0]!.status).toBe('succeeded')
     const output = detail.chunks.filter((chunk) => chunk.runID === run.id).map((chunk) => chunk.data).join('')
     expect(output).toContain('over-http')
   }, 30_000)
@@ -164,6 +193,7 @@ describe('the HTTP surface', () => {
 
     const detail = await daemon.client.session({ id: session.id })
     expect(detail.runs[0]!.status).toBe('cancelled')
+    expect(detail.toolCalls[0]!.status).toBe('cancelled')
   }, 30_000)
 })
 

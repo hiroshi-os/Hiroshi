@@ -3404,7 +3404,29 @@ function SurfacePanel({
   const engineInbox = engine.snapshot.inbox
   const engineReady = engineStatus === 'ready'
   const engineRunning = engineRuns.some((run) => run.status === 'running')
-  const delivered = engine.snapshot.messages.length
+  // Delivered counts turns, not transcript lines: the assistant reply to a
+  // prompt must not make the inbox look like it delivered two prompts.
+  const delivered = engine.snapshot.messages.filter((message) => message.role === 'user').length
+  const engineSteps = engine.snapshot.steps
+  const latestStep = engineSteps.length > 0 ? engineSteps[engineSteps.length - 1]! : null
+  const stepColor = !latestStep
+    ? C.ghost
+    : latestStep.status === 'running'
+      ? '#FBBF24'
+      : latestStep.status === 'succeeded'
+        ? '#4ADE80'
+        : latestStep.status === 'failed'
+          ? '#F87171'
+          : '#A3A3A3'
+  const stepDetail = !latestStep
+    ? ''
+    : latestStep.error
+      ? `${latestStep.error.code}: ${latestStep.error.message}`
+      : latestStep.output.length > 0
+        ? latestStep.output.split(/\r?\n/, 1)[0]!
+        : latestStep.status === 'running'
+          ? 'waiting for the provider…'
+          : 'no output'
 
   const currentDef = SURFACES.find((s) => s.id === activeSurface)
 
@@ -3939,6 +3961,57 @@ function SurfacePanel({
             </div>
           </div>
 
+          {/* The step: one model call, durable before it streamed. */}
+          {latestStep && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flexShrink: 0,
+                borderTopWidth: 1,
+                borderColor: C.border,
+                backgroundColor: C.composer,
+                paddingLeft: 14,
+                paddingRight: 14,
+                paddingTop: 6,
+                paddingBottom: 6,
+                gap: 3,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="sparkle" size={11} color={stepColor} />
+                <text
+                  testId="session-step-title"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    fontFamily: FONT_MONO,
+                    color: stepColor,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {`STEP · ${latestStep.provider.toUpperCase()} · ${latestStep.status.toUpperCase()} · ATTEMPT ${latestStep.attempt}`}
+                </text>
+                <text style={{ fontSize: 10, color: C.ghost, fontFamily: FONT_MONO, whiteSpace: 'nowrap' }}>
+                  {latestStep.model}
+                </text>
+              </div>
+              <text
+                testId="session-step-detail"
+                style={{
+                  fontSize: 11,
+                  lineHeight: 15,
+                  fontFamily: FONT_MONO,
+                  color: latestStep.status === 'failed' ? '#F87171' : C.tertiary,
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {stepDetail}
+              </text>
+            </div>
+          )}
+
           {/* The session's inbox: prompts the engine has admitted, not delivered. */}
           <div
             style={{
@@ -3979,7 +4052,7 @@ function SurfacePanel({
                 </text>
               </div>
               <text style={{ fontSize: 10, color: C.ghost, fontFamily: FONT_MONO, whiteSpace: 'nowrap' }}>
-                {engineInbox.length > 0 ? 'delivered at the next safe boundary' : 'a prompt waits for the run to end'}
+                {engineInbox.length > 0 ? 'delivered at the next safe boundary' : 'a prompt waits for the step to end'}
               </text>
             </div>
 
