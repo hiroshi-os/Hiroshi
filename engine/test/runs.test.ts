@@ -24,12 +24,26 @@ describe('runs', () => {
     const { store, runs, session } = setup()
     const run = runs.start(session.id, 'echo hello')
 
+    // The call is durable before the process has done anything.
+    const calls = store.toolCalls(session.id)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.tool).toBe('shell')
+    expect(calls[0]!.input).toBe('echo hello')
+    expect(calls[0]!.runID).toBe(run.id)
+    expect(calls[0]!.status).toBe('running')
+
     await settle(store, run.id)
 
     expect(store.run(run.id)?.status).toBe('succeeded')
     expect(store.run(run.id)?.exitCode).toBe(0)
+    expect(store.run(run.id)?.error).toBeNull()
     const output = store.chunks(run.id).map((chunk) => chunk.data).join('')
     expect(output).toContain('hello')
+
+    const ended = store.toolCallForRun(run.id)!
+    expect(ended.status).toBe('succeeded')
+    expect(ended.error).toBeNull()
+    expect(ended.endedAt).not.toBeNull()
 
     const events = store.eventsSince(0).map((event) => event.type)
     expect(events).toContain('run.started')
@@ -47,6 +61,8 @@ describe('runs', () => {
 
     expect(store.run(run.id)?.status).toBe('failed')
     expect(store.run(run.id)?.exitCode).toBe(7)
+    expect(store.toolCallForRun(run.id)?.status).toBe('failed')
+    expect(store.toolCallForRun(run.id)?.error).toBe('exit code 7')
 
     store.close()
   }, 30_000)
@@ -58,12 +74,14 @@ describe('runs', () => {
 
     await sleep(400)
     expect(store.run(run.id)?.status).toBe('running')
+    expect(store.toolCallForRun(run.id)?.status).toBe('running')
 
     runs.cancel(run.id)
     await settle(store, run.id, 15_000)
 
     expect(store.run(run.id)?.status).toBe('cancelled')
     expect(runs.active).toBe(0)
+    expect(store.toolCallForRun(run.id)?.status).toBe('cancelled')
 
     store.close()
   }, 30_000)
@@ -100,6 +118,7 @@ describe('runs', () => {
       shell: 'sh',
       status: 'running',
       exitCode: null,
+      error: null,
       startedAt: at,
       endedAt: null,
     })
@@ -108,11 +127,58 @@ describe('runs', () => {
 
     expect(settled).toBe(1)
     expect(store.run('run_orphan')?.status).toBe('interrupted')
+    expect(store.run('run_orphan')?.error).toBe('the engine stopped while this command was running')
     const output = store.chunks('run_orphan').map((chunk) => chunk.data).join('')
     expect(output).toContain('the engine stopped while this command was running')
+    // A pre-upgrade run has no tool call; settlement must still work. A run
+    // that does have one ends it with the same reason.
+    expect(store.toolCallForRun('run_orphan')).toBeNull()
 
     // Settling twice must not write a second ending.
     expect(runs.settleInterrupted('again')).toBe(0)
+    store.close()
+  })
+
+  test('a crash ends the tool call with the reason and never replays it', () => {
+    const { store, runs, session } = setup()
+    const at = Date.now()
+    store.insertRun({
+      id: 'run_crashed',
+      sessionID: session.id,
+      command: 'rm -rf build',
+      cwd: session.cwd,
+      shell: 'sh',
+      status: 'running',
+      exitCode: null,
+      error: null,
+      startedAt: at,
+      endedAt: null,
+    })
+    store.insertToolCall({
+      id: 'tool_crashed',
+      sessionID: session.id,
+      stepID: null,
+      runID: 'run_crashed',
+      tool: 'shell',
+      input: 'rm -rf build',
+      status: 'running',
+      error: null,
+      createdAt: at,
+      endedAt: null,
+    })
+
+    // The process is gone: the next start settles what it left running.
+    runs.settleInterrupted('the engine stopped while this tool call was running; it was not replayed')
+
+    expect(store.run('run_crashed')?.status).toBe('interrupted')
+    expect(store.run('run_crashed')?.error).toContain('it was not replayed')
+    const call = store.toolCallForRun('run_crashed')!
+    expect(call.status).toBe('interrupted')
+    expect(call.error).toContain('it was not replayed')
+    // The command was not started again: one run, one call, one ending.
+    expect(store.runs(session.id)).toHaveLength(1)
+    expect(store.toolCalls(session.id)).toHaveLength(1)
+
     store.close()
   })
 })

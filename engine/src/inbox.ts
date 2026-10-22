@@ -6,10 +6,11 @@
  * one `prompt.delivered` event carrying the message, only when the engine is at
  * a safe boundary.
  *
- * A boundary today is the end of a run, because a run is the only step the
- * engine has. When steps grow tool calls of their own, the boundary moves into
- * the step and this file's law does not change: nothing is delivered while a
- * tool call is in flight.
+ * A boundary today is the end of a run and the end of a step: nothing is
+ * delivered while either is in flight, because the prompt that is already
+ * being answered owns the next assistant message in the transcript. When a
+ * step grows tool calls of its own, the boundary stays "nothing in flight",
+ * and this file's law does not change.
  *
  * At one boundary every steer goes first, then everything queued, each in
  * admission order. Steering never stops the run it is steered past: it lands
@@ -53,6 +54,22 @@ function keyOf(input: PromptRequest): string | null {
 export class Inbox {
   readonly #store: Store
   readonly #log: Logger
+
+  /**
+   * Called after a batch lands in the transcript, with the messages in order.
+   * `serve` uses it to start the step that answers them. It is assigned after
+   * startup has settled the steps a dead process left behind, so a resume can
+   * never mistake fresh work for a claim.
+   */
+  onDelivered: ((sessionID: string, messages: Message[]) => void) | null = null
+
+  /**
+   * A boundary guard for work the inbox cannot see. `serve` points it at the
+   * step runner: a prompt is not delivered while a model call is streaming,
+   * because the answer to the prompt already in flight belongs before it in
+   * the transcript. The step calls back into `deliver` when it ends.
+   */
+  busy: ((sessionID: string) => boolean) | null = null
 
   constructor(store: Store, log: Logger) {
     this.#store = store
@@ -121,12 +138,14 @@ export class Inbox {
   /**
    * Deliver what this boundary allows, if the session is at one.
    *
-   * The engine's boundary is "no run is executing". A steer is delivered ahead
-   * of a queued item in the same pass, so steering wins at idle without ever
-   * cutting a command short.
+   * The engine's boundary is "nothing is in flight": no run and no step. A
+   * steer is delivered ahead of a queued item in the same pass, so steering
+   * wins at idle without ever cutting the answer that is already streaming
+   * short. The step runner calls back here when a step ends.
    */
   deliver(sessionID: string): Message[] {
     if (this.#store.runningRuns(sessionID).length > 0) return []
+    if (this.busy?.(sessionID)) return []
 
     const pending = this.#store
       .inbox(sessionID, 'pending')
@@ -163,6 +182,15 @@ export class Inbox {
       this.#log.info('prompt delivered', { session: sessionID, item: item.id, mode: item.mode, message: message.id })
     }
 
+    if (delivered.length > 0) {
+      try {
+        this.onDelivered?.(sessionID, delivered)
+      } catch (error) {
+        // A listener that throws must not make delivery look failed: the
+        // messages are already committed.
+        this.#log.error(`the delivery listener failed: ${String(error)}`)
+      }
+    }
     return delivered
   }
 

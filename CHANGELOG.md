@@ -12,14 +12,56 @@ and the project uses [semantic versioning](https://semver.org/).
 - The major stays `0` until the desktop shell and the app surface are stable.
   A `1.0.0` would be a promise the project cannot keep yet.
 - The minor counts the feature releases and goes up to `255` before `1.0.0`:
-  `0.1.0` shipped the cockpit, `0.2.0` shipped the window work and `0.3.0`
-  shipped the engine.
+  `0.1.0` shipped the cockpit, `0.2.0` shipped the window work, `0.3.0`
+  shipped the engine, `0.4.0` shipped the inbox and `0.5.0` shipped the step.
 - The patch counts the fixes inside a feature release.
 
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-23
+
+### Added
+
+- **The step.** A delivered prompt now starts one model call, durable before it
+  streams: `step.started` commits the provider, the model, attempt 1 and the
+  daemon's pid as the claim, `step.output` carries the bounded text as it
+  arrives, and `step.completed` writes the assistant message and releases the
+  claim in the same transaction. A unique index keeps one step per prompt.
+- **Narrow retries, visible.** A retryable provider failure (a rate limit, a
+  transport failure with no output) increments `attempt` on the same row and
+  records `step.retry` with the delay, up to three attempts with jittered
+  exponential backoff. A stream that dies after producing text is failed with
+  the text kept and is never replayed, so an answer cannot be duplicated.
+- **Crash recovery for a step.** On startup a claimed step with no output
+  continues as its next attempt with the same id (`step.resumed`). A claimed
+  step that had produced output fails with `engine_restart_mid_stream` instead
+  of being re-run. A graceful shutdown writes no ending, so the claim survives
+  for the next start; an operator's interrupt writes `step.cancelled` with the
+  reason.
+- **Runs are tool calls.** `run.started` commits the run and its `shell`
+  `ToolCall` before the process exists, and `run.ended` ends both with the exit
+  code and a reason. `Run` grew an `error` field; a run that was still going
+  when the engine died ends `interrupted` on both records with the reason, and
+  is never replayed.
+- **A provider seam.** The engine owns the step and knows nothing about how
+  tokens arrive. The built-in `local` provider is deterministic and needs no
+  credentials; `--provider-delay <ms>` (or `HIROSHI_PROVIDER_DELAY_MS`) holds
+  each chunk for watching a stream or reproducing a crash mid-step.
+- The inbox boundary now covers steps as well as runs: a prompt waits while
+  either is in flight, so the answer to the prompt already streaming comes
+  before the prompt that arrived during it. The interrupt cancels the step
+  first and then the runs, and may start the next step at the boundary it
+  creates.
+- The Terminal surface draws the latest step: provider, model, status, attempt
+  and the first line of its answer or its failure. The inbox's delivered count
+  now counts operator turns only, not the assistant replies.
+- The protocol is version 3. `SessionDetail` carries `steps` and `toolCalls`,
+  the event union carries the seven step events and the tool call on the run
+  events, `MessageRole` gains `assistant`, and `interrupt` answers
+  `{ runs, steps }`.
+
+## [0.4.0] - 2026-10-22
 
 ### Added
 

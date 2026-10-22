@@ -1,7 +1,7 @@
 ---
 title: "The engine"
 sidebarTitle: "The engine"
-description: "The local daemon that owns runs, the database it writes, and how the cockpit attaches to it."
+description: "The local daemon that owns runs and steps, the database it writes, and how the cockpit attaches to it."
 ---
 
 Hiroshi does not run a command inside the window.
@@ -23,7 +23,9 @@ cockpit (React)  ──HTTP──▶  hiroshi-engine (bun)  ──▶  SQLite (e
 | :--- | :--- |
 | session | a workspace, a title, the messages sent in it and the runs started in it |
 | prompt | an admitted intent: waiting in the inbox, or delivered as a message |
-| message | a line of operator intent, recorded before anything acts on it |
+| message | a line of the transcript: operator intent or a model's answer |
+| step | one model call, durable before it streams: provider, attempts, output, claim |
+| tool call | one effect, durable before it happens; the shell is the first tool |
 | run | one command: its shell, its output, its exit code, its end |
 | event | the append-only log every projection is built from |
 
@@ -48,6 +50,55 @@ pretends a dead run is still going.
 Output is bounded. A run that prints megabytes does not fill the database: the
 engine keeps the first and last slices and marks the run truncated.
 
+## The step
+
+A step is one model call, and it is written down before the provider is asked
+for anything:
+
+1. `step.started` commits the provider, the model, attempt 1, the claim (the
+   daemon's pid) and `status: running`.
+2. `step.output` carries the text as it streams, bounded like run output.
+3. `step.completed` writes the assistant message and releases the claim in one
+   transaction.
+
+The laws a step keeps:
+
+- **One step per prompt.** The step names the message it answers, and a unique
+  index enforces it. A delivered prompt that already has a step never gets a
+  second one.
+- **A retry is the same step.** A retryable provider failure — a rate limit, a
+  transport failure with no output — increments `attempt` on the same row and
+  records `step.retry` with the delay: up to three attempts, jittered
+  exponential backoff. The cockpit can show the retry because it is an event,
+  not a hidden loop.
+- **Retries only happen before output.** Once text has reached the transcript,
+  a failure fails the step with the text kept, marked `stream_truncated` and
+  not retried. Replaying it would duplicate the answer, which is the one thing
+  a retry must not do.
+- **A crash resumes the claim.** On startup a running step with no output is
+  continued as its next attempt with the same id (`step.resumed`). A running
+  step that had produced output fails with `engine_restart_mid_stream`; it is
+  never re-run from the beginning.
+- **A shutdown is not an ending.** `stopAll` aborts the provider without
+  writing an ending, so the claim survives for the next start. An operator's
+  interrupt is an ending: `step.cancelled` with the reason.
+
+The built-in `local` provider answers deterministically — it echoes the newest
+prompt — so the whole lifecycle runs without credentials or a network.
+`--provider-delay <ms>` (or `HIROSHI_PROVIDER_DELAY_MS`) holds each chunk,
+which is how the tests get a window in which to kill the daemon. Real
+providers arrive behind the same `Provider` seam.
+
+## Tool calls
+
+A tool call is an effect written down before it happens. A run is the first
+tool: `run.started` commits the run and its `shell` call in the same
+transaction, before the process exists, and `run.ended` ends both with the exit
+code and, when there is a reason, the sentence that says what it was. A call
+that is still `running` when the engine dies is settled as `interrupted` with
+that reason on the next start; it is never replayed. The same row will carry
+model-requested tools later, and `step_id` says which step asked for one.
+
 ## The session inbox
 
 A prompt is not a message yet when it arrives. It is admitted to the session's
@@ -61,24 +112,23 @@ it.
   first admission wins; a retry with the same key returns the same item,
   whether it is still waiting or already delivered, and never turns into a
   second prompt.
-- **Two modes.** `steer` and `queue`. Both wait while a run is executing; at
+- **Two modes.** `steer` and `queue`. Both wait while the session is busy; at
   the boundary every steer is delivered before anything queued, each in
-  admission order. A steer does not stop the run it is steered past: it lands
-  after the step that was already going.
-- **A boundary is a step ending.** Today the engine's only step is a run, so
-  the boundary is `run.ended` and the session is idle when no run is executing.
-  When a step grows tool calls of its own, the boundary moves inside the step
-  and the law does not change: nothing is delivered while a tool call is in
-  flight.
-- **An interrupt stops the runs, not the queue.** `POST
-  /v1/sessions/:id/interrupt` writes a `cancelled` ending for every run the
-  session holds, with a line carrying the operator's reason, and the queue is
-  left as it was. The ending is a boundary, so whatever was waiting is
-  delivered immediately after it.
+  admission order. A steer does not stop the step it is steered past: it lands
+  after the answer that was already streaming.
+- **A boundary is no work in flight.** A prompt waits while a run is executing
+  and while a step is streaming. The run's end and the step's end both ask the
+  inbox to deliver, so the transcript keeps its order: the answer to the prompt
+  in flight comes before the prompt that arrived during it.
+- **An interrupt stops the step, then the runs.** `POST
+  /v1/sessions/:id/interrupt` cancels the session's step with the operator's
+  reason, then writes a `cancelled` ending for every run, each with a line
+  carrying that reason. The endings are a boundary, so whatever was waiting is
+  delivered immediately after — and may start the next step.
 - **A crash does not strand the queue.** On startup the engine settles the runs
-  a dead process left behind, then delivers the pending inbox: a prompt
-  admitted before the crash is in the transcript instead of waiting for a
-  boundary that will never come.
+  a dead process left behind, resumes or fails the steps it claimed, and then
+  delivers the pending inbox: a prompt admitted before the crash is in the
+  transcript instead of waiting for a boundary that will never come.
 
 `GET /v1/sessions/:id` carries the pending `inbox`, so a fresh window knows
 what is waiting before it follows the feed.
@@ -171,20 +221,24 @@ bun engine/src/index.ts stop     # ask it to shut down
 bun engine/src/index.ts version  # engine version and protocol
 ```
 
-`serve` is the default, so `bun run engine` starts the daemon. The cockpit
-looks for a standalone `hiroshi-engine` binary next to itself before it falls
-back to the checkout, which is how a packaged build runs without `bun`.
+`serve` is the default, so `bun run engine` starts the daemon. `--provider-delay
+<ms>` holds the local provider between chunks, which is useful for watching a
+stream arrive or for reproducing a crash mid-step. The cockpit looks for a
+standalone `hiroshi-engine` binary next to itself before it falls back to the
+checkout, which is how a packaged build runs without `bun`.
 
 ## In the cockpit
 
 The right panel's **Terminal** surface is the engine's, not a mock: a command
 there becomes a run, its output arrives on the feed, and the composer shows the
-real exit code. Below it is the session's inbox: what was admitted and is still
-waiting, with its mode, a `STEER`/`QUEUE` switch and an interrupt action while a
-run is going. The chat transcript on the demo workspace is not engine-backed;
-the terminal is the surface that shows the inbox today. The **Daemon** settings
-page shows the process, the protocol, the database and the session count, with
-the one button that restarts it.
+real exit code. Above the inbox is the latest step: its provider, model,
+status, attempt and the first line of its answer, or the code and sentence of
+its failure. Below it is the session's inbox: what was admitted and is still
+waiting, with its mode, a `STEER`/`QUEUE` switch and an interrupt action while
+work is going. The chat transcript on the demo workspace is not engine-backed;
+the terminal is the surface that shows the step and the inbox today. The
+**Daemon** settings page shows the process, the protocol, the database and the
+session count, with the one button that restarts it.
 
 ## Tests
 
@@ -197,6 +251,9 @@ bun run test:engine
 
 Those tests spawn real daemons on throwaway data directories and then try to
 break the promise: they close the client, attach a second one, and kill the
-daemon in the middle of a run. One of them starts the engine from a separate
-launcher process that exits immediately, and then asks the engine to run a
-command — the check that a run outlives the window.
+daemon in the middle of a run and in the middle of a step. One of them starts
+the engine from a separate launcher process that exits immediately, and then
+asks the engine to run a command — the check that a run outlives the window.
+The step tests use a scripted provider, so a rate limit, a stream that dies
+after its first chunk and a claimed row left by a crash are all produced
+exactly when the test wants them.

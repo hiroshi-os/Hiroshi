@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { silentLogger } from '../src/log'
 import { Sessions } from '../src/sessions'
 import { Store } from '../src/store'
-import type { Run, Session } from '../src/protocol'
+import type { Run, Session, Step, ToolCall } from '../src/protocol'
 
 function setup() {
   const store = Store.open(':memory:')
@@ -72,6 +72,7 @@ describe('store', () => {
       shell: 'sh',
       status: 'running',
       exitCode: null,
+      error: null,
       startedAt: Date.now(),
       endedAt: null,
     }
@@ -82,7 +83,7 @@ describe('store', () => {
       type: 'run.ended',
       sessionID: session.id,
       runID: ended.id,
-      data: { run: ended },
+      data: { run: ended, toolCall: null },
       project: () => store.finishRun(ended.id, 'succeeded', 0, ended.endedAt ?? Date.now()),
     })
 
@@ -104,6 +105,7 @@ describe('store', () => {
       shell: 'sh',
       status: 'running',
       exitCode: null,
+      error: null,
       startedAt: Date.now(),
       endedAt: null,
     })
@@ -126,6 +128,60 @@ describe('store', () => {
     expect(detail.seq).toBe(store.lastSeq())
     expect(detail.messages).toHaveLength(2)
     expect(detail.messages.map((message) => message.seq)).toEqual([0, 1])
+
+    store.close()
+  })
+
+  test('a step is one per message, and a snapshot carries steps and tool calls', () => {
+    const { store, sessions } = setup()
+    const session = sessions.create({})
+    sessions.prompt(session.id, { text: 'go' })
+    const message = store.lastUserMessage(session.id)!
+    expect(message.role).toBe('user')
+    expect(message.text).toBe('go')
+
+    const at = Date.now()
+    const step: Step = {
+      id: 'step_store',
+      sessionID: session.id,
+      messageID: message.id,
+      provider: 'local',
+      model: 'local/echo',
+      attempt: 1,
+      status: 'running',
+      claim: 4242,
+      output: '',
+      truncated: false,
+      error: null,
+      startedAt: at,
+      endedAt: null,
+    }
+    store.insertStep(step)
+
+    const call: ToolCall = {
+      id: 'tool_store',
+      sessionID: session.id,
+      stepID: step.id,
+      runID: null,
+      tool: 'shell',
+      input: 'ls',
+      status: 'running',
+      error: null,
+      createdAt: at,
+      endedAt: null,
+    }
+    store.insertToolCall(call)
+
+    expect(store.stepForMessage(message.id)?.id).toBe(step.id)
+    expect(store.runningSteps().map((entry) => entry.id)).toEqual([step.id])
+    expect(store.toolCallForRun('nothing')).toBeNull()
+
+    const detail = store.snapshot(session.id)!
+    expect(detail.steps.map((entry) => entry.id)).toEqual([step.id])
+    expect(detail.toolCalls.map((entry) => entry.id)).toEqual([call.id])
+
+    // One step per prompt is a database law, not a convention.
+    expect(() => store.insertStep({ ...step, id: 'step_second' })).toThrow()
 
     store.close()
   })

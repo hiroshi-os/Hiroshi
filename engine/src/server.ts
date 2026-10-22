@@ -17,12 +17,14 @@ import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, Sta
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
+import type { Steps } from './steps'
 import type { Store } from './store'
 
 export interface ServerOptions {
   store: Store
   runs: Runs
   sessions: Sessions
+  steps: Steps
   log: Logger
   token: string
   version: string
@@ -76,6 +78,12 @@ async function body<T>(request: Request): Promise<T> {
   }
 }
 
+/** The reason an interrupt carries into the step transcript. */
+function operatorReason(input: InterruptRequest): string {
+  const why = (input.reason ?? '').trim()
+  return why ? `the operator stopped this step: ${why}` : 'the operator stopped this step'
+}
+
 const SSE_HEADERS = {
   'content-type': 'text/event-stream; charset=utf-8',
   'cache-control': 'no-cache, no-transform',
@@ -87,7 +95,7 @@ export function startServer(
   options: ServerOptions,
   listen: { hostname: string; port: number },
 ): StartedServer {
-  const { store, runs, sessions, log } = options
+  const { store, runs, sessions, steps, log } = options
   // One subscription to the store, one encoding per event, one queue per client.
   const hub = new Feed(store)
 
@@ -154,7 +162,11 @@ export function startServer(
 
       case 'interrupt': {
         const input = await body<InterruptRequest>(request)
-        return json({ runs: runs.interrupt(params.id, input.reason) }, status)
+        // The step goes first: it is the work in flight. Stopping the runs then
+        // creates the boundary that delivers anything the operator had queued,
+        // which may legitimately start the next step.
+        const stoppedSteps = steps.interrupt(params.id, operatorReason(input))
+        return json({ runs: runs.interrupt(params.id, input.reason), steps: stoppedSteps }, status)
       }
 
       case 'startRun': {

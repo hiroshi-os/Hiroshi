@@ -22,7 +22,7 @@ import path from 'node:path'
 
 import { invalid, notFound } from './errors'
 import type { Logger } from './log'
-import type { OutputStream, Run, RunStatus } from './protocol'
+import type { OutputStream, Run, RunStatus, ToolCall, ToolStatus } from './protocol'
 import { resolveShell, type ResolvedShell } from './shell'
 import type { Store } from './store'
 
@@ -49,6 +49,37 @@ interface ActiveRun {
 
 function newRunID(): string {
   return `run_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+}
+
+function newToolCallID(): string {
+  return `tool_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+}
+
+function toolStatusFor(status: RunStatus): ToolStatus {
+  switch (status) {
+    case 'running':
+      return 'running'
+    case 'succeeded':
+      return 'succeeded'
+    case 'failed':
+      return 'failed'
+    case 'cancelled':
+      return 'cancelled'
+    case 'interrupted':
+      return 'interrupted'
+  }
+}
+
+/**
+ * The reason a tool call carries. A command that ran and exited non-zero is a
+ * failure with the exit code as its reason; a spawn failure or a stop carries
+ * the sentence the run itself recorded.
+ */
+function toolErrorFor(run: Run, status: RunStatus): string | null {
+  if (run.error) return run.error
+  if (status === 'failed') return run.exitCode === null ? 'the command failed' : `exit code ${run.exitCode}`
+  if (status === 'cancelled') return 'the command was cancelled'
+  return null
 }
 
 function sleep(ms: number): Promise<void> {
@@ -125,20 +156,36 @@ export class Runs {
       shell: shell.label,
       status: 'running',
       exitCode: null,
+      error: null,
       startedAt: at,
       endedAt: null,
     }
+    const toolCall: ToolCall = {
+      id: newToolCallID(),
+      sessionID,
+      stepID: null,
+      runID: run.id,
+      tool: 'shell',
+      input: trimmed,
+      status: 'running',
+      error: null,
+      createdAt: at,
+      endedAt: null,
+    }
 
-    // Durable before the effect. If the process cannot start, the failure is
-    // recorded below against a run that already exists.
+    // Durable before the effect. The tool call and the run commit together,
+    // before the process exists, so a crash leaves a call that names exactly
+    // what was about to touch the workspace. If the process cannot start, the
+    // failure is recorded below against a run that already exists.
     this.#store.record({
       type: 'run.started',
       sessionID,
       runID: run.id,
-      data: { run },
+      data: { run, toolCall },
       at,
       project: () => {
         this.#store.insertRun(run)
+        this.#store.insertToolCall(toolCall)
         this.#store.touchSession(sessionID, at)
       },
     })
@@ -155,8 +202,9 @@ export class Runs {
         windowsHide: true,
       }) as unknown as Proc
     } catch (error) {
-      this.#write(run, 'stderr', `hiroshi-engine: the command could not start: ${String(error)}\n`)
-      this.#finish(run, 'failed', null)
+      const reason = `the command could not start: ${String(error)}`
+      this.#write(run, 'stderr', `hiroshi-engine: ${reason}\n`)
+      this.#finish(run, 'failed', null, { error: reason })
       this.#log.error('spawn failed', { run: run.id, command: trimmed, error: String(error) })
       return this.#store.run(run.id) ?? run
     }
@@ -202,7 +250,7 @@ export class Runs {
       const active = this.#active.get(run.id)
       if (active) active.cancelled = true
       this.#write(run, 'stderr', `${note}\n`)
-      this.#finish(run, 'cancelled', null)
+      this.#finish(run, 'cancelled', null, { error: note })
       if (active) killTree(active.proc)
       stopped.push(this.#store.run(run.id) ?? run)
     }
@@ -225,7 +273,7 @@ export class Runs {
     for (const run of stale) {
       const at = Date.now()
       this.#write(run, 'stderr', `${note}\n`)
-      this.#finish(run, 'interrupted', null, at)
+      this.#finish(run, 'interrupted', null, { at, error: note })
     }
     if (stale.length > 0) this.#log.warn('settled interrupted runs', { runs: stale.length })
     return stale.length
@@ -244,7 +292,7 @@ export class Runs {
     for (const entry of active) {
       entry.cancelled = true
       this.#write(entry.run, 'stderr', `${note}\n`)
-      this.#finish(entry.run, 'cancelled', null)
+      this.#finish(entry.run, 'cancelled', null, { error: note })
       killTree(entry.proc)
     }
     this.#active.clear()
@@ -279,18 +327,34 @@ export class Runs {
     })
   }
 
-  #finish(run: Run, status: RunStatus, exitCode: number | null, at = Date.now()): void {
+  #finish(
+    run: Run,
+    status: RunStatus,
+    exitCode: number | null,
+    options: { at?: number; error?: string } = {},
+  ): void {
+    const at = options.at ?? Date.now()
+    const error = options.error ?? null
     const current = this.#store.run(run.id)
     if (!current || current.status !== 'running') return
-    const ended: Run = { ...current, status, exitCode, endedAt: at }
+    const ended: Run = { ...current, status, exitCode, error, endedAt: at }
+
+    // The call and the run end in one transaction. A crash cannot leave a run
+    // that finished next to a tool call that still claims to be running.
+    const call = this.#store.toolCallForRun(run.id)
+    const endedCall: ToolCall | null = call
+      ? { ...call, status: toolStatusFor(status), error: toolErrorFor(ended, status), endedAt: at }
+      : null
+
     this.#store.record({
       type: 'run.ended',
       sessionID: run.sessionID,
       runID: run.id,
-      data: { run: ended },
+      data: { run: ended, toolCall: endedCall },
       at,
       project: () => {
-        this.#store.finishRun(run.id, status, exitCode, at)
+        this.#store.finishRun(run.id, status, exitCode, at, error)
+        if (endedCall) this.#store.updateToolCall(endedCall)
         this.#store.touchSession(run.sessionID, at)
       },
     })
@@ -349,7 +413,7 @@ export class Runs {
     } catch (error) {
       flush()
       this.#write(run, 'stderr', `hiroshi-engine: the run failed: ${String(error)}\n`)
-      this.#finish(run, 'failed', null)
+      this.#finish(run, 'failed', null, { error: String(error) })
       this.#log.error('run failed', { run: run.id, error: String(error) })
     } finally {
       clearInterval(timer)

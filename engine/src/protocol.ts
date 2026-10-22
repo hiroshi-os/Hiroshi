@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.4.0'
+export const ENGINE_VERSION = '0.5.0'
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
@@ -54,7 +54,7 @@ export interface Session {
   lastRunAt: number | null
 }
 
-export type MessageRole = 'user' | 'system'
+export type MessageRole = 'user' | 'assistant' | 'system'
 
 /**
  * How a prompt waits in a session's inbox.
@@ -110,6 +110,12 @@ export interface Run {
   shell: string
   status: RunStatus
   exitCode: number | null
+  /**
+   * Why the run did not finish on its own, when there is a reason to give:
+   * a spawn failure, an operator's interrupt or a crash. A plain non-zero
+   * exit is not an error; the exit code says it.
+   */
+  error: string | null
   startedAt: number
   endedAt: number | null
 }
@@ -125,6 +131,84 @@ export interface RunChunk {
 }
 
 /**
+ * How a step ended. A step is not retried after it succeeds or is stopped.
+ *
+ * `cancelled` belongs to the operator: an interrupt aborted the provider
+ * stream. A failure the engine could not retry ends `failed`.
+ */
+export type StepStatus = 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+/**
+ * Why a step failed, in terms a client can switch on.
+ *
+ * `retryable` says whether the failure was one of the narrow kinds the engine
+ * retries on its own (a rate limit, a transport failure with no output). It is
+ * what the engine decided, not a promise that another attempt would help.
+ */
+export interface StepError {
+  code: string
+  message: string
+  retryable: boolean
+}
+
+/**
+ * One model call, durable before it streams.
+ *
+ * A step is the unit of allowance: it is written down with `status: running`
+ * and the daemon's `claim` before the provider is asked for anything, so a
+ * crash leaves a record that names the work that was in flight. A retry keeps
+ * the same step and increments `attempt`; it never creates a second step and
+ * never replays output that already reached the transcript.
+ *
+ * `messageID` is the user message the step answers. `output` is the bounded
+ * text produced so far; the assistant message is written only when the step
+ * completes.
+ */
+export interface Step {
+  id: string
+  sessionID: string
+  messageID: string | null
+  provider: string
+  model: string
+  /** 1-based. A retry of the same step increments this. */
+  attempt: number
+  status: StepStatus
+  /** The daemon pid that owns the running step, so a claim is visible. */
+  claim: number | null
+  output: string
+  truncated: boolean
+  error: StepError | null
+  startedAt: number
+  endedAt: number | null
+}
+
+export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
+
+/**
+ * One effect, durable before it happens.
+ *
+ * The shell is the first tool: a run writes its tool call before the process
+ * is spawned, and the call ends with the run. Later tools will fill the same
+ * record, which is why `stepID` exists even though a client-started run has
+ * none. A call that is still `running` when the engine dies is ended
+ * explicitly on the next start; it is never replayed.
+ */
+export interface ToolCall {
+  id: string
+  sessionID: string
+  stepID: string | null
+  runID: string | null
+  tool: string
+  /** The tool's input as text. For `shell`, the command. */
+  input: string
+  status: ToolStatus
+  /** Why the call did not succeed, when there is a reason. */
+  error: string | null
+  createdAt: number
+  endedAt: number | null
+}
+
+/**
  * The payload each durable event carries.
  *
  * This table is the whole of what the engine can publish: `EventType` is
@@ -137,10 +221,17 @@ export interface EventPayloads {
   'session.updated': { session: Session }
   'prompt.admitted': { item: InboxItem }
   'prompt.delivered': { item: InboxItem; message: Message }
-  'run.started': { run: Run }
+  'step.started': { step: Step }
+  'step.resumed': { step: Step; reason: string }
+  'step.retry': { step: Step; delay: number; error: StepError }
+  'step.output': { stepID: string; data: string }
+  'step.completed': { step: Step; message: Message | null }
+  'step.failed': { step: Step }
+  'step.cancelled': { step: Step }
+  'run.started': { run: Run; toolCall: ToolCall | null }
   'run.output': { runID: string; stream: OutputStream; data: string }
   'run.truncated': { runID: string; limit: number }
-  'run.ended': { run: Run }
+  'run.ended': { run: Run; toolCall: ToolCall | null }
 }
 
 export type EventType = keyof EventPayloads
@@ -171,6 +262,10 @@ export interface SessionDetail {
   chunks: RunChunk[]
   /** Prompts admitted but not delivered yet, oldest first. */
   inbox: InboxItem[]
+  /** Model calls, oldest first. */
+  steps: Step[]
+  /** Effects recorded before they ran, oldest first. */
+  toolCalls: ToolCall[]
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }
@@ -242,7 +337,7 @@ export interface OperationShapes {
   createSession: { request: CreateSessionRequest; response: { session: Session } }
   session: { request: SessionRef; response: SessionDetail }
   prompt: { request: PromptInput; response: { item: InboxItem; message: Message | null } }
-  interrupt: { request: InterruptInput; response: { runs: Run[] } }
+  interrupt: { request: InterruptInput; response: { runs: Run[]; steps: Step[] } }
   startRun: { request: StartRunInput; response: { run: Run } }
   run: { request: RunRef; response: RunDetail }
   cancelRun: { request: RunRef; response: { run: Run } }

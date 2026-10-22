@@ -10,6 +10,8 @@ import type {
   Run,
   Session,
   SessionDetail,
+  Step,
+  ToolCall,
 } from '../src/protocol'
 
 let clock = 0
@@ -55,6 +57,36 @@ const run: Run = {
   shell: 'sh',
   status: 'running',
   exitCode: null,
+  error: null,
+  startedAt: 10,
+  endedAt: null,
+}
+
+const toolCall: ToolCall = {
+  id: 'tool_one',
+  sessionID: 'ses_one',
+  stepID: null,
+  runID: run.id,
+  tool: 'shell',
+  input: 'echo hi',
+  status: 'running',
+  error: null,
+  createdAt: 10,
+  endedAt: null,
+}
+
+const step: Step = {
+  id: 'step_one',
+  sessionID: 'ses_one',
+  messageID: 'msg_one',
+  provider: 'local',
+  model: 'local/echo',
+  attempt: 1,
+  status: 'running',
+  claim: 4242,
+  output: '',
+  truncated: false,
+  error: null,
   startedAt: 10,
   endedAt: null,
 }
@@ -67,26 +99,73 @@ describe('the projection', () => {
   test('a run grows from started to ended, and its output accumulates', () => {
     let snapshot = ready()
 
-    snapshot = apply(snapshot, event('run.started', { run }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.started', { run, toolCall }, { runID: run.id }))
     expect(snapshot.runs).toHaveLength(1)
     expect(snapshot.runs[0]!.status).toBe('running')
+    expect(snapshot.toolCalls).toHaveLength(1)
+    expect(snapshot.toolCalls[0]!.status).toBe('running')
 
     snapshot = apply(snapshot, event('run.output', { runID: run.id, stream: 'stdout', data: 'hel' }, { runID: run.id }))
     snapshot = apply(snapshot, event('run.output', { runID: run.id, stream: 'stdout', data: 'lo\n' }, { runID: run.id }))
     expect(snapshot.output[run.id]!.text).toBe('hello\n')
 
-    snapshot = apply(
-      snapshot,
-      event('run.ended', { run: { ...run, status: 'succeeded', exitCode: 0, endedAt: 20 } }, { runID: run.id }),
-    )
+    const ended = { ...run, status: 'succeeded' as const, exitCode: 0, endedAt: 20 }
+    const endedCall: ToolCall = { ...toolCall, status: 'succeeded', endedAt: 20 }
+    snapshot = apply(snapshot, event('run.ended', { run: ended, toolCall: endedCall }, { runID: run.id }))
     expect(snapshot.runs[0]!.status).toBe('succeeded')
     expect(snapshot.runs[0]!.exitCode).toBe(0)
+    expect(snapshot.toolCalls[0]!.status).toBe('succeeded')
   })
 
   test('a run from another session never lands in this one', () => {
     const other = { ...run, id: 'run_other', sessionID: 'ses_two' }
-    const snapshot = apply(ready(), event('run.started', { run: other }, { sessionID: 'ses_two', runID: other.id }))
+    const snapshot = apply(
+      ready(),
+      event('run.started', { run: other, toolCall: null }, { sessionID: 'ses_two', runID: other.id }),
+    )
     expect(snapshot.runs).toHaveLength(0)
+    expect(snapshot.toolCalls).toHaveLength(0)
+  })
+
+  test('a step streams, retries and completes with one assistant message', () => {
+    let snapshot = ready()
+
+    snapshot = apply(snapshot, event('step.started', { step }))
+    expect(snapshot.steps).toHaveLength(1)
+
+    snapshot = apply(snapshot, event('step.output', { stepID: step.id, data: 'hel' }))
+    snapshot = apply(snapshot, event('step.output', { stepID: step.id, data: 'lo' }))
+    expect(snapshot.steps[0]!.output).toBe('hello')
+
+    const error = { code: 'rate_limit', message: 'slow down', retryable: true }
+    const retried: Step = { ...step, attempt: 2, error }
+    snapshot = apply(snapshot, event('step.retry', { step: retried, delay: 500, error }))
+    expect(snapshot.steps[0]!.attempt).toBe(2)
+    expect(snapshot.steps[0]!.error?.code).toBe('rate_limit')
+
+    const message: Message = {
+      id: 'msg_answer',
+      sessionID: 'ses_one',
+      seq: 0,
+      role: 'assistant',
+      text: 'hello',
+      at: 30,
+    }
+    const done: Step = { ...retried, status: 'succeeded', claim: null, error: null, output: 'hello', endedAt: 30 }
+    snapshot = apply(snapshot, event('step.completed', { step: done, message }))
+    expect(snapshot.steps[0]!.status).toBe('succeeded')
+    expect(snapshot.messages).toHaveLength(1)
+    expect(snapshot.messages[0]!.role).toBe('assistant')
+
+    // A replay of the completion draws no second answer.
+    snapshot = apply(snapshot, event('step.completed', { step: done, message }))
+    expect(snapshot.messages).toHaveLength(1)
+  })
+
+  test('a step from another session never lands in this one', () => {
+    const other = { ...step, id: 'step_other', sessionID: 'ses_two' }
+    const snapshot = apply(ready(), event('step.started', { step: other }, { sessionID: 'ses_two' }))
+    expect(snapshot.steps).toHaveLength(0)
   })
 
   test('a prompt sits in the inbox until one event delivers it with its message', () => {
@@ -156,6 +235,8 @@ describe('the projection', () => {
         { runID: run.id, seq: 2, stream: 'stderr', data: 'warn\n', at: 13 },
       ],
       inbox: [],
+      steps: [{ ...step, status: 'succeeded', claim: null, output: 'hi', endedAt: 20 }],
+      toolCalls: [{ ...toolCall, status: 'succeeded', endedAt: 20 }],
       seq: 9,
     }
 
@@ -163,13 +244,16 @@ describe('the projection', () => {
     expect(snapshot.sessionID).toBe('ses_one')
     expect(snapshot.messages).toHaveLength(1)
     expect(snapshot.runs[0]!.status).toBe('succeeded')
+    expect(snapshot.steps).toHaveLength(1)
+    expect(snapshot.steps[0]!.output).toBe('hi')
+    expect(snapshot.toolCalls).toHaveLength(1)
     expect(snapshot.output[run.id]!.text).toBe('hello\nwarn\n')
     expect(snapshot.inbox).toEqual([])
   })
 
   test('the in-memory copy keeps the tail, not the head', () => {
     let snapshot = ready()
-    snapshot = apply(snapshot, event('run.started', { run }, { runID: run.id }))
+    snapshot = apply(snapshot, event('run.started', { run, toolCall }, { runID: run.id }))
 
     const chunk = 'x'.repeat(64 * 1024)
     for (let index = 0; index < 6; index += 1) {

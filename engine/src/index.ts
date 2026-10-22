@@ -22,6 +22,8 @@ import { Store } from './store'
 import { Inbox } from './inbox'
 import { Sessions } from './sessions'
 import { Runs } from './runs'
+import { Steps } from './steps'
+import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import {
   acquireStartLock,
@@ -142,12 +144,34 @@ async function serve(flags: Flags): Promise<number> {
   // after `run.ended` is committed and delivers only when nothing is running.
   const runs = new Runs(store, log, { onIdle: (sessionID) => void inbox.deliver(sessionID) })
 
+  const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
+  const steps = new Steps(store, log, {
+    provider: new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }),
+  })
+
   // A previous process may have died mid-command. Say so rather than pretend
   // the command is still running.
   runs.settleInterrupted('hiroshi-engine: the engine stopped while this command was running; it was not resumed')
+  // A previous process may have died mid-step. The claim is still in the
+  // database; resume the same step when it produced no output, and fail it
+  // explicitly when it did.
+  steps.resume()
+
+  // Only now may delivery start work. A prompt delivered before this line
+  // (during run settlement) is picked up by `kickAll` below. The busy guard
+  // holds a prompt while a step is streaming; the step announces its own end,
+  // which is the next boundary.
+  inbox.onDelivered = (sessionID) => {
+    steps.start(sessionID)
+  }
+  inbox.busy = (sessionID) => steps.busy(sessionID)
+  steps.onEnd = (sessionID) => {
+    void inbox.deliver(sessionID)
+  }
   // Settlement is a boundary of its own: prompts admitted before the crash get
   // delivered instead of waiting for a run that will never end.
   inbox.deliverIdle()
+  steps.kickAll()
 
   const hostname = stringFlag(flags, 'host') || '127.0.0.1'
   const port = numberFlag(flags, 'port') ?? 0
@@ -166,6 +190,10 @@ async function serve(flags: Flags): Promise<number> {
     } catch {
       // Already stopped.
     }
+    // A step is left claimed, not cancelled: the next start resumes it. The
+    // gate `stopAll` sets also stops new steps from starting while the runs
+    // below deliver their last boundary.
+    steps.stopAll()
     await runs.stopAll()
     // A backstop: a run nothing was holding any more is genuinely unaccounted
     // for, so it gets the crash wording rather than the shutdown one.
@@ -181,6 +209,7 @@ async function serve(flags: Flags): Promise<number> {
       store,
       runs,
       sessions,
+      steps,
       log,
       token,
       version: ENGINE_VERSION,
@@ -298,6 +327,7 @@ async function main(): Promise<number> {
         '  --workspace <path> the directory new sessions start in',
         '  --host <address>   bind address, loopback by default',
         '  --port <number>    bind port, an ephemeral one by default',
+        '  --provider-delay <ms>  hold the local provider between stream chunks',
         '  --json             machine readable `status`',
         '',
       ].join('\n'),
