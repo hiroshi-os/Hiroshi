@@ -1,111 +1,87 @@
-# Hiroshi — Multi-Agent Orchestration Cockpit
+# Hiroshi
 
-Hiroshi is a GPU-native control plane and orchestration cockpit for autonomous multi-agent development swarms, rendered with **GPUIX** (Metal, DirectX, Vulkan).
+A GPU-native desktop cockpit for multi-agent development, built with React and
+GPUIX. The desktop interface renders directly through GPUI, without Electron or
+a web view.
 
-No Electron. No web view. Paints at 120 FPS directly through GPUI.
+![Hiroshi desktop cockpit](.github/image.png)
 
----
+## Current state
 
-## Capabilities & Views
+Hiroshi is in active development. The local engine runs independently of the
+window and persists its work in SQLite. It supports:
 
-1. **Swarm Timeline (`TimelineView`)**
-   - Live stream of multi-agent turn execution, orchestrated plans, and reasoning chains.
-   - Decomposed Subtask DAG with assigned agent badges and dependency tracking.
-   - Collapsible reasoning folds ("Thought for 4.8s").
-   - Tool execution cards (`ripgrep`, `edit_file`, `cargo_test`, etc.) with duration tags and output logs.
-   - Native syntax-highlighted code blocks (`<code>`) and hunk diffs (`<diff>`).
-   - Human-in-the-loop security gates with operator approval/rejection actions.
+- Shell commands with streamed output, exit status and cancellation.
+- Durable session inboxes with steering, queued prompts and interrupts.
+- Streaming steps with bounded retries and explicit crash recovery.
+- Context budgeting and compaction that preserve the full transcript.
+- One typed HTTP protocol and a replayable event feed for multiple clients.
 
-2. **Swarm Topology (`TopologyView`)**
-   - Hierarchical DAG visualizer showing communication channels and live throughput (`msg/s`, `tok/s`).
-   - Node status indicators (`Supervisor`, `Architect`, `Researcher`, `Coder`, `Verifier`).
-   - Selected agent inspector with context window token gauge, granted tools, and system prompt.
+The Terminal surface connects to the engine and shows runs, steps, pending
+prompts and context history. The built-in provider is a deterministic local echo;
+real model adapters and the complete multi-agent workflow are still being built.
+Parts of the cockpit remain demonstrations.
 
-3. **Fleet & Agents (`FleetView`)**
-   - Agent fleet roster and model switcher (`Sonnet 3.7`, `Haiku 3.5`, `DeepSeek R1`, `GPT-4o`).
-   - Granular tool privilege management and system prompt overrides.
+Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).
+See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.
 
-4. **Artifacts & Diffs (`ArtifactsView`)**
-   - Code explorer for all files authored and patched by the swarm.
-   - Integrated unified diff viewer and full syntax viewer.
+## Run locally
 
-5. **Mission Composer (`Composer`)**
-   - Target selection (`Autonomous Swarm`, individual specialist agents).
-   - Swarm modes (`Auto-DAG`, `Sequential`, `Supervised`).
+Use the Bun version pinned in [`.bun-version`](.bun-version). From the repository
+root:
 
----
-
-## The engine
-
-Runs belong to a detached local daemon, not to the window. The cockpit attaches
-to it, follows one event feed and draws what it is told. Closing the window
-leaves the work running; a second window attaches to the same runs.
-
-```bash
-bun run engine          # start the daemon in the foreground
-bun run engine:status   # port, pid, uptime, protocol, database
-bun run test:engine     # the engine suite: real daemons, real SQLite
+```sh
+bun install --frozen-lockfile
+bun run dev
 ```
 
-State lives in `%LOCALAPPDATA%\Hiroshi` on Windows,
-`~/Library/Application Support/Hiroshi` on macOS and
-`$XDG_STATE_HOME/hiroshi` on Linux; `HIROSHI_HOME` overrides it. The data
-directory holds `engine.db` (the event log), `engine.json` (discovery: url, pid,
-token), `engine.lock` and `logs/engine.log`.
+The desktop app starts or attaches to the local engine. Closing the window leaves
+its shell commands running; another window can attach to the same engine.
 
-The design and the guarantees are in [docs/engine.mdx](./docs/engine.mdx).
+To run or inspect the engine directly:
 
----
+```sh
+bun run engine
+bun run engine:status
+```
 
 ## Development
 
-```bash
-# Run desktop dev with hot remounting
-bun run dev
+| Command | Purpose |
+| :--- | :--- |
+| `bun run typecheck` | Check TypeScript |
+| `bun run test:engine` | Test the engine with SQLite and real daemon processes |
+| `bun run test` | Test the UI through the native GPUIX test renderer |
+| `bun run test:integration` | Drive a real desktop window and its engine |
+| `bun run screenshot` | Capture desktop UI screenshots |
+| `bun run build` | Compile the desktop app into `dist/hiroshi` |
+| `bun run web:dev` | Bundle and serve the browser preview |
 
-# Run Vitest suite on GPU test renderer
-bun run test
+The engine suite needs no GPU. Native UI tests run on macOS and Windows;
+windowed integration tests and screenshots need a desktop session. The browser
+preview does not start the local daemon.
 
-# Run the engine suite against real daemons
-bun run test:engine
+## Local data
 
-# Drive the real window: the cockpit, the daemon it spawns, a durable run
-bun run test:integration
+| Platform | Default directory |
+| :--- | :--- |
+| Windows | `%LOCALAPPDATA%\Hiroshi` |
+| macOS | `~/Library/Application Support/Hiroshi` |
+| Linux | `$XDG_STATE_HOME/hiroshi`, or `~/.local/state/hiroshi` |
 
-# Typecheck with TypeScript
-bun run typecheck
+Set `HIROSHI_HOME` to use another directory. It contains `engine.db`, the discovery
+file `engine.json`, the startup lock `engine.lock` and `logs/engine.log`.
 
-# Capture UI screenshots of all 4 views
-bun run screenshot
+## Documentation and releases
 
-# Bundle for the browser
-bun run web:dev
+The [documentation source](docs/) is a Mintlify project. To preview it with the
+Mintlify CLI installed:
+
+```sh
+cd docs
+mint dev
 ```
 
-`bun run test` drives the tree through the GPUIX native test renderer, so it
-needs no window; it is what CI runs on macOS and Windows. `bun run
-test:integration` starts the app for real, so it needs a desktop session: a
-machine someone is sitting at, or a hosted Windows runner.
-
----
-
-## Versioning
-
-`0.MINOR.PATCH`. The major stays `0` until the desktop shell and the app
-surface are stable, and the minor counts the feature releases up to `255`
-before `1.0.0`. The version lives in `package.json` and nowhere else.
-
-What changed in every release is in [CHANGELOG.md](./CHANGELOG.md).
-
----
-
-## Documentation
-
-The docs site lives in [`docs/`](./docs) and is a [Mintlify](https://mintlify.com)
-project. `docs/docs.json` holds the navigation and the theme, the `.mdx`
-files next to it are the pages.
-
-```bash
-npm i -g mint
-cd docs && mint dev
-```
+Hiroshi uses `0.MINOR.PATCH` releases while the shell and application surface
+stabilize. The current version is in [`package.json`](package.json); release
+notes are in [the changelog](CHANGELOG.md).
