@@ -31,7 +31,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -360,6 +360,31 @@ async function driveTheWindow(home: string): Promise<void> {
     check(stepped.includes('ATTEMPT 1'), `the step strip does not show its attempt:\n${stepped}`)
     note('the delivered prompt ran as a durable step and its answer is in the strip')
 
+    // The main composer uses the engine catalog, and its transcript draws
+    // provider failures and real streamed answers rather than demo replies.
+    await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-restricted/chat').click()
+    const composer = app.getByTestId('composer')
+    await composer.fill('window-provider-denial')
+    await composer.press('enter')
+    await waitUntil(async () => {
+      const nodes = await app.getByTestId('engine-transcript').all()
+      return nodes.some((node) => flatten(node).join('\n').includes('provider_denied')) || false
+    }, 'a policy denial in the main transcript')
+    note('the main transcript shows the denied provider')
+
+    await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-local/echo').click()
+    await composer.fill('window-main-composer')
+    await composer.press('enter')
+    await waitUntil(async () => {
+      const nodes = await app.getByTestId('engine-transcript').all()
+      return nodes.some((node) => flatten(node).join('\n').includes('The local provider received: window-main-composer')) || false
+    }, 'the selected engine model to answer in the main transcript')
+    const selected = await app.getByTestId('model-picker').textContent()
+    check(selected.includes('Local echo'), `the picker did not show the selected engine model: ${selected}`)
+    note('the main composer used the catalog model and drew its real answer')
+
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.
     await submit(app, SECOND_COMMAND)
@@ -446,6 +471,12 @@ async function stopTheDaemon(home: string): Promise<void> {
 
 async function main(): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), 'hiroshi-windowed-'))
+  writeFileSync(path.join(home, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'restricted', adapter: 'openai', models: [{
+      id: 'chat', model: 'fixture-never-called', label: 'Restricted model', contextWindow: 32768, reservedOutput: 1024,
+    }] }],
+    policy: [{ provider: 'restricted', action: 'deny' }],
+  }))
   const paths: LocalPaths = localPaths(home)
   note(`HIROSHI_HOME is ${home}`)
 

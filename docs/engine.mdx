@@ -86,8 +86,8 @@ The laws a step keeps:
 The built-in `local` provider answers deterministically — it echoes the newest
 prompt — so the whole lifecycle runs without credentials or a network.
 `--provider-delay <ms>` (or `HIROSHI_PROVIDER_DELAY_MS`) holds each chunk,
-which is how the tests get a window in which to kill the daemon. Real
-providers arrive behind the same `Provider` seam.
+which is how the tests get a window in which to kill the daemon.
+[Provider adapters](/providers) add configured models behind the same seam.
 
 ## Tool calls
 
@@ -278,8 +278,9 @@ real exit code. Above the inbox is the latest step: its provider, model,
 status, attempt and the first line of its answer, or the code and sentence of
 its failure. Below it is the session's inbox: what was admitted and is still
 waiting, with its mode, a `STEER`/`QUEUE` switch and an interrupt action while
-work is going. The chat transcript on the demo workspace is not engine-backed;
-the terminal is the surface that shows the step and the inbox today. The
+work is going. Demo fixtures remain available in tests;
+the main composer now shows the engine transcript and streams model output,
+while the Terminal keeps the step and inbox controls. The
 **Daemon** settings page shows the process, the protocol, the database and the
 session count, with the one button that restarts it.
 

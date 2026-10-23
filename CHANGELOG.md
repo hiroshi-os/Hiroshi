@@ -19,6 +19,26 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.7.0] - 2026-10-23
+
+### Added
+
+- Configured provider adapters for OpenAI Responses and Anthropic Messages, with
+  a normalized engine model catalog. The cockpit's picker reads the catalog and
+  sends the selected identity with each admitted prompt.
+- Local `providers.json` configuration references credential environment
+  variables. Provider policy is independent of credentials; the last matching
+  allow/deny rule wins. Denials remain visible and never contact the provider.
+- Streaming text now reaches the main transcript. Reasoning summaries and tool
+  request deltas are bounded durable parts, carried by snapshots and the feed.
+  Tool requests are displayed without execution; the permission gate comes next.
+- Recovery treats reasoning and tool parts as output, preventing duplicate calls
+  after a crash before text arrives. Streams require terminal completion events;
+  provider error messages never copy remote error prose or credentials.
+- HTTP fixture and real-daemon integration tests cover both adapters, partial
+  feed delivery, catalog identities, policy, credentials, cancellation and crash
+  recovery. The protocol is version 5 with an additive database migration.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added

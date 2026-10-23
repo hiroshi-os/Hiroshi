@@ -23,6 +23,7 @@ import { Inbox } from './inbox'
 import { Sessions } from './sessions'
 import { Runs } from './runs'
 import { Steps } from './steps'
+import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import {
@@ -145,9 +146,12 @@ async function serve(flags: Flags): Promise<number> {
   const runs = new Runs(store, log, { onIdle: (sessionID) => void inbox.deliver(sessionID) })
 
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
+  const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
+    new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
   const steps = new Steps(store, log, {
+    selectProvider: (model) => catalog.resolve(model),
     context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
-    provider: new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }),
+    provider: catalog.resolve(),
   })
 
   // A previous process may have died mid-command. Say so rather than pretend
@@ -211,6 +215,7 @@ async function serve(flags: Flags): Promise<number> {
       runs,
       sessions,
       steps,
+    catalog,
       log,
       token,
       version: ENGINE_VERSION,

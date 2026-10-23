@@ -18,9 +18,11 @@ window and persists its work in SQLite. It supports:
 - One typed HTTP protocol and a replayable event feed for multiple clients.
 
 The Terminal surface connects to the engine and shows runs, steps, pending
-prompts and context history. The built-in provider is a deterministic local echo;
-real model adapters and the complete multi-agent workflow are still being built.
-Parts of the cockpit remain demonstrations.
+prompts and context history. The main composer streams answers from the selected
+engine model. OpenAI Responses and Anthropic Messages adapters use local
+configuration and credentials; the built-in local echo needs neither. The full
+multi-agent workflow is still being built, and parts of the cockpit remain
+demonstrations. See [provider configuration](docs/providers.mdx).
 
 Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).
 See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.

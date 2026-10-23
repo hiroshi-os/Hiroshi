@@ -18,6 +18,7 @@ import { mkdirSync } from 'node:fs'
 import type {
   Compaction,
   StepContext,
+  StepPart,
   DeliveryMode,
   EngineEvent,
   EventPayloads,
@@ -188,6 +189,23 @@ const MIGRATIONS: Migration[] = [
       create index step_context_session on step_context(session_id, ordinal);
     `,
   },
+  {
+    id: 5,
+    name: 'providers',
+    sql: `
+      alter table message add column model text;
+      alter table inbox add column model text;
+      create table step_part (
+        ordinal integer primary key autoincrement,
+        id text not null unique,
+        session_id text not null references session(id),
+        step_id text not null references step(id),
+        data text not null
+      );
+      create index step_part_session on step_part(session_id, ordinal);
+      create index step_part_step on step_part(step_id, ordinal);
+    `,
+  },
 ]
 
 type Row = Record<string, any>
@@ -222,6 +240,7 @@ function toMessage(row: Row): Message {
     at: row.at,
   }
   if (row.mode) message.mode = row.mode as DeliveryMode
+  if (row.model) message.model = row.model
   return message
 }
 
@@ -237,6 +256,7 @@ function toInboxItem(row: Row): InboxItem {
     admittedAt: row.admitted_at,
     deliveredAt: row.delivered_at ?? null,
     messageID: row.message_id ?? null,
+    ...(row.model ? { model: row.model } : {}),
   }
 }
 
@@ -269,6 +289,7 @@ function toStep(row: Row): Step {
     id: row.id,
     sessionID: row.session_id,
     messageID: row.message_id ?? null,
+    ...(row.model ? { model: row.model } : {}),
     provider: row.provider,
     model: row.model,
     attempt: row.attempt,
@@ -516,8 +537,8 @@ export class Store {
    */
   insertMessage(message: Message): void {
     this.#db.run(
-      'insert into message (id, session_id, seq, role, text, at, mode) values (?, ?, ?, ?, ?, ?, ?)',
-      [message.id, message.sessionID, message.seq, message.role, message.text, message.at, message.mode ?? null],
+      'insert into message (id, session_id, seq, role, text, at, mode, model) values (?, ?, ?, ?, ?, ?, ?, ?)',
+      [message.id, message.sessionID, message.seq, message.role, message.text, message.at, message.mode ?? null, message.model ?? null],
     )
   }
 
@@ -529,6 +550,16 @@ export class Store {
   message(id: string): Message | null {
     const row = this.#db.query('select * from message where id = ?').get(id) as Row | null
     return row ? toMessage(row) : null
+  }
+
+  insertStepPart(part: StepPart): void {
+    this.#db.run('insert into step_part (id, session_id, step_id, data) values (?, ?, ?, ?)',
+      [part.id, part.sessionID, part.stepID, JSON.stringify(part)])
+  }
+
+  stepParts(sessionID: string): StepPart[] {
+    return (this.#db.query('select data from step_part where session_id = ? order by ordinal').all(sessionID) as Row[])
+      .map((row) => JSON.parse(row.data) as StepPart)
   }
 
   insertCompaction(value: Compaction): void {
@@ -561,8 +592,8 @@ export class Store {
 
   insertInboxItem(item: InboxItem): void {
     this.#db.run(
-      `insert into inbox (id, session_id, seq, text, mode, state, key, admitted_at, delivered_at, message_id)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert into inbox (id, session_id, seq, text, mode, state, key, admitted_at, delivered_at, message_id, model)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.id,
         item.sessionID,
@@ -574,6 +605,7 @@ export class Store {
         item.admittedAt,
         item.deliveredAt,
         item.messageID,
+        item.model ?? null,
       ],
     )
   }
@@ -845,6 +877,7 @@ export class Store {
         toolCalls: this.toolCalls(sessionID),
         compactions: this.compactions(sessionID),
         contexts: this.contexts(sessionID),
+        parts: this.stepParts(sessionID),
         seq: this.lastSeq(),
       }
     })

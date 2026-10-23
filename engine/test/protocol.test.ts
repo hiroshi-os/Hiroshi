@@ -27,6 +27,7 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  models: 'models',
   health: 'health',
   listSessions: 'listSessions',
   createSession: 'createSession',
@@ -46,6 +47,7 @@ const everyEvent: { [Type in EventType]: Type } = {
   'prompt.delivered': 'prompt.delivered',
   'context.compacted': 'context.compacted',
   'context.prepared': 'context.prepared',
+  'step.part': 'step.part',
   'step.started': 'step.started',
   'step.resumed': 'step.resumed',
   'step.retry': 'step.retry',

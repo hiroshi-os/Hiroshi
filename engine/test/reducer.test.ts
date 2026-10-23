@@ -238,6 +238,7 @@ describe('the projection', () => {
       steps: [{ ...step, status: 'succeeded', claim: null, output: 'hi', endedAt: 20 }],
       compactions: [],
       contexts: [],
+      parts: [],
       toolCalls: [{ ...toolCall, status: 'succeeded', endedAt: 20 }],
       seq: 9,
     }

@@ -23,10 +23,30 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 4
+export const PROTOCOL_VERSION = 5
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.6.0'
+export const ENGINE_VERSION = '0.7.0'
+
+export interface ModelInfo {
+  /** Stable catalog identity; the adapter owns the provider's model id. */
+  id: string
+  provider: string
+  label: string
+  contextWindow: number
+  reservedOutput: number
+  reason: 'provider_denied' | 'credentials_missing' | null
+}
+
+export type StepPart = {
+  id: string
+  sessionID: string
+  stepID: string
+  at: number
+} & (
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
+)
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
@@ -87,6 +107,7 @@ export interface InboxItem {
   admittedAt: number
   deliveredAt: number | null
   messageID: string | null
+  model?: string
 }
 
 export interface Message {
@@ -99,6 +120,7 @@ export interface Message {
   at: number
   /** The delivery mode the prompt arrived with, when it came through the inbox. */
   mode?: DeliveryMode
+  model?: string
 }
 
 /** Source values are sent to the provider; only hashes enter the context ledger. */
@@ -261,6 +283,7 @@ export interface EventPayloads {
   'prompt.delivered': { item: InboxItem; message: Message }
   'context.compacted': { compaction: Compaction }
   'context.prepared': { context: StepContext }
+  'step.part': { part: StepPart }
   'step.started': { step: Step }
   'step.resumed': { step: Step; reason: string }
   'step.retry': { step: Step; delay: number; error: StepError }
@@ -308,6 +331,7 @@ export interface SessionDetail {
   toolCalls: ToolCall[]
   compactions: Compaction[]
   contexts: StepContext[]
+  parts: StepPart[]
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }
@@ -324,6 +348,8 @@ export interface CreateSessionRequest {
 
 export interface PromptRequest {
   text: string
+  /** Catalog model chosen when this prompt is admitted. */
+  model?: string
   /** Defaults to `queue`: it waits until the session has no run going. */
   mode?: DeliveryMode
   /**
@@ -374,6 +400,7 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  models: { request: NoInput; response: { models: ModelInfo[]; defaultModel: string } }
   health: { request: NoInput; response: Health }
   listSessions: { request: NoInput; response: SessionsResponse }
   createSession: { request: CreateSessionRequest; response: { session: Session } }
@@ -408,6 +435,7 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'models', method: 'GET', path: '/v1/models' },
   { name: 'health', method: 'GET', path: '/v1/health' },
   { name: 'listSessions', method: 'GET', path: '/v1/sessions' },
   { name: 'createSession', method: 'POST', path: '/v1/sessions', status: 201 },
