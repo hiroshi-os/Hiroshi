@@ -64,6 +64,9 @@ jobs:
         env:
           HIROSHI_TEST_PACKAGED: ${{ github.workspace }}/dist/hiroshi.exe
 
+      - name: Check intentional close does not restart the packaged window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("scripts/smoke-window.ts") -MaxProcesses 6 -MemoryMB 1536 -TimeoutSeconds 45'
+
       - name: Keep what the window looked like
         if: always()
         uses: actions/upload-artifact@v4

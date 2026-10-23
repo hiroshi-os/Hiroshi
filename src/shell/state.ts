@@ -15,7 +15,10 @@ export function clampBounds(bounds: Bounds, area: Bounds): Bounds {
 function valid(value: unknown): WindowState {
   if (!value || typeof value !== 'object') return { ...defaults }
   const input = value as Record<string, unknown>, state = { ...defaults }
-  for (const key of ['width', 'height', 'sidebarWidth', 'panelWidth'] as const) if (typeof input[key] === 'number' && Number.isFinite(input[key]) && input[key] >= 100 && input[key] <= 16384) state[key] = input[key]
+  for (const key of ['width', 'height', 'sidebarWidth', 'panelWidth'] as const) if (typeof input[key] === 'number' && Number.isFinite(input[key])) {
+    const [min, max] = key === 'sidebarWidth' ? [180, 460] : key === 'panelWidth' ? [460, 960] : key === 'width' ? [700, 16384] : [500, 16384]
+    state[key] = Math.min(max, Math.max(min, input[key]))
+  }
   for (const key of ['x', 'y'] as const) if (typeof input[key] === 'number' && Number.isFinite(input[key]) && Math.abs(input[key]) < 100000) state[key] = input[key]
   for (const key of ['panelOpen', 'sidebarCollapsed', 'maximized'] as const) if (typeof input[key] === 'boolean') state[key] = input[key]
   if (typeof input.display === 'string') state.display = input.display

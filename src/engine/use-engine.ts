@@ -58,6 +58,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
   const [selected, setSelected] = useState<string | null>(initialSessionID ?? null)
   const client = useRef<EngineClient | null>(null)
   const session = useRef<string | null>(null)
+  const sessionWorkspace = useRef(workspace)
 
   useEffect(() => {
     if (!enabled) return
@@ -122,6 +123,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
           const detail = await connection.session({ id: chosen.id })
           if (stopped) return
           session.current = chosen.id
+          sessionWorkspace.current = detail.session.cwd
           after = detail.seq
           update((current) =>
             hydrate({ ...current, status: 'ready', health: attached.health, sessions }, detail),
@@ -186,7 +188,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
   }, [])
   const newSession = useCallback(async () => {
     if (!client.current) throw new Error('the engine is not connected')
-    const { session: created } = await client.current.createSession({ cwd: workspace, title: 'New task' })
+    const { session: created } = await client.current.createSession({ cwd: sessionWorkspace.current, title: 'New task' })
     selectSession(created.id)
   }, [workspace, selectSession])
 
