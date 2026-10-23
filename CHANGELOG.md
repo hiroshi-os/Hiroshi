@@ -19,6 +19,26 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.11.0] - 2026-10-23
+
+### Added
+
+- Engine-ordered transcript facts: streaming answers and reasoning, tool requests
+  and results, retries, permissions, context boundaries and command lifecycle.
+  Snapshots and live feeds share one projection, including after reconnect/rewind.
+- Real session sidebar, turn count and run phase in the header. The composer
+  shows Send while idle, Queue while busy, or Steer for the next safe boundary.
+- Session Usage from durable provider token counters, including attempts and
+  archived turns. Missing counters and cost remain explicitly unreported.
+- Two-client daemon integration for both provider adapters, two actual desktop
+  windows, native composer/usage tests and persistence checks.
+
+### Removed
+
+- The Inspector panel, its toggle and resize state. Run status stays in the header.
+- Template threads, workspace selections and unsupported composer controls from
+  the engine-connected cockpit.
+
 ## [0.10.0] - 2026-10-23
 
 ### Added

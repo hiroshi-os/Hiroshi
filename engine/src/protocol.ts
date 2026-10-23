@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 8
+export const PROTOCOL_VERSION = 9
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.10.0'
+export const ENGINE_VERSION = '0.11.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -43,7 +43,9 @@ export type StepPart = {
   sessionID: string
   stepID: string
   at: number
+  attempt?: number
 } & (
+  | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
@@ -418,6 +420,8 @@ export type EngineEvent = {
 
 /** A session and everything the engine has committed about it. */
 export interface SessionDetail {
+  /** Ordered from the durable event log, including retries and boundaries. */
+  transcript?: TranscriptEntry[]
   session: Session
   messages: Message[]
   runs: Run[]
@@ -440,12 +444,22 @@ export interface SessionDetail {
   seq: number
 }
 
+export interface TranscriptEntry {
+  seq: number
+  kind: 'user' | 'markdown' | 'reasoning' | 'code' | 'boundary'
+  text: string
+  messageID?: string
+  stream?: string
+}
+
 export interface RunDetail {
   run: Run
   chunks: RunChunk[]
 }
 
 export interface CreateSessionRequest {
+  /** Attach to the latest session for this workspace, creating it only if absent. */
+  reuseWorkspace?: boolean
   title?: string
   cwd?: string
 }

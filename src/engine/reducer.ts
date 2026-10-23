@@ -9,6 +9,7 @@
  */
 
 import type {
+  TranscriptEntry,
   Checkpoint,
   Rewind,
   Compaction,
@@ -26,6 +27,7 @@ import type {
   Step,
   ToolCall,
 } from '../../engine/src/protocol'
+import { projectTranscript } from '../../engine/src/cockpit'
 
 export type EngineStatus =
   | 'off'
@@ -42,6 +44,8 @@ export interface OutputState {
 }
 
 export interface Snapshot {
+  transcript: TranscriptEntry[]
+  transcriptSeq: number
   status: EngineStatus
   health: Health | null
   error: string | null
@@ -73,6 +77,8 @@ const MEMORY_OUTPUT_LIMIT = 256 * 1024
 
 export function initialSnapshot(): Snapshot {
   return {
+    transcript: [],
+    transcriptSeq: 0,
     status: 'off',
     health: null,
     error: null,
@@ -141,6 +147,8 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   return {
     ...snapshot,
     sessionID: detail.session.id,
+    transcript: detail.transcript ?? [],
+    transcriptSeq: detail.seq,
     sessions: upsertSession(snapshot.sessions, detail.session),
     messages: detail.messages,
     inbox: detail.inbox ?? [],
@@ -173,8 +181,11 @@ function unreachable(event: never): never {
 
 /** Apply one durable event. */
 export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
-  const next = reduce(snapshot, event)
-  if (!snapshot.activeMessageIDs || next === snapshot || event.type === 'rewind.completed') return next
+  if (event.seq <= snapshot.transcriptSeq) return snapshot
+  if (event.sessionID !== snapshot.sessionID && event.type !== 'session.created' && event.type !== 'session.updated') return snapshot
+  let next = reduce(snapshot, event)
+  next = { ...next, transcriptSeq: event.seq, transcript: event.sessionID === snapshot.sessionID ? projectTranscript(snapshot.transcript, event, next.steps) : snapshot.transcript }
+  if (!snapshot.activeMessageIDs || next.messages === snapshot.messages || event.type === 'rewind.completed') return next
   const old = new Set(snapshot.messages.map((message) => message.id))
   const added = next.messages.filter((message) => !old.has(message.id)).map((message) => message.id)
   return added.length ? { ...next, activeMessageIDs: [...(next.activeMessageIDs ?? []), ...added] } : next

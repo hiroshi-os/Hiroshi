@@ -54,7 +54,7 @@ const MARKER = 'hiroshi-from-the-window'
 const FIRST_COMMAND = `echo ${MARKER}`
 /** The second one outlives the window, which is the whole point. */
 const SURVIVOR = 'survived-the-window'
-const SECOND_COMMAND = `bun -e "setTimeout(() => console.log('${SURVIVOR}'), 4000)"`
+const SECOND_COMMAND = `bun -e "setTimeout(() => console.log('${SURVIVOR}'), 30000)"`
 /** A command the session's inbox can be steered past. */
 const INBOX_COMMAND = process.platform === 'win32' ? 'Start-Sleep -Seconds 30' : 'sleep 30'
 /** The prompt admitted while that command is going, delivered by the interrupt. */
@@ -287,7 +287,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     note('the cockpit mounted')
 
     const mounted = await treeText(app)
-    for (const line of ['New Task', 'Search', 'Local', 'master']) {
+    for (const line of ['New Task', 'Search']) {
       check(mounted.includes(line), `the cockpit did not draw "${line}"`)
     }
 
@@ -308,6 +308,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       DAEMON_DEADLINE_MS,
     )
     note('the daemon answered')
+    check((await app.getByTestId('engine-run-status').textContent()).includes('No run'), 'the header invented a run')
 
     await submit(app, FIRST_COMMAND)
     const first = await waitUntil(
@@ -326,8 +327,10 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     await submit(app, INBOX_COMMAND)
     await app.getByTestId('interrupt-session').waitFor({ timeoutMs: STEP_DEADLINE_MS })
 
-    await app.getByTestId('prompt-mode-steer').click()
-    const promptInput = app.getByTestId('prompt-input')
+    await waitUntil(async () => (await app.getByTestId('composer-delivery-mode').textContent()) === 'Queue' || false, 'the main composer to queue while busy')
+    await app.getByTestId('composer-delivery-mode').click()
+    check((await app.getByTestId('composer-delivery-mode').textContent()) === 'Steer', 'the composer cannot steer')
+    const promptInput = app.getByTestId('composer')
     await promptInput.fill(INBOX_PROMPT)
     await promptInput.press('enter')
 
@@ -515,7 +518,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     check((await client.workspaceReview({ id: currentSession.id })).patch.includes('window-before-checkpoint'), 'the diff source does not match the workspace')
     try { await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-review.png') }) } catch {}
     note('Review displays the same changed file and its actual diff')
-    await app.getByTestId('inspector-toggle').click()
+    await app.getByTestId('environment-menu-toggle').click()
     await app.getByTestId('env-commit-push').waitFor()
     await app.getByTestId('env-commit-push').click()
     await app.getByTestId('commit-message').waitFor()
@@ -559,6 +562,21 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       STEP_DEADLINE_MS,
     )
     note('the long command is running, and the window is about to close')
+    await waitUntil(async () => (await app.getByTestId('engine-run-status').textContent()).includes('Running') || false, 'the real command phase in the header')
+    const twin = await openWindow({ HIROSHI_HOME: home, HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture', GPUIX_BACKGROUND: '1' }, workspace)
+    try {
+      await twin.app.getByTestId('composer').waitFor({ timeoutMs: WINDOW_DEADLINE_MS })
+      await waitUntil(async () => (await twin.app.getByTestId('engine-run-status').textContent()).includes('Running') || false, 'the second window to show the same running command')
+      check((await twin.app.getByTestId('engine-run-status').textContent()) === (await app.getByTestId('engine-run-status').textContent()), 'two windows disagree about the run state')
+      check((await twin.app.getByTestId('composer-delivery-mode').textContent()) === 'Queue', 'the second composer cannot see that the engine is busy')
+      await twin.app.getByTestId('run-usage-open').click()
+      await twin.app.getByTestId('engine-usage').waitFor()
+      const usage = await twin.app.getByTestId('engine-usage').textContent()
+      check(usage.includes('reported input tokens') && usage.includes('Cost: not reported'), 'Usage did not draw durable provider counts')
+      await twin.app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-usage.png') })
+      await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-cockpit.png') })
+      note('two real windows agree on engine state; Usage shows provider counts')
+    } finally { await twin.close() }
 
     // Evidence, not an assertion: a live renderer may not implement
     // screenshots, and that is not what this test is about.
@@ -571,6 +589,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       note(`the window did not give a screenshot: ${error instanceof Error ? error.message : String(error)}`)
     }
   } finally {
+    try { await window.app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-final-state.png') }) } catch {}
     await window.close()
     const said = window.output()
     if (said) note(`the app wrote:\n${said}`)
@@ -674,6 +693,13 @@ async function main(): Promise<void> {
       const nodes = await reopened.app.getByTestId('engine-transcript').all()
       check(!nodes.map((node) => flatten(node).join('\n')).join('\n').includes('Tool turn complete: checkpoint-window-change'), 'reopening restored the archived turn into the active conversation')
       note('reopening the cockpit preserved the rewind and its active transcript')
+      const original = (await client.listSessions()).sessions[0]!
+      await reopened.app.getByTestId('new-task').click()
+      await waitUntil(async () => (await reopened.app.getByTestId('engine-run-status').textContent()).includes('No run') || false, 'a newly created engine session to have no run')
+      await waitUntil(async () => !(await treeText(reopened.app)).includes('Rewound workspace and conversation to checkpoint'), 'the new session to clear the old transcript')
+      await reopened.app.getByTestId(`thread-${original.id}`).click()
+      await waitUntil(async () => (await treeText(reopened.app)).includes('Rewound workspace and conversation to checkpoint') || false, 'selecting the original durable session')
+      note('New Task and sidebar selection switch actual engine sessions without leaking transcript state')
     } finally { await reopened.close() }
 
   } catch (error) {

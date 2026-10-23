@@ -14,6 +14,7 @@
 import { Database } from 'bun:sqlite'
 import { dirname } from 'node:path'
 import { mkdirSync } from 'node:fs'
+import { replayTranscript } from './cockpit'
 
 import type {
   Compaction,
@@ -998,6 +999,7 @@ export class Store {
       if (!session) return null
       return {
         session,
+        transcript: replayTranscript((this.#db.query('select * from event where session_id = ? order by seq').all(sessionID) as Row[]).map(toEvent)),
         messages: this.messages(sessionID),
         runs: this.runs(sessionID),
         chunks: this.chunksForSession(sessionID),
