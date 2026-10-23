@@ -27,6 +27,7 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  rewind: 'rewind',
   answerPermission: 'answerPermission',
   toolOutput: 'toolOutput',
   models: 'models',
@@ -49,6 +50,11 @@ const everyEvent: { [Type in EventType]: Type } = {
   'prompt.delivered': 'prompt.delivered',
   'context.compacted': 'context.compacted',
   'context.prepared': 'context.prepared',
+  'checkpoint.created': 'checkpoint.created',
+  'checkpoint.failed': 'checkpoint.failed',
+  'rewind.started': 'rewind.started',
+  'rewind.failed': 'rewind.failed',
+  'rewind.completed': 'rewind.completed',
   'tool.updated': 'tool.updated',
   'permission.requested': 'permission.requested',
   'permission.answered': 'permission.answered',

@@ -8,10 +8,12 @@ export type EngineTurn =
 /** Only engine facts become transcript rows. Streaming output is replaced by
  * its committed assistant message on completion, never shown twice. */
 export function engineTranscript(snapshot: Snapshot): EngineTurn[] {
+  const active = snapshot.activeMessageIDs ? new Set(snapshot.activeMessageIDs) : null
+  const messages = snapshot.messages.filter((message) => !active || active.has(message.id))
   const turns: EngineTurn[] = []
   const steps = new Map<string | null, Snapshot['steps']>()
   for (const step of snapshot.steps) {
-    const assistant = snapshot.messages.find((message) => message.stepID === step.id)
+    const assistant = messages.find((message) => message.stepID === step.id)
     const parentResults = step.parentID ? snapshot.toolCalls.filter((call) => call.stepID === step.parentID && call.resultMessageID) : []
     const anchor = assistant?.id ?? parentResults.at(-1)?.resultMessageID ?? step.messageID
     const group = steps.get(anchor) ?? []
@@ -24,7 +26,7 @@ export function engineTranscript(snapshot: Snapshot): EngineTurn[] {
     group.push(part)
     partsByStep.set(part.stepID, group)
   }
-  for (const message of snapshot.messages) {
+  for (const message of messages) {
     if (message.toolResult) {
       const call = snapshot.toolCalls.find((call) => call.id === message.toolResult!.toolCallID)
       turns.push({ kind: 'code', language: 'text', source: `${call?.tool ?? 'Tool'} · ${message.toolResult.status}\nCall: ${message.toolResult.toolCallID}\n${message.text}` })

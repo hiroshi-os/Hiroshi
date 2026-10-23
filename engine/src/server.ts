@@ -19,6 +19,7 @@ import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
 import type { Steps } from './steps'
+import type { Checkpoints } from './checkpoints'
 import type { Tools } from './tools/tools'
 import type { Store } from './store'
 
@@ -27,6 +28,7 @@ export interface ServerOptions {
   runs: Runs
   sessions: Sessions
   steps: Steps
+  checkpoints?: Checkpoints
   tools?: Tools
   catalog?: ProviderCatalog
   log: Logger
@@ -145,6 +147,12 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'rewind': {
+        if (!options.checkpoints) throw notFound('checkpoint service')
+        const input = await body<{ checkpointID: string; key: string }>(request)
+        return json({ rewind: options.checkpoints.restore(params.id!, input.checkpointID, input.key) }, status)
+      }
+
       case 'answerPermission': {
         if (!options.tools) throw notFound('permission service')
         const input = await body<{ decision: 'allow' | 'deny'; remember?: boolean }>(request)
@@ -193,6 +201,7 @@ export function startServer(
 
       case 'startRun': {
         const input = await body<StartRunRequest>(request)
+        options.checkpoints?.assertReady(params.id!, input.cwd)
         return json({ run: runs.start(params.id, input.command ?? '', input.cwd) }, status)
       }
 

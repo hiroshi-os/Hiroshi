@@ -16,6 +16,7 @@ window and persists its work in SQLite. It supports:
 - Streaming steps with bounded retries and explicit crash recovery.
 - Context budgeting and compaction that preserve the full transcript.
 - Model-requested tools with cockpit approvals, policy and durable results.
+- Pre-prompt checkpoints that rewind workspace files and conversation together.
 - One typed HTTP protocol and a replayable event feed for multiple clients.
 
 The Terminal surface connects to the engine and shows runs, steps, pending
@@ -24,14 +25,14 @@ engine model. OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
 demonstrations. See [provider configuration](docs/providers.mdx) and
-[tools and permissions](docs/tools.mdx).
+[tools and permissions](docs/tools.mdx), and [checkpoints](docs/checkpoints.mdx).
 
 Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).
 See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.
 
 ## Run locally
 
-Use the Bun version pinned in [`.bun-version`](.bun-version). From the repository
+Install Git for workspace checkpoints. Use the Bun version pinned in [`.bun-version`](.bun-version). From the repository
 root:
 
 ```sh

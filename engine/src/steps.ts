@@ -39,6 +39,7 @@ import type { Tools } from './tools/tools'
 export interface StepsOptions {
   provider: Provider
   context?: ContextOptions
+  blocked?: (sessionID: string) => boolean
   tools?: Tools
   selectProvider?: (model?: string) => Provider
   /**
@@ -59,6 +60,7 @@ interface ActiveStep {
 }
 
 export class Steps {
+  readonly #blocked?: (sessionID: string) => boolean
   readonly #tools?: Tools
   readonly #store: Store
   readonly #log: Logger
@@ -73,6 +75,7 @@ export class Steps {
 
   constructor(store: Store, log: Logger, options: StepsOptions) {
     this.#store = store
+    this.#blocked = options.blocked
     this.#tools = options.tools
     this.#log = log.child('steps')
     this.#provider = options.provider
@@ -89,7 +92,7 @@ export class Steps {
 
   /** Whether a session has a step that has not ended. */
   busy(sessionID: string): boolean {
-    return this.#store.steps(sessionID).some((step) => step.status === 'running') || (this.#tools?.busy(sessionID) ?? false)
+    return [...this.#active.keys()].some((id) => this.#store.step(id)?.sessionID === sessionID) || this.#store.steps(sessionID).some((step) => step.status === 'running') || (this.#tools?.busy(sessionID) ?? false)
   }
 
   /**
@@ -108,7 +111,8 @@ export class Steps {
    * boundary decision.
    */
   start(sessionID: string): Step | null {
-    if (this.#stopping) return null
+    if (this.#stopping || this.#blocked?.(sessionID)) return null
+    if (this.#store.activeMessages(sessionID).at(-1)?.rewindID) return null
     const message = this.#store.lastUserMessage(sessionID)
     if (!message) return null
 
@@ -183,6 +187,7 @@ export class Steps {
     const resumed: Step[] = []
 
     for (const step of claimed) {
+      if (this.#blocked?.(step.sessionID)) continue
       const current = this.#store.step(step.id)
       if (!current || current.status !== 'running') continue
 

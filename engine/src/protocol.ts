@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 6
+export const PROTOCOL_VERSION = 7
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.8.0'
+export const ENGINE_VERSION = '0.9.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -86,7 +86,7 @@ export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
  */
 export type DeliveryMode = 'steer' | 'queue'
 
-export type InboxState = 'pending' | 'delivered'
+export type InboxState = 'pending' | 'delivered' | 'cancelled'
 
 /**
  * One prompt, from the moment it is admitted to the moment it is delivered.
@@ -109,6 +109,35 @@ export interface InboxItem {
   deliveredAt: number | null
   messageID: string | null
   model?: string
+}
+
+/** A pre-prompt workspace tree and the exact active conversation at that boundary. */
+export interface Checkpoint {
+  id: string
+  sessionID: string
+  promptID: string | null
+  kind: 'prompt' | 'safety'
+  label: string
+  cwd: string
+  commit: string
+  tree: string
+  ref: string
+  messageIDs: string[]
+  at: number
+}
+
+export interface GitEntry { mode: string; hash: string }
+export interface Rewind {
+  id: string
+  sessionID: string
+  checkpointID: string
+  safetyCheckpointID: string
+  key: string
+  state: 'pending' | 'completed'
+  plan: { path: string; before: GitEntry | null; after: GitEntry | null }[]
+  error: string | null
+  at: number
+  completedAt: number | null
 }
 
 export interface ModelToolRequest { id: string; name: string; arguments: string }
@@ -155,6 +184,7 @@ export interface Message {
   /** The delivery mode the prompt arrived with, when it came through the inbox. */
   mode?: DeliveryMode
   model?: string
+  rewindID?: string
   providerState?: { provider: 'openai' | 'anthropic'; value: unknown }[]
   stepID?: string
   toolCalls?: ModelToolRequest[]
@@ -331,7 +361,7 @@ export interface EventPayloads {
   'session.created': { session: Session }
   'session.updated': { session: Session }
   'prompt.admitted': { item: InboxItem }
-  'prompt.delivered': { item: InboxItem; message: Message }
+  'prompt.delivered': { item: InboxItem; message: Message; checkpoint?: Checkpoint }
   'context.compacted': { compaction: Compaction }
   'context.prepared': { context: StepContext }
   'step.part': { part: StepPart }
@@ -342,6 +372,11 @@ export interface EventPayloads {
   'step.completed': { step: Step; message: Message | null; toolCalls?: ToolCall[] }
   'step.failed': { step: Step }
   'step.cancelled': { step: Step }
+  'checkpoint.created': { checkpoint: Checkpoint }
+  'checkpoint.failed': { itemID: string; error: string }
+  'rewind.started': { rewind: Rewind }
+  'rewind.failed': { rewind: Rewind }
+  'rewind.completed': { rewind: Rewind; message: Message; activeMessageIDs: string[]; cancelledInboxIDs: string[] }
   'tool.updated': { call: ToolCall; message?: Message }
   'permission.requested': { permission: Permission; call: ToolCall }
   'permission.answered': { permission: Permission; saved?: SavedPermission }
@@ -387,6 +422,10 @@ export interface SessionDetail {
   contexts: StepContext[]
   parts: StepPart[]
   permissions: Permission[]
+  checkpoints: Checkpoint[]
+  rewinds: Rewind[]
+  activeMessageIDs: string[]
+  checkpointError: string | null
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }
@@ -455,6 +494,7 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  rewind: { request: SessionRef & { checkpointID: string; key: string }; response: { rewind: Rewind } }
   answerPermission: { request: { id: string; decision: 'allow' | 'deny'; remember?: boolean }; response: { permission: Permission } }
   toolOutput: { request: { id: string }; response: { path: string; text: string } }
   models: { request: NoInput; response: { models: ModelInfo[]; defaultModel: string } }
@@ -492,6 +532,7 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'rewind', method: 'POST', path: '/v1/sessions/:id/rewind' },
   { name: 'answerPermission', method: 'POST', path: '/v1/permissions/:id/answer' },
   { name: 'toolOutput', method: 'GET', path: '/v1/tools/:id/output' },
   { name: 'models', method: 'GET', path: '/v1/models' },

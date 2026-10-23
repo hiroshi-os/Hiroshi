@@ -11,6 +11,7 @@
  */
 
 import { engineTranscript } from './src/engine/transcript'
+import { CheckpointHistory } from './src/components/CheckpointHistory'
 import { ToolActivity } from './src/components/ToolActivity'
 import { ContextHistory } from './src/components/ContextHistory'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -3412,8 +3413,9 @@ function SurfacePanel({
   const engineRunning = engineRuns.some((run) => run.status === 'running') || engine.snapshot.toolCalls.some((call) => call.callID && !call.resultMessageID)
   // Delivered counts turns, not transcript lines: the assistant reply to a
   // prompt must not make the inbox look like it delivered two prompts.
-  const delivered = engine.snapshot.messages.filter((message) => message.role === 'user').length
-  const engineSteps = engine.snapshot.steps
+  const activeMessages = new Set(engine.snapshot.activeMessageIDs ?? engine.snapshot.messages.map((message) => message.id))
+  const delivered = engine.snapshot.messages.filter((message) => message.role === 'user' && activeMessages.has(message.id)).length
+  const engineSteps = engine.snapshot.steps.filter((step) => !step.messageID || activeMessages.has(step.messageID))
   const latestStep = engineSteps.length > 0 ? engineSteps[engineSteps.length - 1]! : null
   const stepColor = !latestStep
     ? C.ghost
@@ -6255,7 +6257,12 @@ export function ChatApp({
           project={projectLabel}
         />
         {engineEnabled && (
-          <ToolActivity permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls}
+          <CheckpointHistory checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
+            messages={engineView.snapshot.messages} activeMessageIDs={engineView.snapshot.activeMessageIDs}
+            checkpointError={engineView.snapshot.checkpointError} onRestore={engineView.rewind} />
+        )}
+        {engineEnabled && (
+          <ToolActivity permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls.filter((call) => !call.messageID || !engineView.snapshot.activeMessageIDs || engineView.snapshot.activeMessageIDs.includes(call.messageID))}
             onAnswer={engineView.answerPermission} onOutput={engineView.toolOutput} />
         )}
         {engineEnabled && engineView.snapshot.error && (
