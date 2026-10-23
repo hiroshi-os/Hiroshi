@@ -1,55 +1,56 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { launch } from '@gpuix/react/automation'
+import { stopEngine } from './src/engine/supervisor'
 
-const outDir = 'screenshots'
+const outDir = path.resolve('screenshots')
 mkdirSync(outDir, { recursive: true })
+const home = mkdtempSync(path.join(os.tmpdir(), 'hiroshi-screenshot-'))
+const workspace = path.join(home, 'workspace')
+mkdirSync(workspace)
 
-const app = await launch({
-  command: 'bun',
-  args: ['app.tsx'],
-  env: { GPUIX_BACKGROUND: '1' },
-})
-
-// Wait for UI to mount
-await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
-await new Promise((r) => setTimeout(r, 400))
-
-// 1. Capture Main Empty State (New chat page matching media_1792361923259_91e4dedb.png)
-await app.screenshot({ path: path.join(outDir, 'new-task-empty.png') })
-console.log('[screenshot] wrote screenshots/new-task-empty.png')
-
-// 2. Open Environment & Tasks menu by clicking info (i) button (matching media_1792361940172_1d8741c1.png)
-await app.getByTestId('inspector-toggle').click()
-await app.getByTestId('env-commit-push').waitFor({ timeoutMs: 10_000 })
-await new Promise((r) => setTimeout(r, 200))
-await app.screenshot({ path: path.join(outDir, 'environment-menu.png') })
-console.log('[screenshot] wrote screenshots/environment-menu.png')
-
-// 3. Open Commit & Push modal by clicking "Commit or push" (matching media_1792361952266_f70665e0.png)
-await app.getByTestId('env-commit-push').click()
-await app.getByTestId('commit-modal-close').waitFor({ timeoutMs: 10_000 })
-await new Promise((r) => setTimeout(r, 300))
-await app.screenshot({ path: path.join(outDir, 'commit-push-modal.png') })
-console.log('[screenshot] wrote screenshots/commit-push-modal.png')
-
-// 4. Close modal and test Compare Branch -> opens Review in right sidebar
-await app.getByTestId('commit-modal-close').click()
-await new Promise((r) => setTimeout(r, 300))
-await app.getByTestId('inspector-toggle').click()
-await app.getByTestId('env-compare-branch').waitFor({ timeoutMs: 10_000 })
-await app.getByTestId('env-compare-branch').click()
-await new Promise((r) => setTimeout(r, 400))
-await app.screenshot({ path: path.join(outDir, 'review-sidebar.png') })
-console.log('[screenshot] wrote screenshots/review-sidebar.png')
-
-// 5. Close right panel, hover window-close button to test close hover state & tooltip
-await app.getByTestId('surface-panel-toggle').click()
-await new Promise((r) => setTimeout(r, 300))
-await app.mouse.move(app.getByTestId('window-close'))
-await new Promise((r) => setTimeout(r, 300))
-await app.screenshot({ path: path.join(outDir, 'window-controls-hover.png') })
-console.log('[screenshot] wrote screenshots/window-controls-hover.png')
-
-await app.close()
-console.log('[screenshot] all requested views captured successfully!')
+try {
+  const app = await launch({
+    command: process.execPath,
+    args: [path.resolve('app.tsx')],
+    cwd: workspace,
+    env: { GPUIX_BACKGROUND: '1', HIROSHI_HOME: home },
+  })
+  const capture = async (name: string) => {
+    await Bun.sleep(400)
+    await app.screenshot({ path: path.join(outDir, `${name}.png`) })
+    console.log(`[screenshot] wrote ${name}.png`)
+  }
+  try {
+    await app.getByTestId('composer').waitFor({ timeoutMs: 60_000 })
+    await capture('new-task-empty')
+    await app.getByTestId('environment-menu-toggle').click()
+    await app.getByTestId('env-commit-push').waitFor({ timeoutMs: 10_000 })
+    await capture('environment-menu')
+    await app.getByTestId('env-commit-push').click()
+    await app.getByTestId('commit-modal-close').waitFor({ timeoutMs: 10_000 })
+    await capture('commit-push-modal')
+    await app.getByTestId('commit-modal-close').click()
+    await Bun.sleep(300)
+    await app.getByTestId('environment-menu-toggle').click()
+    await app.getByTestId('env-compare-branch').waitFor({ timeoutMs: 10_000 })
+    await app.getByTestId('env-compare-branch').click()
+    await capture('review-sidebar')
+    await app.getByTestId('surface-panel-toggle').click()
+    await Bun.sleep(300)
+    if (process.platform !== 'darwin') {
+      const bounds = await app.getByTestId('window-close').bounds()
+      await app.mouse.move({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 })
+      await capture('window-controls-hover')
+    }
+  } finally {
+    await app.close()
+  }
+} finally {
+  await stopEngine({ home })
+  for (let i = 0; i < 20; i++) {
+    try { rmSync(home, { recursive: true, force: true }); break }
+    catch { await Bun.sleep(100) }
+  }
+}

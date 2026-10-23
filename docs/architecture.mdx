@@ -34,16 +34,19 @@ layout.
 
 | path | what lives there |
 | :--- | :--- |
-| `app.tsx` | the whole cockpit: components, theme, mock data |
+| `app.tsx` | the cockpit tree, local styles and preview fixtures |
 | `engine/src/` | the daemon: the wire, the store, runs, the server |
 | `src/engine/` | the cockpit's side: discovery, client, reducer, hook |
 | `src/window-drag.ts` | the Win32 plumbing behind the draggable titlebar |
 | `assets/icons/` | the icon set, as SVG |
-| `src/theme.ts`, `src/types.ts` | the shared theme and the types |
-| `src/data/mock-data.ts` | the mock conversations and the swarm data |
+| `src/components/` | engine-backed transcript, tools, workspace and daemon views |
+| `src/shell/`, `desktop.ts` | packaged window lifecycle, preferences, links and updates |
+| `web-entry.tsx`, `web.ts` | browser fixture entry and Wasm bundler/server |
+| `src/window-drag-browser.ts`, `src/shell/geometry-browser.ts` | browser adapters with OS window operations disabled |
 | `app.test.tsx`, `titlebar-drag.test.tsx` | the integration suite |
 | `engine/test/` | the engine suite, run by `bun test engine` |
-| `screenshot.ts`, `test-animations.ts` | scripts that drive the running app |
+| `integration.ts`, `screenshot.ts` | scripts that drive isolated real windows |
+| `scripts/browser-smoke.ts` | isolated headless Chrome rendering and composer check |
 
 ## The events
 

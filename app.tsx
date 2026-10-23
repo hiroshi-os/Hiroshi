@@ -1,13 +1,14 @@
 /**
- * The GPUIX chat example, rendered directly on the GPU.
+ * Hiroshi, rendered directly on the GPU with GPUIX.
  *
  * It demonstrates a transparent titlebar, traffic lights in the sidebar,
  * graphite surfaces, composer chips, and a workspace footer. Threads, sends,
- * and chrome controls are interactive. Replies stay in this demo.
+ * and chrome controls are interactive. Desktop work belongs to the engine;
+ * browser previews and tests use the isolated demo fixture.
  *
- * Run on desktop: cd examples && bun --hot chat.tsx
- * Run in a browser: bun run web
- * Slow CPU: THROTTLE=utility bun --hot chat.tsx
+ * Run on desktop: bun run dev
+ * Run in a browser: bun run web:dev
+ * Slow CPU: THROTTLE=utility bun run dev
  */
 
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
@@ -1280,7 +1281,7 @@ function WindowControls() {
   const isDarwin = typeof process !== 'undefined' && process.platform === 'darwin'
   const [hovered, setHovered] = useState<'minimize' | 'maximize' | 'close' | null>(null)
   const [maximized, setMaximized] = useState(false)
-  if (isDarwin) return null
+  if (isDarwin || typeof document !== 'undefined') return null
 
   return (
     <div
