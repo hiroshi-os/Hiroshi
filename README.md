@@ -35,6 +35,15 @@ demonstrations. See [provider configuration](docs/providers.mdx) and
 Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).
 See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.
 
+## Releases
+
+Download [Hiroshi releases](https://github.com/hiroshi-os/Hiroshi/releases/latest)
+for Windows x64, macOS arm64 or Linux x64. Each archive includes the compiled
+cockpit and its engine sidecar. Release archives and delta manifests have
+GitHub/Sigstore provenance signatures; OS publisher certificates are not included.
+See [the desktop shell guide](docs/shell.mdx) for verification, window restoration,
+deep links and delta updates.
+
 ## Run locally
 
 Install Git for workspace checkpoints. Use the Bun version pinned in [`.bun-version`](.bun-version). From the repository

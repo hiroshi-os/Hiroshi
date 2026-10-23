@@ -42,6 +42,7 @@
               "architecture",
               "engine",
               "cockpit",
+              "shell",
               "providers",
               "tools",
               "checkpoints",

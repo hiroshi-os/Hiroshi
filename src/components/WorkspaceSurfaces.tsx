@@ -33,8 +33,8 @@ function useReview(engine: EngineHandle, active: boolean, base?: string) {
   return { review, error, refresh: () => setTick((value) => value + 1) }
 }
 
-export function FilesSurface({ engine, active }: { engine: EngineHandle; active: boolean }) {
-  const [directory, setDirectory] = useState(''), [selected, setSelected] = useState('')
+export function FilesSurface({ engine, active, initialFile, initialLine }: { engine: EngineHandle; active: boolean; initialFile?: string; initialLine?: number }) {
+  const [directory, setDirectory] = useState(initialFile?.split('/').slice(0, -1).join('/') ?? ''), [selected, setSelected] = useState(initialFile ?? '')
   const [listing, setListing] = useState<WorkspaceDirectory | null>(null), [file, setFile] = useState<WorkspaceFile | null>(null)
   const [review, setReview] = useState<WorkspaceReview | null>(null), [error, setError] = useState(''), [tick, setTick] = useState(0)
   const changes = signature(engine)
@@ -78,6 +78,7 @@ export function FilesSurface({ engine, active }: { engine: EngineHandle; active:
       {listing?.truncated && <text style={{ fontSize: 11, color: muted }}>{'Directory limited to 500 entries.'}</text>}
     </div>
     {selected && <text style={{ fontSize: 11, color: muted }}>{selected}</text>}
+    {file && selected === initialFile && initialLine && <text testId="file-line-target" style={{ fontSize: 12, color: '#e7aa81' }}>{`${initialLine}: ${file.text.split(/\r?\n/)[initialLine - 1] ?? 'Line unavailable in this preview'}`}</text>}
     {file && <div testId="workspace-file-content" style={{ flexGrow: 1, minHeight: 100, overflow: 'scroll' }}>
       {file.binary ? <text style={{ fontSize: 12, color: muted }}>{`Binary file · ${file.bytes} bytes`}</text> : <code code={file.text} path={file.path} showLineNumbers style={{ fontSize: 12, color: ink }} />}
       {file.truncated && <text style={{ fontSize: 11, color: '#e7aa81' }}>{'File preview truncated at 256 KiB.'}</text>}

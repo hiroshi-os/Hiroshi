@@ -11,12 +11,13 @@
  * running commands for the person who is about to press the button.
  */
 
-import { PROTOCOL_VERSION, type Health } from '../../engine/src/protocol'
+import { ENGINE_VERSION, PROTOCOL_VERSION, type Health } from '../../engine/src/protocol'
+import { packagedBuild, allowEngineSpawn, allowSourceRuntime } from '../shell/runtime'
 import { discover, localPaths, probe, readRegistry, processAlive, type LocalPaths } from './discovery'
 
 export type AttachResult =
   | { status: 'ready'; url: string; token: string; health: Health; spawned: boolean }
-  | { status: 'mismatch'; health: Health; expected: number; url: string; pid: number }
+  | { status: 'mismatch'; health: Health; expected: number; expectedVersion: string; url: string; pid: number }
   | { status: 'unavailable'; reason: string }
   | { status: 'failed'; reason: string }
 
@@ -33,15 +34,19 @@ function nodePath(): typeof import('node:path') {
 
 function engineCommand(home: string, workspace: string): string[] {
   const explicit = typeof process !== 'undefined' ? process.env.HIROSHI_ENGINE : undefined
-  if (explicit) return [explicit, 'serve', '--data-dir', home, '--workspace', workspace]
+  if (explicit) {
+    if (nodePath().resolve(explicit).toLowerCase() === nodePath().resolve(process.execPath).toLowerCase()) throw new Error('The cockpit cannot be its own engine')
+    return [explicit, 'serve', '--data-dir', home, '--workspace', workspace]
+  }
 
   const path = nodePath()
-  if (Bun.isStandaloneExecutable) {
+  if (packagedBuild) {
     const suffix = process.platform === 'win32' ? '.exe' : ''
     return [path.join(path.dirname(process.execPath), `hiroshi-engine${suffix}`), 'serve', '--data-dir', home, '--workspace', workspace]
   }
 
   // Running from source: the cockpit and the engine are the same checkout.
+  allowSourceRuntime(path.basename(process.execPath))
   const entry = path.resolve(import.meta.dir, '../../engine/src/index.ts')
   return [process.execPath, entry, 'serve', '--data-dir', home, '--workspace', workspace]
 }
@@ -83,6 +88,7 @@ function logSince(file: string, offset: number): string {
 }
 
 function spawnEngine(home: string, workspace: string, log: string): Child {
+  allowEngineSpawn(process.env.HIROSHI_ENGINE_LAUNCH_DEPTH)
   // `node:child_process` is required lazily, like `node:path`, so a browser
   // bundle can carry this module and never reach a spawn.
   const { spawn } = require('node:child_process') as typeof import('node:child_process')
@@ -100,7 +106,7 @@ function spawnEngine(home: string, workspace: string, log: string): Child {
     stdio: 'ignore',
     detached: true,
     windowsHide: true,
-    env: { ...process.env, HIROSHI_HOME: home },
+    env: { ...process.env, HIROSHI_HOME: home, HIROSHI_ENGINE_LAUNCH_DEPTH: '1' },
   })
   proc.unref()
 
@@ -139,11 +145,12 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
 
   const existing = await discover(paths.registry)
   if (existing.state === 'running') {
-    if (existing.health.protocol !== PROTOCOL_VERSION) {
+    if (existing.health.protocol !== PROTOCOL_VERSION || existing.health.version !== ENGINE_VERSION) {
       return {
         status: 'mismatch',
         health: existing.health,
         expected: PROTOCOL_VERSION,
+        expectedVersion: ENGINE_VERSION,
         url: existing.record.url,
         pid: existing.record.pid,
       }
@@ -167,11 +174,12 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
     await sleep(120)
     const current = await discover(paths.registry)
     if (current.state === 'running') {
-      if (current.health.protocol !== PROTOCOL_VERSION) {
+      if (current.health.protocol !== PROTOCOL_VERSION || current.health.version !== ENGINE_VERSION) {
         return {
           status: 'mismatch',
           health: current.health,
           expected: PROTOCOL_VERSION,
+          expectedVersion: ENGINE_VERSION,
           url: current.record.url,
           pid: current.record.pid,
         }
@@ -184,7 +192,8 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
       if (record && record.pid !== child.pid && processAlive(record.pid)) {
         // Another window won the race; adopt its daemon.
         const health = await probe(record)
-        if (health) return ready(record, health, false)
+        if (health) return health.protocol === PROTOCOL_VERSION && health.version === ENGINE_VERSION ? ready(record, health, false)
+          : { status: 'mismatch', health, expected: PROTOCOL_VERSION, expectedVersion: ENGINE_VERSION, url: record.url, pid: record.pid }
       }
       const detail = child.diagnostics()
       return {

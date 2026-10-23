@@ -64,7 +64,17 @@ export class WorkspaceFiles {
   }
 }
 
+let activeGit = 0
+const waitingGit: (() => void)[] = []
+/** Git for Windows can itself spawn another Git process. Bound concurrent
+ * reads across all cockpit windows rather than multiplying process bursts. */
 export async function git(cwd: string, args: string[], limit = 1024 * 1024) {
+  if (activeGit >= 2) await new Promise<void>((resolve) => waitingGit.push(resolve))
+  else activeGit++
+  try { return await runGit(cwd, args, limit) }
+  finally { const next = waitingGit.shift(); if (next) next(); else activeGit-- }
+}
+async function runGit(cwd: string, args: string[], limit: number) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')))
   const proc = Bun.spawn({ cmd: ['git', '-c', 'core.fsmonitor=false', '-C', cwd, ...args], env: { ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
     stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true })

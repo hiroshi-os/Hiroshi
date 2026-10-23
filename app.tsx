@@ -14,6 +14,10 @@ import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } fro
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
+import { launchLink, parseShellLink } from './src/shell/links'
+import { readWindowState, saveWindowState } from './src/shell/state'
+import { trackWindow, nextNativeLink } from './src/shell/geometry'
+import { packagedBuild } from './src/shell/runtime'
 import { CheckpointHistory } from './src/components/CheckpointHistory'
 import { ToolActivity } from './src/components/ToolActivity'
 import { ContextHistory } from './src/components/ContextHistory'
@@ -3323,6 +3327,8 @@ function TerminalRun({
 }
 
 function SurfacePanel({
+  initialFile,
+  initialLine,
   activeSurface,
   onChangeSurface,
   onClose,
@@ -3330,6 +3336,8 @@ function SurfacePanel({
   open = true,
   engine,
 }: {
+  initialFile?: string
+  initialLine?: number
   activeSurface: SurfaceKind
   onChangeSurface: (surface: SurfaceKind) => void
   onClose: () => void
@@ -4197,7 +4205,7 @@ function SurfacePanel({
       )}
 
       <BrowserSurface engine={engine} active={open && activeSurface === 'browser'} />
-      <FilesSurface engine={engine} active={open && activeSurface === 'files'} />
+      <FilesSurface engine={engine} active={open && activeSurface === 'files'} initialFile={initialFile} initialLine={initialLine} />
       <ReviewSurface engine={engine} active={open && activeSurface === 'review'} />
           </motion.div>
         </AnimatePresence>
@@ -5546,6 +5554,8 @@ export function ChatApp({
    */
   engine?: boolean
 } = {}) {
+  const [shellInitial] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? readWindowState(process.cwd()) : null)
+  const [shellLink, setShellLink] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? launchLink() : null)
   const [conversations, setConversations] = useState(() =>
     CONVERSATIONS.map((conversation) => ({
       ...conversation,
@@ -5554,15 +5564,15 @@ export function ChatApp({
   )
   const [activeId, setActiveId] = useState('task-new')
   const [nav, setNav] = useState({ stack: ['task-new'], index: 0 })
-  const [collapsed, setCollapsed] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [collapsed, setCollapsed] = useState(shellInitial?.sidebarCollapsed ?? false)
+  const [sidebarWidth, setSidebarWidth] = useState(shellInitial?.sidebarWidth ?? 260)
   // The surface picker is a 2×2 grid of 196px cards inside 24px padding, so
   // the panel needs 452px before it can show the picker without clipping.
-  const [rightPanelWidth, setRightPanelWidth] = useState(480)
+  const [rightPanelWidth, setRightPanelWidth] = useState(shellInitial?.panelWidth ?? 480)
   const [resizing, setResizing] = useState<'left' | 'right' | null>(null)
   const resizeOrigin = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 0 })
-  const [rightPanelOpen, setRightPanelOpen] = useState(false)
-  const [activeSurface, setActiveSurface] = useState<SurfaceKind>('none')
+  const [rightPanelOpen, setRightPanelOpen] = useState(!!shellLink?.file || (shellInitial?.panelOpen ?? false))
+  const [activeSurface, setActiveSurface] = useState<SurfaceKind>(shellLink?.file ? 'files' : shellInitial?.surface ?? 'none')
   const [settingsInitialSection, setSettingsInitialSection] = useState('general')
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat')
   const [overlay, setOverlay] = useState<'search' | null>(null)
@@ -5689,8 +5699,27 @@ export function ChatApp({
   // The daemon is the only owner of a run. The cockpit attaches and draws.
   const engineView = useEngine({
     enabled: engineEnabled,
+    initialSessionID: shellLink?.sessionID ?? shellInitial?.sessionID,
     workspace: typeof process !== 'undefined' ? process.cwd() : '',
   })
+  const actualWorkspace = engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
+  useEffect(() => {
+    if (!engineEnabled || !renderer?.getWindowSize || typeof Bun === 'undefined') return
+    const getWindowSize = () => renderer.getWindowSize!()
+    const stop = trackWindow({ getWindowSize }, process.cwd())
+    const beat = setInterval(() => {
+      getWindowSize(); process.send?.({ type: 'hiroshi.window.alive' })
+      const pending = nextNativeLink()
+      if (pending) { try { const link = parseShellLink(pending); setShellLink(link); engineView.selectSession(link.sessionID); if (link.file) { setRightPanelOpen(true); setActiveSurface('files') } } catch (error) { console.error(String(error)) } }
+    }, 750)
+    beat.unref()
+    process.send?.({ type: 'hiroshi.window.alive' })
+    return () => { stop(); clearInterval(beat) }
+  }, [engineEnabled, renderer])
+  useEffect(() => {
+    if (!engineEnabled || typeof Bun === 'undefined') return
+    try { saveWindowState(process.cwd(), { sidebarCollapsed: collapsed, sidebarWidth, panelWidth: rightPanelWidth, panelOpen: rightPanelOpen, surface: activeSurface, ...(engineView.snapshot.sessionID ? { sessionID: engineView.snapshot.sessionID } : {}) }) } catch {}
+  }, [engineEnabled, collapsed, sidebarWidth, rightPanelWidth, rightPanelOpen, activeSurface, engineView.snapshot.sessionID])
   const reportedModels: typeof MODELS = engineView.snapshot.models.map((item) => ({
     id: item.id,
     label: `${item.label}${item.reason === 'provider_denied' ? ' · denied' : item.reason === 'credentials_missing' ? ' · needs credential' : ''}`,
@@ -5702,7 +5731,7 @@ export function ChatApp({
     : model
   const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
   const runView = cockpit(engineView.snapshot)
-  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === (typeof process !== 'undefined' ? process.cwd() : '')).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
+  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === actualWorkspace).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
   const latestEngineOutput = engineView.snapshot.steps.at(-1)?.output
   useEffect(() => {
     if (!engineEnabled || shownTurns.length === 0) return
@@ -5836,7 +5865,7 @@ export function ChatApp({
           includeSafeMdx={engineEnabled ? false : showSafeMdx}
           listRef={listRef}
           onRetry={engineEnabled ? undefined : onRetry}
-          project={engineEnabled ? engineView.snapshot.health?.workspace ?? 'workspace' : projectLabel}
+          project={engineEnabled ? actualWorkspace : projectLabel}
         />
         {engineEnabled && (
           <CheckpointHistory checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
@@ -5891,7 +5920,7 @@ export function ChatApp({
           mode={mode}
           onModeChange={setMode}
         />
-        {engineEnabled ? <text testId="engine-workspace" style={{ fontSize: 11, color: C.tertiary, padding: 10 }}>{engineView.snapshot.health?.workspace ?? 'Connecting to workspace…'}</text> : <WorkspaceFooter
+        {engineEnabled ? <text testId="engine-workspace" style={{ fontSize: 11, color: C.tertiary, padding: 10 }}>{actualWorkspace}</text> : <WorkspaceFooter
           project={project}
           onProjectChange={setProject}
           workspace={workspace}
@@ -5915,12 +5944,14 @@ export function ChatApp({
       >
         <div style={{ width: rightPanelWidth, height: '100%', flexShrink: 0, display: 'flex' }}>
           <SurfacePanel
-            key={engineEnabled ? engineView.snapshot.sessionID : 'demo'}
+            initialFile={shellLink?.file}
+            initialLine={shellLink?.line}
+            key={engineEnabled ? `${engineView.snapshot.sessionID}:${shellLink?.file ?? ''}:${shellLink?.line ?? ''}` : 'demo'}
             open={rightPanelOpen}
             activeSurface={activeSurface}
             onChangeSurface={setActiveSurface}
             onClose={() => setRightPanelOpen(false)}
-            project={engineEnabled ? engineView.snapshot.health?.workspace ?? '' : project}
+            project={engineEnabled ? actualWorkspace : project}
             engine={engineView}
           />
         </div>
@@ -6016,16 +6047,17 @@ export default HiroshiApp
 
 const isEntryPoint =
   typeof Bun !== 'undefined'
-    ? Bun.isStandaloneExecutable || Bun.main === import.meta.path
+    ? packagedBuild || process.env.HIROSHI_WINDOW_CHILD === '1' || Bun.main === import.meta.path
     : typeof process !== 'undefined' &&
       (process.argv[1]?.endsWith('chat.tsx') || process.argv[1]?.endsWith('app.tsx'))
 
 if (isEntryPoint) {
   applyMacCpuThrottleFromEnv()
+  const saved = readWindowState(process.cwd())
   render(<ChatApp turnCount={0} includeSafeMdx={false} engine />, {
     title: 'Hiroshi · Multi-Agent Orchestrator',
-    width: 1180,
-    height: 820,
+    width: saved.width,
+    height: saved.height,
     titlebarTransparent: true,
     windowBackground: 'blurred',
     trafficLightX: 16,

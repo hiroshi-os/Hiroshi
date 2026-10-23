@@ -146,14 +146,16 @@ async function waitUntil<T>(
 }
 
 interface WindowSession {
+  pid: number
   app: App
   /** Everything the app itself wrote, for a failure message. */
   output: () => string
   close: () => Promise<void>
 }
 
-async function openWindow(env: NodeJS.ProcessEnv, workspace: string): Promise<WindowSession> {
-  const child = spawn(process.execPath, [path.resolve(import.meta.dir, 'app.tsx')], {
+async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: string[] = []): Promise<WindowSession> {
+  const packaged = process.env.HIROSHI_TEST_PACKAGED
+  const child = spawn(packaged ?? process.execPath, packaged ? ['--window', ...args] : [path.resolve(import.meta.dir, 'app.tsx'), ...args], {
     cwd: workspace,
     env: { ...process.env, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -193,6 +195,7 @@ async function openWindow(env: NodeJS.ProcessEnv, workspace: string): Promise<Wi
       'the window',
     )
     return {
+      pid: child.pid!,
       app,
       output: () => tail.text(),
       close: async () => {
@@ -308,7 +311,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       DAEMON_DEADLINE_MS,
     )
     note('the daemon answered')
-    check((await app.getByTestId('engine-run-status').textContent()).includes('No run'), 'the header invented a run')
+    await waitUntil(async () => (await app.getByTestId('engine-run-status').textContent()).includes('No run') || false, 'the session snapshot to hydrate before checking its empty run state')
 
     await submit(app, FIRST_COMMAND)
     const first = await waitUntil(
@@ -701,6 +704,30 @@ async function main(): Promise<void> {
       await waitUntil(async () => (await treeText(reopened.app)).includes('Rewound workspace and conversation to checkpoint') || false, 'selecting the original durable session')
       note('New Task and sidebar selection switch actual engine sessions without leaking transcript state')
     } finally { await reopened.close() }
+    const targetSession = (await client.listSessions()).sessions.find((session) => session.title === 'also-update-the-changelog')!
+    const link = `hiroshi://session/${targetSession.id}?file=approved.txt&line=1`
+    const linked = await openWindow({ HIROSHI_HOME: home, GPUIX_BACKGROUND: '1', HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture' }, path.join(home, 'workspace'), [link])
+    try {
+      await waitUntil(async () => (await linked.app.getByTestId('file-line-target').textContent()).includes('1: window-before-checkpoint') || false, 'the deep link to select the real session, file and line')
+      note('the deep link opened the specified durable session and actual file line')
+      if (process.platform === 'win32') {
+        const { dlopen, FFIType: t } = require('bun:ffi')
+        const api = dlopen('user32.dll', { FindWindowW: { args: [t.ptr, t.ptr], returns: t.ptr }, GetWindowThreadProcessId: { args: [t.ptr, t.ptr], returns: t.u32 }, SetWindowPos: { args: [t.ptr, t.ptr, t.i32, t.i32, t.i32, t.i32, t.u32], returns: t.bool } }).symbols
+        const hwnd = api.FindWindowW(null, Buffer.from('Hiroshi · Multi-Agent Orchestrator\0', 'utf16le')), pid = new Uint32Array(1)
+        api.GetWindowThreadProcessId(hwnd, pid)
+        check(pid[0] === linked.pid, 'the geometry test did not find its own window')
+        check(api.SetWindowPos(hwnd, null, 100, 120, 1030, 720, 0x214), 'could not move the test window')
+        await waitUntil(async () => {
+          const saved = JSON.parse(readFileSync(path.join(home, 'shell.json'), 'utf8')).workspaces[path.join(home, 'workspace')].current
+          return saved.x === 100 && saved.y === 120 && saved.width === 1030 && saved.height === 720
+        }, 'window placement to be stored locally')
+      }
+    } finally { await linked.close() }
+    const restored = await openWindow({ HIROSHI_HOME: home, GPUIX_BACKGROUND: '1', HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture' }, path.join(home, 'workspace'))
+    try {
+      await restored.app.getByTestId('workspace-files').waitFor({ timeoutMs: WINDOW_DEADLINE_MS })
+      note('the open Files tab and window preferences survived another launch')
+    } finally { await restored.close() }
 
   } catch (error) {
     failure = error
