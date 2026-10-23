@@ -9,12 +9,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { DeliveryMode } from '../../engine/src/protocol'
+import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 
 export interface EngineHandle {
+  workspaceList: (path?: string) => Promise<WorkspaceDirectory>
+  workspaceFile: (path: string) => Promise<WorkspaceFile>
+  workspaceReview: (base?: string) => Promise<WorkspaceReview>
+  workspaceCommit: (input: Omit<OperationRequest<'workspaceCommit'>, 'id'>) => Promise<string>
+  browse: (url: string) => Promise<BrowserPage>
   rewind: (checkpointID: string, key: string) => Promise<void>
   snapshot: Snapshot
   answerPermission: (id: string, decision: 'allow' | 'deny', remember: boolean) => Promise<void>
@@ -229,5 +234,26 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     await client.current.rewind({ id: session.current, checkpointID, key })
   }, [])
 
-  return { rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  const workspaceList = useCallback(async (path = '') => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    return client.current.workspaceList({ id: session.current, path })
+  }, [])
+  const workspaceFile = useCallback(async (path: string) => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    return client.current.workspaceFile({ id: session.current, path })
+  }, [])
+  const workspaceReview = useCallback(async (base?: string) => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    return client.current.workspaceReview({ id: session.current, ...(base ? { base } : {}) })
+  }, [])
+  const workspaceCommit = useCallback(async (input: Omit<OperationRequest<'workspaceCommit'>, 'id'>) => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    return (await client.current.workspaceCommit({ id: session.current, ...input })).run.id
+  }, [])
+  const browse = useCallback(async (url: string) => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    return client.current.browse({ id: session.current, url })
+  }, [])
+
+  return { workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

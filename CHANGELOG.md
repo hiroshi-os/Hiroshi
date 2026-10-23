@@ -19,6 +19,27 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.10.0] - 2026-10-23
+
+### Added
+
+- Engine-backed workspace surfaces replace sample files, review totals and browser
+  content. Files reads bounded directory/file previews and displays real Git
+  markers. The model's `list_files` tool shares the directory reader.
+- Review resolves a branch merge base and renders actual committed, staged,
+  unstaged and untracked changes with explicit preview limits.
+- Commit/push lists the same Git changes, previews staged-only or complete pending
+  patches, rejects stale reviews and starts durable Git runs. Literal argument
+  execution preserves commit messages and surfaces real output and failures.
+- The native page-reader pane loads bounded HTML/text from HTTP/HTTPS URLs,
+  follows safe links and keeps back/forward history across surface switches.
+  JavaScript, CSS layouts, forms and login cookies are explicitly unsupported.
+- Model-requested shell calls and their actual results appear in Terminal.
+  Surface/environment menus use deferred layers above filled workspace panes.
+- Real Git/daemon, HTTP fixture, native renderer and desktop-window integration
+  coverage for file changes, staged selection, commit/push, terminal tool output
+  and browser navigation. The typed protocol is version 8.
+
 ## [0.9.0] - 2026-10-23
 
 ### Added

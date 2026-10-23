@@ -263,10 +263,17 @@ async function runsText(app: App): Promise<string> {
 }
 
 /** The window half: the cockpit, the terminal and two commands through it. */
-async function driveTheWindow(home: string): Promise<void> {
+async function driveTheWindow(home: string, browserURL: string): Promise<void> {
   const workspace = path.join(home, 'workspace')
   mkdirSync(workspace)
   writeFileSync(path.join(workspace, 'huge.txt'), 'window-full-output-marker\n' + 'z'.repeat(32 * 1024))
+  const git = (args: string[]) => {
+    const result = Bun.spawnSync({ cmd: ['git', '-C', workspace, ...args], stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+    check(result.exitCode === 0, result.stderr.toString())
+    return result.stdout.toString().trim()
+  }
+  git(['init', '-b', 'main']); git(['config', 'user.name', 'Window test']); git(['config', 'user.email', 'window@local']); git(['config', 'commit.gpgsign', 'false'])
+  git(['add', '.']); git(['commit', '-m', 'initial fixture'])
   const window = await openWindow({
     HIROSHI_HOME: home,
     HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture',
@@ -470,6 +477,76 @@ async function driveTheWindow(home: string): Promise<void> {
     await app.getByTestId('rewind-history-toggle').click()
     note('the cockpit restored workspace and conversation together, retaining earlier history')
 
+    await composer.fill('model-shell')
+    await composer.press('enter')
+    const { permission: shell } = await waitUntil(pending, 'the model shell permission')
+    await app.getByTestId(`permission-allow-${shell.id}`).waitFor()
+    await app.getByTestId(`permission-allow-${shell.id}`).click()
+    await waitUntil(async () => {
+      const nodes = await app.getByTestId('terminal-model-tool').all()
+      return nodes.some((node) => flatten(node).join('\n').includes('model-shell-marker')) || false
+    }, 'real model shell output in the Terminal surface')
+    note('the terminal shows a command started by the model and its real result')
+    const surface = async (name: string) => {
+      await app.getByTestId('surface-plus-menu').click()
+      await app.getByTestId(`surface-select-${name}`).waitFor()
+      await app.getByTestId(`surface-select-${name}`).click()
+      await sleep(250)
+    }
+    await surface('files')
+    await app.getByTestId('files-open-approved.txt').waitFor()
+    await app.getByTestId('files-changed-approved.txt').waitFor()
+    await app.getByTestId('files-open-approved.txt').click()
+    await app.getByTestId('workspace-file-content').waitFor()
+    const fileBounds = await app.getByTestId('workspace-file-content').bounds()
+    check(fileBounds.width > 0 && fileBounds.height > 0, 'the native file viewer has no painted area')
+    const currentSession = (await client.listSessions()).sessions[0]!
+    check((await client.workspaceFile({ id: currentSession.id, path: 'approved.txt' })).text === 'window-before-checkpoint', 'the file viewer source is not the current workspace')
+    try {
+      mkdirSync(path.join(process.cwd(), 'screenshots'), { recursive: true })
+      await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-files.png') })
+    } catch (error) { note(`file screenshot unavailable: ${String(error)}`) }
+    note('Files opened the tool-changed file and marked its real Git status')
+    await surface('review')
+    await app.getByTestId('review-file-approved.txt').waitFor()
+    await app.getByTestId('workspace-diff').waitFor()
+    const diffBounds = await app.getByTestId('workspace-diff').bounds()
+    check(diffBounds.width > 0 && diffBounds.height > 0, 'the native diff has no painted area')
+    check((await client.workspaceReview({ id: currentSession.id })).patch.includes('window-before-checkpoint'), 'the diff source does not match the workspace')
+    try { await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-review.png') }) } catch {}
+    note('Review displays the same changed file and its actual diff')
+    await app.getByTestId('inspector-toggle').click()
+    await app.getByTestId('env-commit-push').waitFor()
+    await app.getByTestId('env-commit-push').click()
+    await app.getByTestId('commit-message').waitFor()
+    await app.getByTestId('commit-message').fill('window-surface-commit')
+    await waitUntil(async () => (await app.getByTestId('commit-file-list').textContent()).includes('approved.txt') || false, 'the same file in the commit list')
+    await app.getByTestId('commit-submit').click()
+    await waitUntil(async () => (await app.getByTestId('commit-run-status').textContent()).includes('succeeded') || false, 'the real commit to succeed')
+    check(git(['log', '-1', '--format=%B']) === 'window-surface-commit', 'the commit button did not create a real commit')
+    await app.getByTestId('commit-open-terminal').click()
+    note('the commit flow listed real changes and created the commit through the daemon')
+    await surface('browser')
+    await app.getByTestId('browser-address').fill(browserURL)
+    await app.getByTestId('browser-go').click()
+    await app.getByTestId('browser-link-0').waitFor()
+    check((await treeText(app)).includes('First local page'), 'the browser did not load the real page')
+    await app.getByTestId('browser-link-0').click()
+    await waitUntil(async () => (await treeText(app)).includes('Second local page') || false, 'linked browser page')
+    await app.getByTestId('browser-back').click()
+    check((await treeText(app)).includes('First local page'), 'browser back did not restore history')
+    await app.getByTestId('browser-forward').click()
+    check((await treeText(app)).includes('Second local page'), 'browser forward did not restore history')
+    await surface('review')
+    await surface('browser')
+    check((await treeText(app)).includes('Second local page'), 'changing surfaces lost browser history')
+    try {
+      const shots = path.join(process.cwd(), 'screenshots'); mkdirSync(shots, { recursive: true })
+      await app.screenshot({ path: path.join(shots, 'windowed-surfaces.png') })
+    } catch (error) { note(`surface screenshot unavailable: ${String(error)}`) }
+    note('the browser loaded local pages, followed a link and preserved navigation history')
+    await surface('terminal')
+
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.
     await submit(app, SECOND_COMMAND)
@@ -557,6 +634,10 @@ async function stopTheDaemon(home: string): Promise<void> {
 async function main(): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), 'hiroshi-windowed-'))
   const fixture = toolFixture()
+  const pages = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch(request) {
+    const next = new URL(request.url).pathname === '/next'
+    return new Response(`<title>${next ? 'Second local page' : 'First local page'}</title><h1>${next ? 'Second local page' : 'First local page'}</h1><p>Real browser surface content.</p><a href="/next">Follow local link</a>`, { headers: { 'content-type': 'text/html' } })
+  } })
   writeFileSync(path.join(home, 'providers.json'), JSON.stringify({
     providers: [{ id: 'restricted', adapter: 'openai', models: [{
       id: 'chat', model: 'fixture-never-called', label: 'Restricted model', contextWindow: 32768, reservedOutput: 1024,
@@ -568,7 +649,7 @@ async function main(): Promise<void> {
 
   let failure: unknown = null
   try {
-    await driveTheWindow(home)
+    await driveTheWindow(home, pages.url.href)
     note('the window is closed; the daemon is on its own')
 
     const record = await waitUntil(
@@ -601,6 +682,7 @@ async function main(): Promise<void> {
 
   await stopTheDaemon(home)
   fixture.server.stop(true)
+  pages.stop(true)
   if (failure) throw failure
   note('all assertions passed')
 }

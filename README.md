@@ -17,10 +17,12 @@ window and persists its work in SQLite. It supports:
 - Context budgeting and compaction that preserve the full transcript.
 - Model-requested tools with cockpit approvals, policy and durable results.
 - Pre-prompt checkpoints that rewind workspace files and conversation together.
+- Workspace file browsing, real Git review and commit/push, and a page-reader pane.
 - One typed HTTP protocol and a replayable event feed for multiple clients.
 
-The Terminal surface connects to the engine and shows runs, steps, pending
-prompts and context history. The main composer streams answers from the selected
+The [workspace surfaces](docs/surfaces.mdx) connect to the engine: Terminal shows
+commands and model shell calls; Files reads the workspace; Review and commit/push
+use Git; Browser reads HTTP/HTTPS pages with link navigation (without JavaScript). The main composer streams answers from the selected
 engine model. OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain

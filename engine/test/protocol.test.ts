@@ -27,6 +27,11 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  workspaceList: 'workspaceList',
+  workspaceFile: 'workspaceFile',
+  workspaceReview: 'workspaceReview',
+  workspaceCommit: 'workspaceCommit',
+  browse: 'browse',
   rewind: 'rewind',
   answerPermission: 'answerPermission',
   toolOutput: 'toolOutput',
