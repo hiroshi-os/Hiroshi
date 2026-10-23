@@ -154,7 +154,7 @@ async function serve(flags: Flags): Promise<number> {
   const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
     new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
   const registry = new ToolRegistry()
-  registerBuiltins(registry)
+  registerBuiltins(registry, paths.home)
   const tools = new Tools(store, registry, paths.home)
   const steps = new Steps(store, log, {
     tools,

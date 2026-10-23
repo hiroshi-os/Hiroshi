@@ -134,7 +134,12 @@ export class Runs {
     return this.#active.size
   }
 
-  start(sessionID: string, command: string, cwd?: string): Run {
+  startProgram(sessionID: string, label: string, commands: string[][], cwd?: string): Run {
+    if (!commands.length || commands.some((command) => !command.length)) throw invalid('empty_command', 'a program is required')
+    return this.start(sessionID, label, cwd, commands)
+  }
+
+  start(sessionID: string, command: string, cwd?: string, programs?: string[][]): Run {
     const trimmed = command.trim()
     if (!trimmed) throw invalid('empty_command', 'a command is required')
 
@@ -146,7 +151,7 @@ export class Runs {
       throw invalid('bad_working_directory', `${target} is not a directory`)
     }
 
-    const shell = resolveShell()
+    const shell = programs ? { label: programs[0]![0]!, argv: [] } : resolveShell()
     const at = Date.now()
     const run: Run = {
       id: newRunID(),
@@ -193,9 +198,9 @@ export class Runs {
     let proc: Proc
     try {
       proc = Bun.spawn({
-        cmd: [...shell.argv, trimmed],
+        cmd: programs?.[0] ?? [...shell.argv, trimmed],
         cwd: target,
-        env: process.env,
+        env: programs ? { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' } : process.env,
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
@@ -211,7 +216,7 @@ export class Runs {
 
     this.#active.set(run.id, { run, proc, cancelled: false })
     this.#log.info('run started', { run: run.id, session: sessionID, shell: shell.label, pid: proc.pid })
-    void this.#execute(run, proc, shell)
+    void this.#execute(run, proc, shell, programs?.slice(1))
     return run
   }
 
@@ -365,7 +370,7 @@ export class Runs {
     this.#onIdle?.(run.sessionID)
   }
 
-  async #execute(run: Run, proc: Proc, shell: ResolvedShell): Promise<void> {
+  async #execute(run: Run, proc: Proc, shell: ResolvedShell, remaining: string[][] = []): Promise<void> {
     const buffers: Record<OutputStream, string> = { stdout: '', stderr: '' }
     let stored = 0
     let truncated = false
@@ -404,12 +409,20 @@ export class Runs {
         buffers[stream] += decoders[stream].decode(bytes, { stream: true })
         if (buffers[stream].length >= FLUSH_CHARS) flush()
       }
-      await Promise.all([this.#pump(proc.stdout, decode('stdout')), this.#pump(proc.stderr, decode('stderr'))])
-      const code = await proc.exited
-      flush()
-      const active = this.#active.get(run.id)
-      const status: RunStatus = active?.cancelled ? 'cancelled' : code === 0 ? 'succeeded' : 'failed'
-      this.#finish(run, status, code)
+      for (;;) {
+        await Promise.all([this.#pump(proc.stdout, decode('stdout')), this.#pump(proc.stderr, decode('stderr'))])
+        buffers.stdout += decoders.stdout.decode(); buffers.stderr += decoders.stderr.decode()
+        const code = await proc.exited
+        flush()
+        const active = this.#active.get(run.id)
+        if (active?.cancelled || code !== 0 || !remaining.length || this.#store.run(run.id)?.status !== 'running') {
+          const status: RunStatus = active?.cancelled ? 'cancelled' : code === 0 ? 'succeeded' : 'failed'
+          this.#finish(run, status, code)
+          break
+        }
+        proc = Bun.spawn({ cmd: remaining.shift()!, cwd: run.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' }, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true }) as unknown as Proc
+        if (active) active.proc = proc
+      }
     } catch (error) {
       flush()
       this.#write(run, 'stderr', `hiroshi-engine: the run failed: ${String(error)}\n`)

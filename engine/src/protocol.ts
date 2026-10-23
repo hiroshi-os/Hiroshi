@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 7
+export const PROTOCOL_VERSION = 8
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.9.0'
+export const ENGINE_VERSION = '0.10.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -139,6 +139,16 @@ export interface Rewind {
   at: number
   completedAt: number | null
 }
+
+export interface WorkspaceEntry { path: string; name: string; kind: 'file' | 'directory' | 'symlink'; bytes: number }
+export interface WorkspaceDirectory { path: string; entries: WorkspaceEntry[]; truncated: boolean }
+export interface WorkspaceFile { path: string; text: string; bytes: number; binary: boolean; truncated: boolean; digest: string }
+export interface FileChange { path: string; previousPath?: string; status: string; staged: boolean; unstaged: boolean }
+export interface WorkspaceReview {
+  available: boolean; reason: string | null; root: string; branch: string; base: string; baseCommit: string
+  revision: string; files: FileChange[]; patch: string; stagedPatch: string; workingPatch: string; truncated: boolean
+}
+export interface BrowserPage { url: string; title: string; text: string; links: { label: string; url: string }[]; truncated: boolean; scripted: boolean }
 
 export interface ModelToolRequest { id: string; name: string; arguments: string }
 
@@ -494,6 +504,12 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  workspaceList: { request: SessionRef & { path?: string }; response: WorkspaceDirectory }
+  workspaceFile: { request: SessionRef & { path: string }; response: WorkspaceFile }
+  workspaceReview: { request: SessionRef & { base?: string }; response: WorkspaceReview }
+  workspaceCommit: { request: SessionRef & { revision: string; base?: string; message: string; includeUnstaged: boolean; push: boolean; pushOnly?: boolean }; response: { run: Run } }
+  browse: { request: SessionRef & { url: string }; response: BrowserPage }
+
   rewind: { request: SessionRef & { checkpointID: string; key: string }; response: { rewind: Rewind } }
   answerPermission: { request: { id: string; decision: 'allow' | 'deny'; remember?: boolean }; response: { permission: Permission } }
   toolOutput: { request: { id: string }; response: { path: string; text: string } }
@@ -532,6 +548,11 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'workspaceList', method: 'POST', path: '/v1/sessions/:id/workspace/list' },
+  { name: 'workspaceFile', method: 'POST', path: '/v1/sessions/:id/workspace/file' },
+  { name: 'workspaceReview', method: 'POST', path: '/v1/sessions/:id/workspace/review' },
+  { name: 'workspaceCommit', method: 'POST', path: '/v1/sessions/:id/workspace/commit' },
+  { name: 'browse', method: 'POST', path: '/v1/sessions/:id/browser' },
   { name: 'rewind', method: 'POST', path: '/v1/sessions/:id/rewind' },
   { name: 'answerPermission', method: 'POST', path: '/v1/permissions/:id/answer' },
   { name: 'toolOutput', method: 'GET', path: '/v1/tools/:id/output' },

@@ -3,7 +3,7 @@ title: "Tools and permissions"
 description: "Model-requested tools, durable approvals and complete results."
 ---
 
-The engine registers `read_file`, `write_file` and `shell` and advertises their
+The engine registers `list_files`, `read_file`, `write_file` and `shell` and advertises their
 input schemas to configured models. A completed model step commits its assistant
 message and tool requests together before a runner can act. Requests and result
 messages retain both provider call ids and engine tool ids.
@@ -47,6 +47,7 @@ approval cannot bypass a newly added denial. Invalid policies block execution.
 
 | Tool | Behavior |
 | :--- | :--- |
+| `list_files` | Lists a workspace directory using the same reader as the Files surface, up to 500 entries. |
 | `read_file` | Reads a regular UTF-8 workspace file, up to 16 MiB. |
 | `write_file` | Atomically creates or replaces a workspace file; its parent must exist. |
 | `shell` | Runs in the workspace with the user's account privileges; default timeout 30 seconds, maximum 120 seconds, combined output limit 32 MiB. |

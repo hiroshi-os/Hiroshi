@@ -1,6 +1,7 @@
 import { lstat, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { WorkspaceFiles } from '../workspace'
 import { killTree } from '../runs'
 import type { ToolRegistry } from './registry'
 
@@ -26,7 +27,14 @@ async function filePath(cwd: string, requested: string, writing: boolean): Promi
 const fileInput = { type: 'object', properties: { path: { type: 'string', minLength: 1, maxLength: 4096 } }, required: ['path'], additionalProperties: false }
 const fileOutput = { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }
 
-export function registerBuiltins(registry: ToolRegistry): void {
+export function registerBuiltins(registry: ToolRegistry, home?: string): void {
+  registry.register({ name: 'list_files', version: '1', description: 'List a workspace directory using the same tree as the Files surface.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', maxLength: 4096 } }, additionalProperties: false },
+    outputSchema: { type: 'object', properties: { path: { type: 'string' }, truncated: { type: 'boolean' }, entries: { type: 'array', items: {
+      type: 'object', properties: { path: { type: 'string' }, name: { type: 'string' }, kind: { type: 'string', enum: ['file', 'directory', 'symlink'] }, bytes: { type: 'integer', minimum: 0 } },
+      required: ['path', 'name', 'kind', 'bytes'], additionalProperties: false } } }, required: ['path', 'truncated', 'entries'], additionalProperties: false },
+    async run(input, context) { context.signal.throwIfAborted(); return new WorkspaceFiles(context.cwd, home).list(input.path ?? '') },
+  })
   registry.register({ name: 'read_file', version: '1', description: 'Read a UTF-8 file inside the workspace.',
     inputSchema: fileInput, outputSchema: fileOutput,
     async run(input, context) {

@@ -10,6 +10,7 @@
  * Slow CPU: THROTTLE=utility bun --hot chat.tsx
  */
 
+import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
 import { engineTranscript } from './src/engine/transcript'
 import { CheckpointHistory } from './src/components/CheckpointHistory'
 import { ToolActivity } from './src/components/ToolActivity'
@@ -3116,134 +3117,133 @@ function Header({
             tooltip="Environment & tasks"
           />
           {envMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 36,
-                right: 0,
-                width: 236,
-                backgroundColor: '#1E1E1E',
-                borderRadius: 9,
-                borderWidth: 1,
-                borderColor: '#303030',
-                padding: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-              }}
-            >
-              <Button
-                testId="env-commit-push"
-                onClick={() => {
-                  setEnvMenuOpen(false)
-                  onOpenCommitModal?.()
-                }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                  height: 32,
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  hover: { backgroundColor: '#2C2C2C' },
-                }}
-              >
-                <text style={{ fontSize: 13, color: C.text }}>Commit or push</text>
-              </Button>
-              <Button
-                testId="env-compare-branch"
-                onClick={() => {
-                  setEnvMenuOpen(false)
-                  onOpenReview?.()
-                }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  height: 32,
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  hover: { backgroundColor: '#2C2C2C' },
-                }}
-              >
-                <text style={{ fontSize: 13, color: C.text }}>Compare branch</text>
-                <Icon name="arrowUpRight" size={13} color={C.tertiary} />
-              </Button>
-
-              <div style={{ height: 1, backgroundColor: '#2A2A2A', marginTop: 3, marginBottom: 3 }} />
-
+            <anchored side="bottom" align="end" gap={4} fit="snap" deferred priority={1} occlude>
               <div
                 style={{
+                  width: 236,
+                  backgroundColor: '#1E1E1E',
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: '#303030',
+                  padding: 4,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 6,
-                  paddingLeft: 10,
-                  paddingRight: 6,
-                  paddingTop: 4,
-                  paddingBottom: 6,
+                  gap: 2,
                 }}
               >
-                <text style={{ fontSize: 11, fontWeight: 500, color: C.tertiary }}>Task ID</text>
-                <div
+                <Button
+                  testId="env-commit-push"
+                  onClick={() => {
+                    setEnvMenuOpen(false)
+                    onOpenCommitModal?.()
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    height: 32,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    hover: { backgroundColor: '#2C2C2C' },
+                  }}
+                >
+                  <text style={{ fontSize: 13, color: C.text }}>Commit or push</text>
+                </Button>
+                <Button
+                  testId="env-compare-branch"
+                  onClick={() => {
+                    setEnvMenuOpen(false)
+                    onOpenReview?.()
+                  }}
                   style={{
                     display: 'flex',
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    backgroundColor: '#141414',
+                    height: 32,
+                    paddingLeft: 10,
+                    paddingRight: 10,
                     borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: '#2A2A2A',
-                    paddingLeft: 8,
-                    paddingRight: 4,
-                    height: 28,
+                    cursor: 'pointer',
+                    hover: { backgroundColor: '#2C2C2C' },
                   }}
                 >
-                  <text
+                  <text style={{ fontSize: 13, color: C.text }}>Compare branch</text>
+                  <Icon name="arrowUpRight" size={13} color={C.tertiary} />
+                </Button>
+
+                <div style={{ height: 1, backgroundColor: '#2A2A2A', marginTop: 3, marginBottom: 3 }} />
+
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    paddingLeft: 10,
+                    paddingRight: 6,
+                    paddingTop: 4,
+                    paddingBottom: 6,
+                  }}
+                >
+                  <text style={{ fontSize: 11, fontWeight: 500, color: C.tertiary }}>Task ID</text>
+                  <div
                     style={{
-                      fontSize: 11.5,
-                      fontFamily: FONT_MONO,
-                      color: C.secondary,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 165,
-                    }}
-                  >
-                    {taskIdDisplay}
-                  </text>
-                  <Button
-                    testId="copy-task-id-btn"
-                    onClick={() => {
-                      setCopiedTaskId(true)
-                      setTimeout(() => setCopiedTaskId(false), 2000)
-                    }}
-                    style={{
-                      width: 22,
-                      height: 22,
                       display: 'flex',
+                      flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      hover: { backgroundColor: '#252525' },
+                      justifyContent: 'space-between',
+                      backgroundColor: '#141414',
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: '#2A2A2A',
+                      paddingLeft: 8,
+                      paddingRight: 4,
+                      height: 28,
                     }}
                   >
-                    <Icon
-                      name={copiedTaskId ? 'check' : 'copy'}
-                      size={12}
-                      color={copiedTaskId ? '#10B981' : C.tertiary}
-                    />
-                  </Button>
+                    <text
+                      style={{
+                        fontSize: 11.5,
+                        fontFamily: FONT_MONO,
+                        color: C.secondary,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: 165,
+                      }}
+                    >
+                      {taskIdDisplay}
+                    </text>
+                    <Button
+                      testId="copy-task-id-btn"
+                      onClick={() => {
+                        setCopiedTaskId(true)
+                        setTimeout(() => setCopiedTaskId(false), 2000)
+                      }}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        hover: { backgroundColor: '#252525' },
+                      }}
+                    >
+                      <Icon
+                        name={copiedTaskId ? 'check' : 'copy'}
+                        size={12}
+                        color={copiedTaskId ? '#10B981' : C.tertiary}
+                      />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </anchored>
           )}
         </div>
         {!rightPanelOpen && (
@@ -3551,51 +3551,50 @@ function SurfacePanel({
               </Button>
 
               {surfaceMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 32,
-                    right: 0,
-                    width: 160,
-                    backgroundColor: '#212121',
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: C.borderStrong,
-                    padding: 4,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                  }}
-                >
-                  {SURFACES.map((s) => (
-                    <Button
-                      key={s.id}
-                      testId={`surface-select-${s.id}`}
-                      onClick={() => {
-                        onChangeSurface(s.id)
-                        setSurfaceMenuOpen(false)
-                      }}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: 6,
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        backgroundColor: activeSurface === s.id ? '#2A2A2A' : '#00000000',
-                        hover: { backgroundColor: '#2C2C2C' },
-                      }}
-                    >
-                      {s.id === 'terminal' ? (
-                        <text style={{ fontSize: 11, fontFamily: FONT_MONO, color: C.secondary, width: 14 }}>&gt;_</text>
-                      ) : (
-                        <Icon name={s.icon} size={13} color={C.secondary} />
-                      )}
-                      <text style={{ fontSize: 12.5, color: C.text }}>{s.label}</text>
-                    </Button>
-                  ))}
-                </div>
+                <anchored side="bottom" align="end" gap={4} fit="snap" deferred priority={1} occlude>
+                  <div
+                    style={{
+                      width: 160,
+                      backgroundColor: '#212121',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: C.borderStrong,
+                      padding: 4,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    {SURFACES.map((s) => (
+                      <Button
+                        key={s.id}
+                        testId={`surface-select-${s.id}`}
+                        onClick={() => {
+                          onChangeSurface(s.id)
+                          setSurfaceMenuOpen(false)
+                        }}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: 6,
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          backgroundColor: activeSurface === s.id ? '#2A2A2A' : '#00000000',
+                          hover: { backgroundColor: '#2C2C2C' },
+                        }}
+                      >
+                        {s.id === 'terminal' ? (
+                          <text style={{ fontSize: 11, fontFamily: FONT_MONO, color: C.secondary, width: 14 }}>&gt;_</text>
+                        ) : (
+                          <Icon name={s.icon} size={13} color={C.secondary} />
+                        )}
+                        <text style={{ fontSize: 12.5, color: C.text }}>{s.label}</text>
+                      </Button>
+                    ))}
+                  </div>
+                </anchored>
               )}
             </div>
           )}
@@ -3614,7 +3613,7 @@ function SurfacePanel({
       <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, width: '100%', position: 'relative', overflow: 'hidden' }}>
         <AnimatePresence initial={false}>
           <motion.div
-            key={activeSurface}
+            key="workspace-content"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -3853,6 +3852,13 @@ function SurfacePanel({
               fontFamily: FONT_MONO,
             }}
           >
+            {engine.snapshot.toolCalls.filter((call) => call.callID && call.tool === 'shell').map((call) => (
+              <div key={call.id} testId="terminal-model-tool" style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 10 }}>
+                <text style={{ fontSize: 12, color: C.secondary }}>{`Model shell · ${call.status} · ${call.id}`}</text>
+                <text style={{ fontSize: 12, color: C.text }}>{call.input}</text>
+                {(call.output || call.error) && <text style={{ fontSize: 12, color: C.tertiary }}>{call.output || call.error}</text>}
+              </div>
+            ))}
             {engineReady ? (
               engineRuns.length === 0 ? (
                 <text
@@ -3946,7 +3952,7 @@ function SurfacePanel({
                   flexShrink: 0,
                 }}
               >
-                {`PS E:\\${project}> `}
+                {`${engine.snapshot.health?.workspace ?? project}> `}
               </text>
               <input
                 testId="terminal-input"
@@ -4237,408 +4243,13 @@ function SurfacePanel({
         </div>
       )}
 
-      {/* Browser Active View */}
-      {activeSurface === 'browser' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 12 }}>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              height: 32,
-              paddingLeft: 10,
-              paddingRight: 10,
-              borderRadius: 6,
-              backgroundColor: '#242424',
-              borderWidth: 1,
-              borderColor: C.border,
-            }}
-          >
-            <Icon name="globe" size={14} color={C.tertiary} />
-            <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text, flexGrow: 1 }}>
-              http://localhost:3000
-            </text>
-            <IconButton icon="retry" size={12} />
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexGrow: 1,
-              backgroundColor: '#1E1E1E',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: C.border,
-              gap: 8,
-            }}
-          >
-            <Icon name="globe" size={32} color={C.tertiary} />
-            <text style={{ fontSize: 13, color: C.secondary }}>Local Browser Preview</text>
-            <text style={{ fontSize: 12, color: C.ghost }}>Ready at http://localhost:3000</text>
-          </div>
-        </div>
-      )}
-
-      {/* Files Active View */}
-      {activeSurface === 'files' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 6, overflowY: 'scroll' }}>
-          <text style={{ fontSize: 12, fontWeight: 600, color: C.ghost, marginBottom: 4 }}>
-            WORKSPACE FILES
-          </text>
-          {[
-            { name: 'app.tsx', icon: 'pencil' as const, size: '140 KB' },
-            { name: 'screenshot.ts', icon: 'laptop' as const, size: '2.1 KB' },
-            { name: 'package.json', icon: 'cube' as const, size: '450 B' },
-            { name: 'tsconfig.json', icon: 'wrench' as const, size: '520 B' },
-            { name: 'assets/icons/', icon: 'folder' as const, size: '49 files' },
-          ].map((f) => (
-            <div
-              key={f.name}
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                padding: 6,
-                borderRadius: 6,
-                backgroundColor: '#00000000',
-                hover: { backgroundColor: '#262626' },
-                cursor: 'pointer',
-              }}
-            >
-              <Icon name={f.icon} size={14} color={C.secondary} />
-              <text style={{ fontSize: 13, color: C.text, flexGrow: 1 }}>{f.name}</text>
-              <text style={{ fontSize: 11.5, color: C.ghost }}>{f.size}</text>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Review Active View */}
-      {activeSurface === 'review' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, padding: 14, gap: 10, overflowY: 'scroll' }}>
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>File Changes</text>
-            <text style={{ fontSize: 11.5, color: C.secondary }}>1 file modified</text>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: '#1E1E1E',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: C.border,
-              padding: 10,
-              gap: 6,
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Icon name="fileDiff" size={13} color={C.accent} />
-              <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text }}>hiroshi/app.tsx</text>
-            </div>
-            <text style={{ fontSize: 11.5, color: C.tertiary, fontFamily: FONT_MONO }}>
-              +185 additions, -24 deletions
-            </text>
-          </div>
-        </div>
-      )}
+      <BrowserSurface engine={engine} active={open && activeSurface === 'browser'} />
+      <FilesSurface engine={engine} active={open && activeSurface === 'files'} />
+      <ReviewSurface engine={engine} active={open && activeSurface === 'review'} />
           </motion.div>
         </AnimatePresence>
       </div>
     </div>
-  )
-}
-
-function CommitPushModal({
-  open,
-  onClose,
-  branch = 'master',
-  taskId = 'task-1949cf8c6b5b557f',
-  engineReady = true,
-  engineError = null,
-}: {
-  open: boolean
-  onClose: () => void
-  branch?: string
-  taskId?: string
-  /** The commit belongs to the daemon, so the modal says when there is none. */
-  engineReady?: boolean
-  engineError?: string | null
-}) {
-  const [message, setMessage] = useState('')
-  const [includeUnstaged, setIncludeUnstaged] = useState(true)
-  const inputRef = useRef<PublicInstance | null>(null)
-
-  if (!open) return null
-
-  const taskHash = taskId ? taskId.replace('task-', 'io-') : 'io-1949cf8c6b5b557f'
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogPortal
-        {...({ position: { x: 0, y: 0 } } as any)}
-        onMouseDown={onClose}
-        style={{
-          width: 1180,
-          height: 820,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#00000088',
-        }}
-      >
-        <DialogPopup
-          initialFocus={inputRef}
-          testId="commit-push-popup"
-          onMouseDown={(e: any) => {
-            if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
-          }}
-          style={{
-            width: 480,
-            maxWidth: '92%',
-            backgroundColor: '#1E1E1E',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: '#303030',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            padding: 16,
-            gap: 14,
-          }}
-        >
-          {/* Header */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {/* Branch badge */}
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingLeft: 7,
-                  paddingRight: 8,
-                  paddingTop: 3,
-                  paddingBottom: 3,
-                  borderRadius: 6,
-                  backgroundColor: '#152C22',
-                  borderWidth: 1,
-                  borderColor: '#1C4A38',
-                }}
-              >
-                <Icon name="gitBranch" size={12} color="#10B981" />
-                <text style={{ fontSize: 12, fontWeight: 500, color: '#34D399' }}>{branch}</text>
-              </div>
-              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: C.ghost }}>
-                .{taskHash}
-              </text>
-            </div>
-            <Button
-              testId="commit-modal-close"
-              onClick={onClose}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                hover: { backgroundColor: '#2C2C2C' },
-              }}
-            >
-              <Icon name="windowClose" size={11} color={C.tertiary} />
-            </Button>
-          </div>
-
-          {/* Commit message input */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: '#141414',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: '#2D2D2D',
-              padding: 10,
-              minHeight: 88,
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              value={message}
-              placeholder="Commit message..."
-              autoFocus
-              theme={CHAT_THEME}
-              style={{
-                width: '100%',
-                minHeight: 70,
-                fontSize: 13,
-                lineHeight: 18,
-                color: C.text,
-                backgroundColor: '#00000000',
-                borderWidth: 0,
-                padding: 0,
-              }}
-              onChange={(e) => setMessage(e.value ?? '')}
-            />
-          </div>
-
-          {/* Include unstaged changes */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-            }}
-            onClick={() => setIncludeUnstaged((v) => !v)}
-          >
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <div
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 4,
-                  backgroundColor: includeUnstaged ? C.accent : '#252525',
-                  borderWidth: 1,
-                  borderColor: includeUnstaged ? C.accent : '#3D3D3D',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {includeUnstaged && <Icon name="check" size={11} color="#FFFFFF" />}
-              </div>
-              <text style={{ fontSize: 12.5, color: C.secondary }}>Include unstaged changes</text>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: '#10B981' }}>+0</text>
-              <text style={{ fontSize: 12, fontFamily: FONT_MONO, color: '#EF4444' }}>-0</text>
-            </div>
-          </div>
-
-          {/* Hiroshi daemon is disconnected */}
-          {!engineReady && (
-            <div
-              testId="daemon-disconnected"
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                paddingLeft: 10,
-                paddingRight: 10,
-                paddingTop: 8,
-                paddingBottom: 8,
-                borderRadius: 6,
-                backgroundColor: '#261F18',
-                borderWidth: 1,
-                borderColor: '#4A3828',
-              }}
-            >
-              <Icon name="contrast" size={13} color="#F59E0B" />
-              <text style={{ fontSize: 12, color: '#FCD34D' }}>
-                {engineError
-                  ? `Hiroshi daemon is disconnected: ${engineError}`
-                  : 'Hiroshi daemon is disconnected'}
-              </text>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              gap: 8,
-              marginTop: 4,
-            }}
-          >
-            <Button
-              onClick={() => {
-                onClose()
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                height: 32,
-                paddingLeft: 12,
-                paddingRight: 12,
-                borderRadius: 6,
-                backgroundColor: '#2A2A2A',
-                borderWidth: 1,
-                borderColor: '#383838',
-                cursor: 'pointer',
-                hover: { backgroundColor: '#333333' },
-              }}
-            >
-              <text style={{ fontSize: 12.5, color: C.text }}>Commit</text>
-              <text style={{ fontSize: 11, color: C.ghost, fontFamily: FONT_SANS }}>Ctrl+Enter</text>
-            </Button>
-            <Button
-              onClick={() => {
-                onClose()
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: 32,
-                paddingLeft: 12,
-                paddingRight: 12,
-                borderRadius: 6,
-                backgroundColor: '#2A2A2A',
-                borderWidth: 1,
-                borderColor: '#383838',
-                cursor: 'pointer',
-                hover: { backgroundColor: '#333333' },
-              }}
-            >
-              <text style={{ fontSize: 12.5, color: C.text }}>Commit and push</text>
-            </Button>
-            <Button
-              onClick={() => {
-                onClose()
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: 32,
-                paddingLeft: 14,
-                paddingRight: 14,
-                borderRadius: 6,
-                backgroundColor: '#2A2A2A',
-                borderWidth: 1,
-                borderColor: '#383838',
-                cursor: 'pointer',
-                hover: { backgroundColor: '#333333' },
-              }}
-            >
-              <text style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>Push</text>
-            </Button>
-          </div>
-        </DialogPopup>
-      </DialogPortal>
-    </Dialog>
   )
 }
 
@@ -6386,13 +5997,11 @@ export function ChatApp({
           }}
         />
       </motion.div>
-      <CommitPushModal
+      <WorkspaceCommitModal
         open={commitModalOpen}
         onClose={() => setCommitModalOpen(false)}
-        branch={branch}
-        taskId={active?.id ?? 'task-1949cf8c6b5b557f'}
-        engineReady={engineView.snapshot.status === 'ready'}
-        engineError={engineView.snapshot.error}
+        engine={engineView}
+        onTerminal={() => { setCommitModalOpen(false); setRightPanelOpen(true); setActiveSurface('terminal') }}
       />
       <CommandPaletteModal
         open={overlay === 'search'}

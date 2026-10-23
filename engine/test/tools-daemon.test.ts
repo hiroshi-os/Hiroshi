@@ -25,7 +25,7 @@ for (const adapter of ['openai', 'anthropic'] as const) {
       expect(waiting.toolCalls[0]!.status).toBe('waiting')
       await expect(daemon.client.rewind({ id: session.id, checkpointID: waiting.checkpoints[0]!.id, key: 'while-asking' })).rejects.toMatchObject({ code: 'workspace_busy' })
       expect(fixture.requests).toHaveLength(1)
-      expect(fixture.requests[0].tools.map((t: any) => t.name)).toEqual(['read_file', 'write_file', 'shell'])
+      expect(fixture.requests[0].tools.map((t: any) => t.name)).toEqual(['list_files', 'read_file', 'write_file', 'shell'])
       await daemon.crash()
       daemon = await startDaemon({ home, env })
       expect((await detail()).permissions).toEqual(waiting.permissions)

@@ -18,8 +18,8 @@ export function toolFixture(adapter: 'openai' | 'anthropic' = 'openai') {
       events = adapter === 'openai' ? [{ type: 'response.output_text.delta', delta: text }, { type: 'response.completed' }]
         : [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }, { type: 'message_stop' }]
     } else {
-      const name = prompt.includes('huge') ? 'read_file' : prompt.includes('crash') ? 'shell' : 'write_file'
-      const input = name === 'read_file' ? { path: 'huge.txt' } : name === 'shell' ? { command: 'echo crash-marker', timeoutMs: 30000 }
+      const name = prompt.includes('huge') ? 'read_file' : (prompt.includes('crash') || prompt.includes('model-shell')) ? 'shell' : 'write_file'
+      const input = name === 'read_file' ? { path: 'huge.txt' } : name === 'shell' ? { command: prompt.includes('model-shell') ? 'echo model-shell-marker' : 'echo crash-marker', timeoutMs: 30000 }
         : { path: prompt.includes('deny') ? 'denied.txt' : 'approved.txt', content: 'approved from the model' }
       const id = `fixture_${requests.length}`
       events = adapter === 'openai' ? [

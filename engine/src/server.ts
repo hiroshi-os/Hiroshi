@@ -8,13 +8,15 @@
  * notice. Replay and live delivery share the same encoder and the same order.
  */
 
+import { WorkspaceFiles, reviewWorkspace } from './workspace'
+import { browsePage } from './browser'
 import { timingSafeEqual } from 'node:crypto'
 
-import { EngineError, invalid, notFound } from './errors'
+import { EngineError, invalid, notFound, conflict } from './errors'
 import { Feed } from './feed'
 import type { ProviderCatalog } from './providers/catalog'
 import type { Logger } from './log'
-import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, StartRunRequest } from './protocol'
+import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, StartRunRequest, OperationRequest } from './protocol'
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
@@ -147,6 +149,40 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'workspaceList':
+      case 'workspaceFile':
+      case 'workspaceReview':
+      case 'workspaceCommit':
+      case 'browse': {
+        const input = await body<any>(request)
+        const session = store.session(params.id!)
+        if (!session) throw notFound('session')
+        const files = new WorkspaceFiles(session.cwd, options.checkpoints?.home)
+        if (operation.name === 'workspaceList') return json(await files.list(input.path ?? ''), status)
+        if (operation.name === 'workspaceFile') return json(await files.file(input.path), status)
+        if (operation.name === 'workspaceReview') return json(await reviewWorkspace(session.cwd, input.base), status)
+        if (operation.name === 'browse') return json(await browsePage(input.url), status)
+        const command = input as OperationRequest<'workspaceCommit'>
+        options.checkpoints?.assertReady(session.id)
+        if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'finish active work before committing')
+        if (typeof command.message !== 'string' || (!command.pushOnly && !command.message.trim()) || command.message.length > 4000 ||
+          typeof command.includeUnstaged !== 'boolean' || typeof command.push !== 'boolean' || (command.pushOnly !== undefined && typeof command.pushOnly !== 'boolean')) throw invalid('workspace_commit', 'provide a commit message and explicit commit options')
+        const review = await reviewWorkspace(session.cwd, command.base)
+        if (!review.available || review.truncated || review.files.some((file) => file.status === 'U')) throw invalid('workspace_commit', review.reason ?? 'resolve conflicts or a truncated review before committing')
+        if (review.revision !== command.revision) throw conflict('workspace_changed', 'the workspace changed; refresh the review before committing')
+        // Recheck after asynchronous Git reads: a run or rewind may have begun.
+        options.checkpoints?.assertReady(session.id)
+        if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'finish active work before committing')
+        const commands: string[][] = []
+        if (!command.pushOnly) {
+          if (!review.files.some((file) => command.includeUnstaged ? file.staged || file.unstaged : file.staged)) throw invalid('workspace_commit', 'there are no selected changes to commit')
+          if (command.includeUnstaged) commands.push(['git', 'add', '-A', '--', '.'])
+          commands.push(['git', 'commit', '--message', command.message])
+        }
+        if (command.push || command.pushOnly) commands.push(['git', 'push'])
+        return json({ run: runs.startProgram(session.id, command.pushOnly ? 'git push' : command.push ? 'git commit and push' : 'git commit', commands) }, status)
+      }
+
       case 'rewind': {
         if (!options.checkpoints) throw notFound('checkpoint service')
         const input = await body<{ checkpointID: string; key: string }>(request)
