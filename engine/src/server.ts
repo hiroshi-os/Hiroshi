@@ -12,6 +12,7 @@ import { timingSafeEqual } from 'node:crypto'
 
 import { EngineError, invalid, notFound } from './errors'
 import { Feed } from './feed'
+import type { ProviderCatalog } from './providers/catalog'
 import type { Logger } from './log'
 import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, StartRunRequest } from './protocol'
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
@@ -25,6 +26,7 @@ export interface ServerOptions {
   runs: Runs
   sessions: Sessions
   steps: Steps
+  catalog?: ProviderCatalog
   log: Logger
   token: string
   version: string
@@ -141,6 +143,9 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'models':
+        return json({ models: options.catalog?.models() ?? [], defaultModel: options.catalog?.defaultModel ?? 'local/echo' }, status)
+
       case 'health':
         return json(health(), status)
 
@@ -157,6 +162,11 @@ export function startServer(
 
       case 'prompt': {
         const input = await body<PromptRequest>(request)
+        const existing = typeof input.key === 'string' ? store.inboxByKey(params.id, input.key.trim()) : null
+        if (!existing && input.model !== undefined && (typeof input.model !== 'string' || !options.catalog?.has(input.model))) {
+          throw invalid('unknown_model', 'model must name a model in the engine catalog')
+        }
+        input.model ??= options.catalog?.defaultModel
         return json(sessions.prompt(params.id, input), status)
       }
 

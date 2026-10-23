@@ -10,6 +10,7 @@
  * Slow CPU: THROTTLE=utility bun --hot chat.tsx
  */
 
+import { engineTranscript } from './src/engine/transcript'
 import { ContextHistory } from './src/components/ContextHistory'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1195,12 +1196,14 @@ const Transcript = memo(function Transcript({
   listRef,
   onRetry,
   project = 'kale',
+  testId,
 }: {
   turns: Turn[]
   includeSafeMdx?: boolean
   listRef?: React.Ref<PublicInstance>
   onRetry?: () => void
   project?: string
+  testId?: string
 }) {
   if (turns.length === 0 && !includeSafeMdx) {
     return (
@@ -1237,6 +1240,7 @@ const Transcript = memo(function Transcript({
 
   return (
     <virtual-list
+      testId={testId}
       ref={listRef}
       overdraw={240}
       estimatedItemHeight={220}
@@ -5121,23 +5125,23 @@ function ChipSelect({
   )
 }
 
-function ModelPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
-  const selected = MODELS.find((model) => model.id === value) ?? MODELS[0]
+export function ModelPicker({ value, onChange, models = MODELS }: { value: string; onChange: (next: string) => void; models?: typeof MODELS }) {
+  const selected = models.find((model) => model.id === value) ?? models[0] ?? { id: '', label: 'No models available', group: '', icon: 'sparkle' as const }
   const groups = useMemo(() => {
     const out: { name: string; items: typeof MODELS }[] = []
-    for (const model of MODELS) {
+    for (const model of models) {
       const last = out[out.length - 1]
       if (last && last.name === model.group) last.items.push(model)
       else out.push({ name: model.group, items: [model] })
     }
     return out
-  }, [])
+  }, [models])
 
   return (
     <ChipSelect
       value={value}
       onChange={onChange}
-      items={MODELS.map((model) => ({ value: model.id, label: model.label }))}
+      items={models.map((model) => ({ value: model.id, label: model.label }))}
       icon={selected.icon}
       label={selected.label}
       testId="model-picker"
@@ -5375,6 +5379,7 @@ function Composer({
   onChange,
   onSend,
   model,
+  models,
   onModelChange,
   reasoning,
   onReasoningChange,
@@ -5388,6 +5393,7 @@ function Composer({
   onChange: (next: string) => void
   onSend: (text: string) => void
   model: string
+  models?: typeof MODELS
   onModelChange: (next: string) => void
   reasoning: string
   onReasoningChange: (next: string) => void
@@ -5472,7 +5478,7 @@ function Composer({
             paddingRight: 10,
           }}
         >
-          <ModelPicker value={model} onChange={onModelChange} />
+          <ModelPicker value={model} onChange={onModelChange} models={models} />
           <ReasoningPicker value={reasoning} onChange={onReasoningChange} />
           <AccessPicker value={access} onChange={onAccessChange} />
           <ModeToggle value={mode} onChange={onModeChange} />
@@ -6106,6 +6112,23 @@ export function ChatApp({
     enabled: engineEnabled,
     workspace: typeof process !== 'undefined' ? process.cwd() : '',
   })
+  const reportedModels: typeof MODELS = engineView.snapshot.models.map((item) => ({
+    id: item.id,
+    label: `${item.label}${item.reason === 'provider_denied' ? ' · denied' : item.reason === 'credentials_missing' ? ' · needs credential' : ''}`,
+    group: item.provider,
+    icon: 'sparkle' as const,
+  }))
+  const chosenModel = engineEnabled
+    ? (engineView.snapshot.models.some((item) => item.id === model) ? model : engineView.snapshot.defaultModel)
+    : model
+  const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
+  const latestEngineOutput = engineView.snapshot.steps.at(-1)?.output
+  useEffect(() => {
+    if (!engineEnabled || shownTurns.length === 0) return
+    const id = listRef.current?.id
+    if (id != null) renderer?.scrollToItem?.(id, shownTurns.length - 1)
+  }, [engineEnabled, renderer, shownTurns.length, latestEngineOutput, engineView.snapshot.parts.length])
+
 
   if (currentView === 'settings') {
     return (
@@ -6223,17 +6246,27 @@ export function ChatApp({
         />
         <Transcript
           key={activeId}
-          turns={turns}
-          includeSafeMdx={showSafeMdx}
+          turns={shownTurns}
+          testId={engineEnabled ? 'engine-transcript' : undefined}
+          includeSafeMdx={engineEnabled ? false : showSafeMdx}
           listRef={listRef}
-          onRetry={onRetry}
+          onRetry={engineEnabled ? undefined : onRetry}
           project={projectLabel}
         />
+        {engineEnabled && engineView.snapshot.error && (
+          <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
+        )}
         <Composer
           value={draft}
           onChange={setDraft}
           focusTick={focusTick}
           onSend={(text) => {
+            if (engineEnabled) {
+              engineView.prompt(text, 'queue', chosenModel)
+              setDraft('')
+              setTailTick((value) => value + 1)
+              return
+            }
             const modelLabel = MODELS.find((item) => item.id === model)?.label ?? model
             const reply = demoReply({ text, modelLabel, mode })
             setConversations((current) =>
@@ -6251,7 +6284,8 @@ export function ChatApp({
             setDraft('')
             setTailTick((value) => value + 1)
           }}
-          model={model}
+          model={chosenModel}
+          models={engineEnabled ? reportedModels : undefined}
           onModelChange={setModel}
           reasoning={reasoning}
           onReasoningChange={setReasoning}

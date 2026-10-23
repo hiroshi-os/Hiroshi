@@ -7,7 +7,7 @@
  * waits before every chunk; tests use it to hold a step open across a crash,
  * and it doubles as a way to watch a stream arrive in the cockpit.
  *
- * Real adapters arrive behind the same `Provider` interface.
+ * Remote adapters implement the same `Provider` interface.
  */
 
 import { ProviderError, type Provider, type ProviderRequest } from '../provider'

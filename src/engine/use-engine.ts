@@ -19,7 +19,7 @@ export interface EngineHandle {
   /** Run a command in the engine's session for this workspace. */
   exec: (command: string) => void
   /** Admit a prompt to the session's inbox; it is delivered at a boundary. */
-  prompt: (text: string, mode?: DeliveryMode) => void
+  prompt: (text: string, mode?: DeliveryMode, model?: string) => void
   /** Stop every run the session is holding, keeping the pending inbox. */
   interrupt: () => void
   cancel: (runID: string) => void
@@ -100,6 +100,8 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
 
         let after = 0
         try {
+          const catalog = await connection.models()
+          update((current) => ({ ...current, models: catalog.models, defaultModel: catalog.defaultModel }))
           const { sessions } = await connection.listSessions()
           const existing = sessions.find((candidate) => candidate.cwd === workspace) ?? sessions[0]
           const chosen =
@@ -179,7 +181,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     })
   }, [])
 
-  const prompt = useCallback((text: string, mode: DeliveryMode = 'queue') => {
+  const prompt = useCallback((text: string, mode: DeliveryMode = 'queue', model?: string) => {
     const connection = client.current
     const sessionID = session.current
     if (!connection || !sessionID) return
@@ -187,7 +189,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     if (!body) return
     // One key per send. A retry of the same send is a no-op in the engine.
     const key = `k_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-    void connection.prompt({ id: sessionID, text: body, mode, key }).catch((error) => {
+    void connection.prompt({ id: sessionID, text: body, mode, key, ...(model ? { model } : {}) }).catch((error) => {
       setSnapshot((current) => ({ ...current, error: describe(error) }))
     })
   }, [])

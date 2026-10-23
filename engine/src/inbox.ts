@@ -113,6 +113,7 @@ export class Inbox {
       admittedAt: at,
       deliveredAt: null,
       messageID: null,
+      ...(input.model ? { model: input.model } : {}),
     }
 
     this.#store.record({
@@ -159,6 +160,7 @@ export class Inbox {
       // Reserve first: the message is part of the event that makes it durable,
       // and the projector that writes the row also closes the inbox item.
       const message = this.#store.newMessage(sessionID, 'user', item.text, at, item.mode)
+      if (item.model) message.model = item.model
       const done: InboxItem = {
         ...item,
         state: 'delivered',

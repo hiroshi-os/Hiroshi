@@ -11,6 +11,8 @@
 import type {
   Compaction,
   StepContext,
+  StepPart,
+  ModelInfo,
   EngineEvent,
   Health,
   InboxItem,
@@ -43,6 +45,9 @@ export interface Snapshot {
   sessions: Session[]
   sessionID: string | null
   messages: Message[]
+  models: ModelInfo[]
+  defaultModel: string
+  parts: StepPart[]
   /** Prompts admitted but not delivered yet, oldest first. */
   inbox: InboxItem[]
   runs: Run[]
@@ -66,6 +71,9 @@ export function initialSnapshot(): Snapshot {
     sessions: [],
     sessionID: null,
     messages: [],
+    models: [],
+    defaultModel: 'local/echo',
+    parts: [],
     inbox: [],
     runs: [],
     steps: [],
@@ -128,6 +136,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     toolCalls: detail.toolCalls ?? [],
     compactions: detail.compactions ?? [],
     contexts: detail.contexts ?? [],
+    parts: detail.parts ?? [],
     output,
     error: null,
   }
@@ -181,6 +190,12 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       const { context } = event.data
       if (context.sessionID !== snapshot.sessionID || snapshot.contexts.some((c) => c.id === context.id)) return snapshot
       return { ...snapshot, contexts: [...snapshot.contexts, context] }
+    }
+
+    case 'step.part': {
+      const { part } = event.data
+      if (part.sessionID !== snapshot.sessionID || snapshot.parts.some((p) => p.id === part.id)) return snapshot
+      return { ...snapshot, parts: [...snapshot.parts, part] }
     }
 
     case 'step.started':

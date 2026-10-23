@@ -27,17 +27,18 @@
  *     is an ending and it is written.
  */
 
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 import { Context, type ContextOptions } from './context'
 import type { Logger } from './log'
-import { ProviderError, type Provider } from './provider'
+import { ProviderError, type Provider, type ProviderPart } from './provider'
 import type { Step, StepError } from './protocol'
 import type { Store } from './store'
 
 export interface StepsOptions {
   provider: Provider
   context?: ContextOptions
+  selectProvider?: (model?: string) => Provider
   /**
    * Physical attempts one step may spend, including the attempt it was
    * created with. A restart counts as an attempt.
@@ -58,7 +59,8 @@ interface ActiveStep {
 export class Steps {
   readonly #store: Store
   readonly #log: Logger
-  readonly #context: Context
+  readonly #contextOptions: ContextOptions
+  readonly #selectProvider?: (model?: string) => Provider
   readonly #provider: Provider
   readonly #maxAttempts: number
   readonly #backoff: (attempt: number) => number
@@ -70,7 +72,8 @@ export class Steps {
     this.#store = store
     this.#log = log.child('steps')
     this.#provider = options.provider
-    this.#context = new Context(store, options.provider, options.context)
+    this.#contextOptions = options.context ?? {}
+    this.#selectProvider = options.selectProvider
     this.#maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
     this.#backoff = options.backoff ?? defaultBackoff
   }
@@ -111,13 +114,16 @@ export class Steps {
     const running = this.#store.steps(sessionID).find((step) => step.status === 'running')
     if (running) return running
 
+    // Prompts admitted before model selection existed belonged to local/echo.
+    // A newly configured remote default must not retarget that durable work.
+    const selected = this.#selectProvider?.(message.model ?? 'local/echo') ?? this.#provider
     const at = Date.now()
     const step: Step = {
       id: `step_${at.toString(36)}${randomBytes(4).toString('hex')}`,
       sessionID,
       messageID: message.id,
-      provider: this.#provider.name,
-      model: this.#provider.model,
+      provider: selected.name,
+      model: selected.model,
       attempt: 1,
       status: 'running',
       claim: process.pid,
@@ -156,7 +162,7 @@ export class Steps {
       const current = this.#store.step(step.id)
       if (!current || current.status !== 'running') continue
 
-      if (current.output.length > 0) {
+      if (current.output.length > 0 || this.#store.stepParts(current.sessionID).some((part) => part.stepID === current.id)) {
         this.#fail(current, {
           code: 'engine_restart_mid_stream',
           message: 'the engine stopped after this step had produced output; it was not re-run',
@@ -265,19 +271,35 @@ export class Steps {
     let step = initial
     let produced = false
     let overflow = false
+    const existingParts = this.#store.stepParts(initial.sessionID).filter((part) => part.stepID === initial.id)
+    let partBytes = existingParts.reduce((sum, part) => sum + JSON.stringify(part).length, 0)
+    let partCount = existingParts.length
 
     for (;;) {
       let callingProvider = false
       try {
-        const request = this.#context.prepare(step, overflow)
+        const provider = this.#selectProvider?.(step.model) ?? this.#provider
+        provider.check?.()
+        const request = new Context(this.#store, provider, this.#contextOptions).prepare(step, overflow)
         overflow = false
         callingProvider = true
-        await this.#provider.stream(
+        await provider.stream(
           { ...request, signal: controller.signal },
           (text) => {
             if (!text || controller.signal.aborted) return
             produced = true
             step = this.#append(step, text)
+          },
+          (value: ProviderPart) => {
+            if (controller.signal.aborted) return
+            if (value.kind === 'reasoning' && !value.text) return
+            produced = true
+            const size = JSON.stringify(value).length
+            if (++partCount > 4096 || (partBytes += size) > MAX_OUTPUT) {
+              throw new ProviderError('provider_output_limit', 'provider reasoning or tool output exceeded the durable limit')
+            }
+            const part = { ...value, id: `part_${randomUUID()}`, sessionID: step.sessionID, stepID: step.id, at: Date.now() }
+            this.#store.record({ type: 'step.part', sessionID: step.sessionID, data: { part }, project: () => this.#store.insertStepPart(part) })
           },
         )
 

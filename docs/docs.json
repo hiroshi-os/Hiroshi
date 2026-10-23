@@ -41,6 +41,7 @@
             "pages": [
               "architecture",
               "engine",
+              "providers",
               "window"
             ]
           },

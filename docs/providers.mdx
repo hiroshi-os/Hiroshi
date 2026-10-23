@@ -1,0 +1,122 @@
+---
+title: "Providers and models"
+description: "Configure model adapters, local credentials and provider policy."
+---
+
+The engine owns the model catalog. The cockpit reads it from `GET /v1/models`;
+its model picker does not invent remote model names. The built-in `local/echo`
+model works without credentials or a network connection.
+
+## Configure a provider
+
+Create `providers.json` in the [engine data directory](/engine#the-data-directory).
+The file selects adapters and declares the models you want to offer. For example:
+
+```json
+{
+  "defaultModel": "work/chat",
+  "providers": [
+    {
+      "id": "work",
+      "adapter": "openai",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "models": [
+        {
+          "id": "chat",
+          "model": "YOUR_PROVIDER_MODEL_ID",
+          "label": "Work chat",
+          "contextWindow": 32768,
+          "reservedOutput": 1024
+        }
+      ]
+    }
+  ],
+  "policy": [
+    { "provider": "*", "action": "allow" }
+  ]
+}
+```
+
+Replace `YOUR_PROVIDER_MODEL_ID` and the example limits with those of the model
+your account supports. `work/chat` is the catalog identity: the prompt and step
+keep that identity durably. The adapter translates it into the provider's own
+model id at the API boundary.
+
+Set the named environment variable before launching Hiroshi. The configuration
+stores the variable's name, not its value. Restart the daemon after changing the
+configuration or credentials. An already-running daemon keeps its configuration.
+
+| Adapter | API | Default credential variable |
+| :--- | :--- | :--- |
+| `openai` | OpenAI Responses | `OPENAI_API_KEY` |
+| `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` |
+
+Both adapters use streaming HTTP. `baseURL` optionally overrides the API root,
+including its `/v1` prefix. Remote endpoints require HTTPS; loopback HTTP is
+supported for local servers and integration tests. Redirects are not followed.
+
+Credentials stay inside the engine's adapter instances and are used only for
+provider authentication. They are excluded from the catalog, durable model
+records and logs. HTTP and streaming errors use bounded, classified messages;
+the engine does not copy provider error prose into the transcript. OpenAI
+requests set `store: false`.
+
+## Provider policy
+
+Policy rules match the configured provider `id`, or `*` for every provider. The
+last matching rule wins; the default is allow. This policy is independent of
+whether the provider has credentials.
+
+```json
+{
+  "policy": [
+    { "provider": "*", "action": "deny" },
+    { "provider": "local", "action": "allow" },
+    { "provider": "work", "action": "allow" }
+  ]
+}
+```
+
+Denied models remain visible in the picker with a denial label. Choosing one
+produces a durable failed step with `provider_denied`, which the transcript
+shows. No provider request is made. A model without a credential is marked as
+needing one and fails with `credentials_missing`. A removed model fails with
+`model_unavailable`; a pending prompt never silently switches to another model.
+
+## Streaming and recovery
+
+The main composer sends prompts to the engine with their selected catalog model.
+The inbox preserves that selection across queueing and restart. An idempotency
+key keeps the first admission, including its model choice.
+
+Text streams into the transcript through `step.output`. Reasoning summaries and
+tool-call starts, argument deltas and completions become bounded `step.part`
+records and feed events. OpenAI item ids are mapped to the provider's function
+call ids; Anthropic block indices are mapped to tool-use ids. A completed text
+answer replaces its streaming row with one committed assistant message.
+
+Tool requests are displayed as **not executed**. Tool execution and its permission
+gate are a separate milestone item; these adapters do not run model-requested
+tools or start an in-memory tool loop. Reasoning is displayed when the provider
+emits it; the adapters do not force a reasoning mode on every model.
+
+Any text, reasoning or tool output prevents automatic replay after failure or
+restart. A stream without a terminal completion event fails explicitly. A rate
+limit or transport failure before output can use the step's bounded retry policy.
+Context overflow uses the existing one-compaction recovery rule.
+
+The adapter mappings follow the official [OpenAI streaming event reference](https://developers.openai.com/api/reference/resources/responses/streaming-events)
+and [Anthropic streaming guide](https://platform.claude.com/docs/en/build-with-claude/streaming).
+
+## Tests and extension
+
+`bun run test:engine` exercises both adapters against local HTTP fixture servers
+and starts real daemon processes with isolated configuration. It verifies partial
+output on the live feed, credential isolation, policy denial, cancellation and
+recovery after a crash before text has arrived. These tests need no live API keys.
+Native UI tests exercise catalog-backed selection and denial labels.
+
+To add a provider, implement the normalized `Provider` interface and register its
+factory, endpoint and credential variable in `engine/src/providers/catalog.ts`.
+Configuration then declares its offered models. The step runner, durable log,
+transport protocol and cockpit need no provider-specific branches.
