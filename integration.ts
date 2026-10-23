@@ -311,7 +311,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       DAEMON_DEADLINE_MS,
     )
     note('the daemon answered')
-    check((await app.getByTestId('engine-run-status').textContent()).includes('No run'), 'the header invented a run')
+    await waitUntil(async () => (await app.getByTestId('engine-run-status').textContent()).includes('No run') || false, 'the session snapshot to hydrate before checking its empty run state')
 
     await submit(app, FIRST_COMMAND)
     const first = await waitUntil(
