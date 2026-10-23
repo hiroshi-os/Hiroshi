@@ -73,12 +73,28 @@ bun run engine:status
 | `bun run test` | Test the UI through the native GPUIX test renderer |
 | `bun run test:integration` | Drive a real desktop window and its engine |
 | `bun run screenshot` | Capture desktop UI screenshots |
-| `bun run build` | Compile the desktop app into `dist/hiroshi` |
+| `bun run build` | Compile the cockpit and engine sidecar into `dist/` |
 | `bun run web:dev` | Bundle and serve the browser preview |
+| `bun run web:build` | Check the browser bundle without starting a server |
+| `bun run test:web` | Render the Wasm preview and send a demo prompt in headless Chrome |
 
 The engine suite needs no GPU. Native UI tests run on macOS and Windows;
 windowed integration tests and screenshots need a desktop session. The browser
-preview does not start the local daemon.
+preview works with the published GPUIX Wasm renderer and uses demo conversations;
+it does not start the daemon or run models, shell commands or workspace operations.
+Native dragging and window controls are disabled. Open `http://127.0.0.1:4173`
+after starting `web:dev`. The server supplies the cross-origin isolation headers
+required by Wasm shared memory. The browser test uses an isolated Chrome profile;
+set `HIROSHI_CHROME` to override the executable path.
+
+On Windows, run automated commands through the resource guard, which monitors
+system RAM and caps the entire child process tree. For example:
+
+```powershell
+& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @('run','test:web') -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 75
+```
+
+See [development](docs/development.mdx) for integration coverage and resource limits.
 
 ## Local data
 

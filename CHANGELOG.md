@@ -19,6 +19,17 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.12.1] - 2026-10-24
+
+### Fixed
+
+- Remove the unreachable legacy swarm cockpit, unused mock data, icons and mail
+  images, and the obsolete animation script. Documentation describes the current
+  engine-backed cockpit and no longer advertises the removed inspector panel.
+- Mount the browser preview explicitly and replace native window FFI with browser
+  adapters. Verify Wasm rendering and composer interaction in isolated Chrome.
+- Update the screenshot harness to current controls and isolate its engine data.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added

@@ -56,6 +56,9 @@ jobs:
       - name: Run the windowed integration test
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:integration") -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 300'
 
+      - name: Check the Wasm browser preview under resource limits
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:web") -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 90'
+
       - name: Build packaged desktop under resource limits
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","build") -MaxProcesses 3 -MemoryMB 2048 -TimeoutSeconds 120'
 

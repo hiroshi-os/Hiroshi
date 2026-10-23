@@ -1,5 +1,5 @@
 /** Set by our compiler; Bun 1.3.5 has no isStandaloneExecutable property. */
-export const packagedBuild = process.env.HIROSHI_PACKAGED_BUILD === '1'
+export const packagedBuild = typeof process !== 'undefined' && process.env.HIROSHI_PACKAGED_BUILD === '1'
 
 export function allowSourceRuntime(name: string): void {
   if (!/^bun(?:-debug)?(?:\.exe)?$/i.test(name)) throw new Error('Unrecognized compiled runtime; use the Hiroshi build script')
