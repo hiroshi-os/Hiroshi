@@ -8,6 +8,7 @@ import type { Store } from './store'
 
 export interface ContextOptions {
   enabled?: boolean
+  tools?: unknown[]
   /** Re-read before each attempt, so edits and removals are observable. */
   instructions?: (sessionID: string) => InstructionSource[]
 }
@@ -32,7 +33,9 @@ export class Context {
     ) {
       throw new ProviderError('context_configuration', 'invalid model context or reserved output budget')
     }
-    const instructions = this.options.instructions?.(step.sessionID) ?? this.#workspaceInstructions(step.sessionID)
+    const tools = this.options.tools ?? this.provider.tools ?? []
+    const instructions = [...(this.options.instructions?.(step.sessionID) ?? this.#workspaceInstructions(step.sessionID))]
+    if (this.options.tools?.length) instructions.push({ source: 'engine/tool-permissions', text: 'Tool permission decisions are authoritative. A denial is an operator or policy decision, not a tool failure to work around. Continue within granted permissions.' })
     const names = new Set(instructions.map((source) => source.source))
     if (names.size !== instructions.length) {
       throw new ProviderError('context_configuration', 'instruction source names must be unique')
@@ -44,14 +47,13 @@ export class Context {
     const previous = this.store.contexts(step.sessionID).at(-1)?.sources ?? []
     const changed = [...new Set([...previous.map((s) => s.source), ...sources.map((s) => s.source)])]
       .filter((source) => previous.find((s) => s.source === source)?.hash !== sources.find((s) => s.source === source)?.hash)
-    const tools = this.provider.tools ?? []
     const fixed = instructions.reduce((sum, s) => sum + estimateTokens(s.text) + 16, 0) + estimateTokens(JSON.stringify(tools)) + 32
     const budget = limits.window - limits.reservedOutput - fixed
     const all = this.store.messages(step.sessionID)
     const boundaries = this.store.compactions(step.sessionID)
     let boundary = boundaries.at(-1)
     let messages = all.filter((m) => m.role === 'system' || m.seq > (boundary?.throughSeq ?? -1))
-    const cost = (items: Message[], summary?: Compaction) => items.reduce((n, m) => n + estimateTokens(m.text) + 16, 0)
+    const cost = (items: Message[], summary?: Compaction) => items.reduce((n, m) => n + estimateTokens(m.text) + (m.toolCalls ? estimateTokens(JSON.stringify(m.toolCalls)) : 0) + (m.toolResult ? estimateTokens(JSON.stringify(m.toolResult)) : 0) + (m.providerState ? estimateTokens(JSON.stringify(m.providerState)) : 0) + 16, 0)
       + (summary ? estimateTokens(summary.text) + 16 : 0)
     const originalCost = cost(messages, boundary)
 

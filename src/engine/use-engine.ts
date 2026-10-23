@@ -16,6 +16,8 @@ import { ensureEngine, stopEngine } from './supervisor'
 
 export interface EngineHandle {
   snapshot: Snapshot
+  answerPermission: (id: string, decision: 'allow' | 'deny', remember: boolean) => Promise<void>
+  toolOutput: (id: string) => Promise<{ path: string; text: string }>
   /** Run a command in the engine's session for this workspace. */
   exec: (command: string) => void
   /** Admit a prompt to the session's inbox; it is delivered at a boundary. */
@@ -212,5 +214,14 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     })()
   }, [])
 
-  return { snapshot, exec, prompt, interrupt, cancel, restart }
+  const answerPermission = useCallback(async (id: string, decision: 'allow' | 'deny', remember: boolean) => {
+    if (!client.current) throw new Error('the engine is not connected')
+    await client.current.answerPermission({ id, decision, remember })
+  }, [])
+  const toolOutput = useCallback(async (id: string) => {
+    if (!client.current) throw new Error('the engine is not connected')
+    return client.current.toolOutput({ id })
+  }, [])
+
+  return { snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

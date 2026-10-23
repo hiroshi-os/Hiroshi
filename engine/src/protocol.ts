@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 5
+export const PROTOCOL_VERSION = 6
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.7.0'
+export const ENGINE_VERSION = '0.8.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -45,6 +45,7 @@ export type StepPart = {
   at: number
 } & (
   | { kind: 'reasoning'; text: string }
+  | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
 )
 
@@ -74,7 +75,7 @@ export interface Session {
   lastRunAt: number | null
 }
 
-export type MessageRole = 'user' | 'assistant' | 'system'
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
 /**
  * How a prompt waits in a session's inbox.
@@ -110,6 +111,39 @@ export interface InboxItem {
   model?: string
 }
 
+export interface ModelToolRequest { id: string; name: string; arguments: string }
+
+export interface ToolDefinition {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  outputSchema: Record<string, unknown>
+}
+
+export type PermissionAction = 'allow' | 'ask' | 'deny'
+
+export interface Permission {
+  id: string
+  sessionID: string
+  toolCallID: string
+  tool: string
+  input: string
+  cwd: string
+  revision: string
+  state: 'pending' | 'answered'
+  decision: 'allow' | 'deny' | null
+  remember: boolean
+  createdAt: number
+  answeredAt: number | null
+}
+
+export interface SavedPermission {
+  id: string
+  scope: string
+  decision: 'allow' | 'deny'
+  at: number
+}
+
 export interface Message {
   id: string
   sessionID: string
@@ -121,6 +155,10 @@ export interface Message {
   /** The delivery mode the prompt arrived with, when it came through the inbox. */
   mode?: DeliveryMode
   model?: string
+  providerState?: { provider: 'openai' | 'anthropic'; value: unknown }[]
+  stepID?: string
+  toolCalls?: ModelToolRequest[]
+  toolResult?: { callID: string; toolCallID: string; status: ToolStatus }
 }
 
 /** Source values are sent to the provider; only hashes enter the context ledger. */
@@ -226,6 +264,8 @@ export interface StepError {
  */
 export interface Step {
   id: string
+  /** Each continuation is another durable model call, never an in-memory loop. */
+  parentID?: string
   sessionID: string
   messageID: string | null
   provider: string
@@ -242,7 +282,7 @@ export interface Step {
   endedAt: number | null
 }
 
-export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
+export type ToolStatus = 'queued' | 'waiting' | 'running' | 'succeeded' | 'failed' | 'denied' | 'cancelled' | 'interrupted'
 
 /**
  * One effect, durable before it happens.
@@ -255,6 +295,17 @@ export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'int
  */
 export interface ToolCall {
   id: string
+  /** Optional on legacy operator-started shell runs. */
+  callID?: string
+  messageID?: string
+  resultMessageID?: string
+  cwd?: string
+  revision?: string
+  definition?: ToolDefinition
+  output?: string
+  outputPath?: string
+  truncated?: boolean
+  decisionSource?: string
   sessionID: string
   stepID: string | null
   runID: string | null
@@ -288,9 +339,12 @@ export interface EventPayloads {
   'step.resumed': { step: Step; reason: string }
   'step.retry': { step: Step; delay: number; error: StepError }
   'step.output': { stepID: string; data: string }
-  'step.completed': { step: Step; message: Message | null }
+  'step.completed': { step: Step; message: Message | null; toolCalls?: ToolCall[] }
   'step.failed': { step: Step }
   'step.cancelled': { step: Step }
+  'tool.updated': { call: ToolCall; message?: Message }
+  'permission.requested': { permission: Permission; call: ToolCall }
+  'permission.answered': { permission: Permission; saved?: SavedPermission }
   'run.started': { run: Run; toolCall: ToolCall | null }
   'run.output': { runID: string; stream: OutputStream; data: string }
   'run.truncated': { runID: string; limit: number }
@@ -332,6 +386,7 @@ export interface SessionDetail {
   compactions: Compaction[]
   contexts: StepContext[]
   parts: StepPart[]
+  permissions: Permission[]
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }
@@ -400,6 +455,8 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  answerPermission: { request: { id: string; decision: 'allow' | 'deny'; remember?: boolean }; response: { permission: Permission } }
+  toolOutput: { request: { id: string }; response: { path: string; text: string } }
   models: { request: NoInput; response: { models: ModelInfo[]; defaultModel: string } }
   health: { request: NoInput; response: Health }
   listSessions: { request: NoInput; response: SessionsResponse }
@@ -435,6 +492,8 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'answerPermission', method: 'POST', path: '/v1/permissions/:id/answer' },
+  { name: 'toolOutput', method: 'GET', path: '/v1/tools/:id/output' },
   { name: 'models', method: 'GET', path: '/v1/models' },
   { name: 'health', method: 'GET', path: '/v1/health' },
   { name: 'listSessions', method: 'GET', path: '/v1/sessions' },

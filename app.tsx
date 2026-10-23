@@ -11,6 +11,7 @@
  */
 
 import { engineTranscript } from './src/engine/transcript'
+import { ToolActivity } from './src/components/ToolActivity'
 import { ContextHistory } from './src/components/ContextHistory'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -3408,7 +3409,7 @@ function SurfacePanel({
   const engineRuns = engine.snapshot.runs
   const engineInbox = engine.snapshot.inbox
   const engineReady = engineStatus === 'ready'
-  const engineRunning = engineRuns.some((run) => run.status === 'running')
+  const engineRunning = engineRuns.some((run) => run.status === 'running') || engine.snapshot.toolCalls.some((call) => call.callID && !call.resultMessageID)
   // Delivered counts turns, not transcript lines: the assistant reply to a
   // prompt must not make the inbox look like it delivered two prompts.
   const delivered = engine.snapshot.messages.filter((message) => message.role === 'user').length
@@ -6253,6 +6254,10 @@ export function ChatApp({
           onRetry={engineEnabled ? undefined : onRetry}
           project={projectLabel}
         />
+        {engineEnabled && (
+          <ToolActivity permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls}
+            onAnswer={engineView.answerPermission} onOutput={engineView.toolOutput} />
+        )}
         {engineEnabled && engineView.snapshot.error && (
           <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
         )}

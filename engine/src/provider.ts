@@ -25,6 +25,7 @@ export interface RemoteModelOptions {
 
 export type ProviderPart =
   | { kind: 'reasoning'; text: string }
+  | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
 
 export interface ProviderRequest {

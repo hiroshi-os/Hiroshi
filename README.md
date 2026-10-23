@@ -15,6 +15,7 @@ window and persists its work in SQLite. It supports:
 - Durable session inboxes with steering, queued prompts and interrupts.
 - Streaming steps with bounded retries and explicit crash recovery.
 - Context budgeting and compaction that preserve the full transcript.
+- Model-requested tools with cockpit approvals, policy and durable results.
 - One typed HTTP protocol and a replayable event feed for multiple clients.
 
 The Terminal surface connects to the engine and shows runs, steps, pending
@@ -22,7 +23,8 @@ prompts and context history. The main composer streams answers from the selected
 engine model. OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
-demonstrations. See [provider configuration](docs/providers.mdx).
+demonstrations. See [provider configuration](docs/providers.mdx) and
+[tools and permissions](docs/tools.mdx).
 
 Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).
 See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.

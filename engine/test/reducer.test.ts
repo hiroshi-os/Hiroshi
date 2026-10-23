@@ -239,6 +239,7 @@ describe('the projection', () => {
       compactions: [],
       contexts: [],
       parts: [],
+      permissions: [],
       toolCalls: [{ ...toolCall, status: 'succeeded', endedAt: 20 }],
       seq: 9,
     }

@@ -31,11 +31,13 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { connectStdio, type App, type TreeNode } from '@gpuix/react/automation'
+
+import { toolFixture } from './engine/test/tool-fixture'
 
 import { engineClient, type EngineClient } from './src/engine/client'
 import { localPaths, readRegistry, type LocalPaths } from './src/engine/discovery'
@@ -150,9 +152,9 @@ interface WindowSession {
   close: () => Promise<void>
 }
 
-async function openWindow(env: NodeJS.ProcessEnv): Promise<WindowSession> {
-  const child = spawn(process.execPath, ['app.tsx'], {
-    cwd: process.cwd(),
+async function openWindow(env: NodeJS.ProcessEnv, workspace: string): Promise<WindowSession> {
+  const child = spawn(process.execPath, [path.resolve(import.meta.dir, 'app.tsx')], {
+    cwd: workspace,
     env: { ...process.env, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
@@ -262,11 +264,15 @@ async function runsText(app: App): Promise<string> {
 
 /** The window half: the cockpit, the terminal and two commands through it. */
 async function driveTheWindow(home: string): Promise<void> {
+  const workspace = path.join(home, 'workspace')
+  mkdirSync(workspace)
+  writeFileSync(path.join(workspace, 'huge.txt'), 'window-full-output-marker\n' + 'z'.repeat(32 * 1024))
   const window = await openWindow({
     HIROSHI_HOME: home,
+    HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture',
     // Do not take the keyboard away from whoever is sitting at the machine.
     GPUIX_BACKGROUND: '1',
-  })
+  }, workspace)
 
   try {
     const { app } = window
@@ -385,6 +391,50 @@ async function driveTheWindow(home: string): Promise<void> {
     check(selected.includes('Local echo'), `the picker did not show the selected engine model: ${selected}`)
     note('the main composer used the catalog model and drew its real answer')
 
+    // Real tool requests travel through the daemon and the cockpit's gate.
+    await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-fixture/tools').click()
+    const record = readRegistry(localPaths(home).registry)!
+    const client = engineClient(record)
+    const pending = async () => {
+      for (const session of (await client.listSessions()).sessions) {
+        const detail = await client.session({ id: session.id })
+        const permission = detail.permissions.find((p) => p.state === 'pending')
+        if (permission) return { detail, permission }
+      }
+      return false
+    }
+    for (const action of ['allow', 'deny'] as const) {
+      await composer.fill(action === 'allow' ? 'approve' : 'deny')
+      await composer.press('enter')
+      const { permission } = await waitUntil(pending, 'the model tool permission question')
+      await app.getByTestId(`permission-${permission.id}`).waitFor()
+      check(!existsSync(path.join(workspace, action === 'allow' ? 'approved.txt' : 'denied.txt')), 'the tool ran before its answer')
+      if (action === 'allow') await app.getByTestId(`permission-remember-${permission.id}`).click()
+      await app.getByTestId(`permission-${action}-${permission.id}`).click()
+      await waitUntil(async () => (await treeText(app)).includes(`Tool turn complete: ${action === 'allow' ? 'approve' : 'deny'}`) || false,
+        'the model to continue after the cockpit answer')
+      if (action === 'allow') check(readFileSync(path.join(workspace, 'approved.txt'), 'utf8') === 'approved from the model', 'the approved write did not run')
+      else check(!existsSync(path.join(workspace, 'denied.txt')), 'the declined write ran')
+      note(`the cockpit answered ${action} and the model continued`)
+    }
+    await composer.fill('huge')
+    await composer.press('enter')
+    const { permission: huge } = await waitUntil(pending, 'the large read permission')
+    await app.getByTestId(`permission-allow-${huge.id}`).waitFor()
+    await app.getByTestId(`permission-allow-${huge.id}`).click()
+    await waitUntil(async () => (await treeText(app)).includes('Tool turn complete: huge') || false, 'the large read to finish')
+    await app.getByTestId(`tool-output-${huge.toolCallID}`).click()
+    await app.getByTestId('tool-output-viewer').waitFor()
+    check((await treeText(app)).includes('window-full-output-marker'), 'the full output did not open')
+    try {
+      const shots = path.join(process.cwd(), 'screenshots')
+      mkdirSync(shots, { recursive: true })
+      await app.screenshot({ path: path.join(shots, 'windowed-tools.png') })
+    } catch (error) { note(`tool screenshot unavailable: ${String(error)}`) }
+    await app.getByTestId('tool-output-close').click()
+    note('the cockpit opened the complete managed tool result')
+
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.
     await submit(app, SECOND_COMMAND)
@@ -471,10 +521,11 @@ async function stopTheDaemon(home: string): Promise<void> {
 
 async function main(): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), 'hiroshi-windowed-'))
+  const fixture = toolFixture()
   writeFileSync(path.join(home, 'providers.json'), JSON.stringify({
     providers: [{ id: 'restricted', adapter: 'openai', models: [{
       id: 'chat', model: 'fixture-never-called', label: 'Restricted model', contextWindow: 32768, reservedOutput: 1024,
-    }] }],
+    }] }, fixture.provider],
     policy: [{ provider: 'restricted', action: 'deny' }],
   }))
   const paths: LocalPaths = localPaths(home)
@@ -505,6 +556,7 @@ async function main(): Promise<void> {
   }
 
   await stopTheDaemon(home)
+  fixture.server.stop(true)
   if (failure) throw failure
   note('all assertions passed')
 }

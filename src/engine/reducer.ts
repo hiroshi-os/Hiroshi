@@ -10,6 +10,7 @@
 
 import type {
   Compaction,
+  Permission,
   StepContext,
   StepPart,
   ModelInfo,
@@ -48,6 +49,7 @@ export interface Snapshot {
   models: ModelInfo[]
   defaultModel: string
   parts: StepPart[]
+  permissions: Permission[]
   /** Prompts admitted but not delivered yet, oldest first. */
   inbox: InboxItem[]
   runs: Run[]
@@ -74,6 +76,7 @@ export function initialSnapshot(): Snapshot {
     models: [],
     defaultModel: 'local/echo',
     parts: [],
+    permissions: [],
     inbox: [],
     runs: [],
     steps: [],
@@ -137,6 +140,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     compactions: detail.compactions ?? [],
     contexts: detail.contexts ?? [],
     parts: detail.parts ?? [],
+    permissions: detail.permissions ?? [],
     output,
     error: null,
   }
@@ -192,6 +196,26 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       return { ...snapshot, contexts: [...snapshot.contexts, context] }
     }
 
+    case 'tool.updated': {
+      const { call, message } = event.data
+      if (call.sessionID !== snapshot.sessionID) return snapshot
+      const messages = message && !snapshot.messages.some((m) => m.id === message.id)
+        ? [...snapshot.messages, message].sort((a, b) => a.seq - b.seq) : snapshot.messages
+      return { ...snapshot, toolCalls: upsertToolCall(snapshot.toolCalls, call), messages }
+    }
+    case 'permission.requested': {
+      const { permission, call } = event.data
+      if (permission.sessionID !== snapshot.sessionID) return snapshot
+      const permissions = snapshot.permissions.some((p) => p.id === permission.id)
+        ? snapshot.permissions : [...snapshot.permissions, permission]
+      return { ...snapshot, permissions, toolCalls: upsertToolCall(snapshot.toolCalls, call) }
+    }
+    case 'permission.answered': {
+      const { permission } = event.data
+      if (permission.sessionID !== snapshot.sessionID) return snapshot
+      return { ...snapshot, permissions: [...snapshot.permissions.filter((p) => p.id !== permission.id), permission] }
+    }
+
     case 'step.part': {
       const { part } = event.data
       if (part.sessionID !== snapshot.sessionID || snapshot.parts.some((p) => p.id === part.id)) return snapshot
@@ -218,13 +242,14 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
     }
 
     case 'step.completed': {
-      const { step, message } = event.data
+      const { step, message, toolCalls } = event.data
       if (step.sessionID !== snapshot.sessionID) return snapshot
       const messages =
         message && !snapshot.messages.some((existing) => existing.id === message.id)
           ? [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
           : snapshot.messages
-      return { ...snapshot, steps: upsertStep(snapshot.steps, step), messages }
+      return { ...snapshot, steps: upsertStep(snapshot.steps, step), messages,
+        toolCalls: (toolCalls ?? []).reduce(upsertToolCall, snapshot.toolCalls) }
     }
 
     case 'run.started': {

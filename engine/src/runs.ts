@@ -87,7 +87,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Stop the process and everything it started. */
-function killTree(proc: Proc): void {
+export function killTree(proc: Proc): void {
   if (process.platform === 'win32') {
     try {
       Bun.spawnSync({

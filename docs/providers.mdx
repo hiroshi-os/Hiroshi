@@ -95,10 +95,11 @@ records and feed events. OpenAI item ids are mapped to the provider's function
 call ids; Anthropic block indices are mapped to tool-use ids. A completed text
 answer replaces its streaming row with one committed assistant message.
 
-Tool requests are displayed as **not executed**. Tool execution and its permission
-gate are a separate milestone item; these adapters do not run model-requested
-tools or start an in-memory tool loop. Reasoning is displayed when the provider
-emits it; the adapters do not force a reasoning mode on every model.
+Completed tool requests enter the [tool permission gate](/tools). Calls and
+results retain their provider ids, and each continuation is a new durable model
+step. Denials are returned as transcript facts. OpenAI encrypted reasoning and
+Anthropic thinking signatures are preserved for continuations. Reasoning
+summaries are displayed when emitted; adapters do not force a reasoning mode.
 
 Any text, reasoning or tool output prevents automatic replay after failure or
 restart. A stream without a terminal completion event fails explicitly. A rate

@@ -1,6 +1,6 @@
 {
   "name": "hiroshi",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@gpuix/react": "^0.11.0",
     "@types/mdast": "^4.0.4",
+    "ajv": "^8.20.0",
     "react": "^19.2.4",
     "safe-mdx": "1.14.0"
   },
