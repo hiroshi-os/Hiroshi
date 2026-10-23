@@ -323,12 +323,12 @@ export class Steps {
           (value: ProviderPart) => {
             if (controller.signal.aborted) return
             if (value.kind === 'reasoning' && !value.text) return
-            produced = true
+            if (value.kind !== 'usage') produced = true
             const size = JSON.stringify(value).length
             if (++partCount > 4096 || (partBytes += size) > MAX_OUTPUT) {
               throw new ProviderError('provider_output_limit', 'provider reasoning or tool output exceeded the durable limit')
             }
-            const part = { ...value, id: `part_${randomUUID()}`, sessionID: step.sessionID, stepID: step.id, at: Date.now() }
+            const part = { ...value, id: `part_${randomUUID()}`, sessionID: step.sessionID, stepID: step.id, attempt: step.attempt, at: Date.now() }
             this.#store.record({ type: 'step.part', sessionID: step.sessionID, data: { part }, project: () => this.#store.insertStepPart(part) })
           },
         )

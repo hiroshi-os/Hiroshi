@@ -47,6 +47,10 @@ export class Sessions {
 
   create(input: CreateSessionRequest = {}): Session {
     const cwd = path.resolve(input.cwd || this.#defaultCwd)
+    if (input.reuseWorkspace === true) {
+      const existing = this.#store.sessions().find((session) => session.cwd === cwd)
+      if (existing) return existing
+    }
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
       throw invalid('bad_working_directory', `${cwd} is not a directory`)
     }

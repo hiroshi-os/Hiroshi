@@ -1,6 +1,11 @@
 /** Bounded SSE transport shared by adapters; no response body enters errors. */
 import { ProviderError } from '../provider'
 
+/** Missing or malformed counts remain unknown rather than becoming zero. */
+export function tokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
 export function eventString(value: unknown): string {
   if (typeof value !== 'string') throw new ProviderError('provider_protocol', 'a provider event is missing a string field')
   return value

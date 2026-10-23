@@ -15,6 +15,8 @@ import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 
 export interface EngineHandle {
+  selectSession: (id: string) => void
+  newSession: () => Promise<void>
   workspaceList: (path?: string) => Promise<WorkspaceDirectory>
   workspaceFile: (path: string) => Promise<WorkspaceFile>
   workspaceReview: (base?: string) => Promise<WorkspaceReview>
@@ -52,6 +54,7 @@ function describe(error: unknown): string {
 export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
   const [snapshot, setSnapshot] = useState<Snapshot>(initialSnapshot)
   const [attempt, setAttempt] = useState(0)
+  const [selected, setSelected] = useState<string | null>(null)
   const client = useRef<EngineClient | null>(null)
   const session = useRef<string | null>(null)
 
@@ -111,9 +114,9 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
           const catalog = await connection.models()
           update((current) => ({ ...current, models: catalog.models, defaultModel: catalog.defaultModel }))
           const { sessions } = await connection.listSessions()
-          const existing = sessions.find((candidate) => candidate.cwd === workspace) ?? sessions[0]
+          const existing = sessions.find((candidate) => candidate.id === selected && candidate.cwd === workspace) ?? sessions.find((candidate) => candidate.cwd === workspace)
           const chosen =
-            existing ?? (await connection.createSession({ cwd: workspace, title: 'Workspace' })).session
+            existing ?? (await connection.createSession({ cwd: workspace, reuseWorkspace: true })).session
           const detail = await connection.session({ id: chosen.id })
           if (stopped) return
           session.current = chosen.id
@@ -170,7 +173,20 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
       abort.abort()
       client.current = null
     }
-  }, [enabled, workspace, attempt])
+  }, [enabled, workspace, attempt, selected])
+
+  const selectSession = useCallback((id: string) => {
+    client.current = null
+    session.current = null
+    setSnapshot((current) => ({ ...initialSnapshot(), sessions: current.sessions, status: 'starting' }))
+    setSelected(id)
+    setAttempt((value) => value + 1)
+  }, [])
+  const newSession = useCallback(async () => {
+    if (!client.current) throw new Error('the engine is not connected')
+    const { session: created } = await client.current.createSession({ cwd: workspace, title: 'New task' })
+    selectSession(created.id)
+  }, [workspace, selectSession])
 
   const exec = useCallback((command: string) => {
     const connection = client.current
@@ -255,5 +271,5 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     return client.current.browse({ id: session.current, url })
   }, [])
 
-  return { workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

@@ -12,6 +12,8 @@
 
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
 import { engineTranscript } from './src/engine/transcript'
+import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
+import { cockpit } from './src/engine/cockpit'
 import { CheckpointHistory } from './src/components/CheckpointHistory'
 import { ToolActivity } from './src/components/ToolActivity'
 import { ContextHistory } from './src/components/ContextHistory'
@@ -219,6 +221,7 @@ const CHAT_THEME = {
 }
 
 type Turn =
+  | { kind: 'boundary'; text: string }
   | { kind: 'user'; text: string }
   | { kind: 'fold'; duration: string }
   | { kind: 'markdown'; source: string }
@@ -1072,62 +1075,6 @@ function titleFromDraft(text: string) {
   return first.length > 42 ? `${first.slice(0, 39)}...` : first
 }
 
-function Inspector({
-  width = 260,
-  conversation,
-  model,
-  reasoning,
-  access,
-  mode,
-  project,
-}: {
-  width?: number
-  conversation: Conversation | undefined
-  model: string
-  reasoning: string
-  access: string
-  mode: 'build' | 'plan'
-  project: string
-}) {
-  const modelLabel = MODELS.find((item) => item.id === model)?.label ?? model
-  const reasoningLabel = REASONING.find((item) => item.id === reasoning)?.label ?? reasoning
-  const accessLabel = ACCESS.find((item) => item.id === access)?.label ?? access
-  const projectLabel = PROJECTS.find((item) => item.id === project)?.label ?? project
-  const rows = [
-    ['Thread', conversation?.title ?? 'New task'],
-    ['Project', projectLabel],
-    ['Model', modelLabel],
-    ['Reasoning', reasoningLabel],
-    ['Access', accessLabel],
-    ['Mode', mode === 'plan' ? 'Plan' : 'Build'],
-    ['Turns', String(conversation?.turns.length ?? 0)],
-  ]
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width,
-        flexShrink: 0,
-        height: '100%',
-        backgroundColor: C.sidebar,
-        paddingTop: 14,
-        paddingLeft: 14,
-        paddingRight: 14,
-        gap: 10,
-      }}
-    >
-      <text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Inspector</text>
-      {rows.map(([label, value]) => (
-        <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <text style={{ fontSize: 11.5, color: C.ghost }}>{label}</text>
-          <text style={{ fontSize: 13, color: C.secondary }}>{value}</text>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /** A modal card. Dialog owns Escape, the backdrop press, the Tab trap, and
  *  moving focus in on open and back out on close. */
 function OverlayCard({
@@ -1200,6 +1147,7 @@ const Transcript = memo(function Transcript({
   onRetry,
   project = 'kale',
   testId,
+  showActions = true,
 }: {
   turns: Turn[]
   includeSafeMdx?: boolean
@@ -1207,6 +1155,7 @@ const Transcript = memo(function Transcript({
   onRetry?: () => void
   project?: string
   testId?: string
+  showActions?: boolean
 }) {
   if (turns.length === 0 && !includeSafeMdx) {
     return (
@@ -1262,13 +1211,14 @@ const Transcript = memo(function Transcript({
           last={index === turns.length - 1}
         >
           {turn.kind === 'user' && <UserTurn text={turn.text} />}
+          {turn.kind === 'boundary' && <text style={{ fontSize: 11, color: C.tertiary }}>{turn.text}</text>}
           {turn.kind === 'fold' && <WorkedFor duration={turn.duration} />}
           {turn.kind === 'markdown' && <SafeMdxContent source={turn.source} />}
           {turn.kind === 'code' && (
             <CodeBlock code={turn.source} language={turn.language} showLineNumbers />
           )}
           {turn.kind === 'diff' && <diff patch={turn.patch} wordDiff theme={CHAT_THEME} />}
-          {index === turns.length - 1 && turn.kind !== 'user' && <ActionBar onRetry={onRetry} />}
+          {showActions && index === turns.length - 1 && turn.kind !== 'user' && <ActionBar onRetry={onRetry} />}
         </TranscriptRow>
       ))}
     </virtual-list>
@@ -2375,7 +2325,8 @@ function SettingsView({
               )}
 
               {/* SECTION: USAGE */}
-              {activeSection === 'usage' && (
+              {activeSection === 'usage' && engine && <EngineUsage snapshot={engine} />}
+              {activeSection === 'usage' && !engine && (
                 <>
                   {/* Usage Top bar */}
                   <div
@@ -2996,6 +2947,8 @@ function SettingsView({
 }
 
 function Header({
+  runStatus,
+  onUsage,
   collapsed,
   onExpand,
   title,
@@ -3014,6 +2967,8 @@ function Header({
   onExpand: () => void
   title: string
   turnCount: number
+  runStatus?: string
+  onUsage?: () => void
   canGoBack: boolean
   canGoForward: boolean
   onBack: () => void
@@ -3028,11 +2983,7 @@ function Header({
   const [envMenuOpen, setEnvMenuOpen] = useState(false)
   const [copiedTaskId, setCopiedTaskId] = useState(false)
 
-  const taskIdDisplay = activeId
-    ? activeId.startsWith('task-')
-      ? activeId
-      : `task-1949cf8c6b5b557f`
-    : 'task-1949cf8c6b5b557f'
+  const taskIdDisplay = activeId || 'No session'
 
   return (
     <div
@@ -3091,7 +3042,7 @@ function Header({
         >
           {title}
         </text>
-        {turnCount > TURNS.length && (
+        {(runStatus || turnCount > TURNS.length) && (
           <text
             style={{
               fontSize: 12,
@@ -3101,16 +3052,18 @@ function Header({
               flexShrink: 0,
             }}
           >
-            {turnCount.toLocaleString('en-US')} messages
+            {`${turnCount.toLocaleString('en-US')} turns`}
           </text>
         )}
         <div style={{ flexGrow: 1, height: '100%' }} />
+        {runStatus && <text testId="engine-run-status" style={{ fontSize: 11, color: C.tertiary, whiteSpace: 'nowrap' }}>{runStatus}</text>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {onUsage && <IconButton icon="activity" testId="run-usage-open" onClick={onUsage} />}
         <div style={{ position: 'relative' }}>
           <IconButton
             icon="info"
-            testId="inspector-toggle"
+            testId="environment-menu-toggle"
             active={envMenuOpen}
             onClick={() => setEnvMenuOpen((v) => !v)}
             borderRadius={14}
@@ -4989,6 +4942,9 @@ function ModeToggle({
 }
 
 function Composer({
+  engine,
+  deliveryMode = 'queue',
+  onDeliveryMode,
   value,
   onChange,
   onSend,
@@ -5003,6 +4959,9 @@ function Composer({
   onModeChange,
   focusTick,
 }: {
+  engine?: EngineSnapshot
+  deliveryMode?: DeliveryMode
+  onDeliveryMode?: (mode: DeliveryMode) => void
   value: string
   onChange: (next: string) => void
   onSend: (text: string) => void
@@ -5024,10 +4983,10 @@ function Composer({
     if (id == null) return
     renderer?.focusElement?.(id)
   }, [focusTick, renderer])
-  const ready = value.trim().length > 0
+  const ready = value.trim().length > 0 && (!engine || (engine.status === 'ready' && !!engine.sessionID))
   const send = (text: string) => {
     const next = text.trim()
-    if (!next) return
+    if (!next || !ready) return
     onSend(next)
   }
   return (
@@ -5093,9 +5052,10 @@ function Composer({
           }}
         >
           <ModelPicker value={model} onChange={onModelChange} models={models} />
-          <ReasoningPicker value={reasoning} onChange={onReasoningChange} />
-          <AccessPicker value={access} onChange={onAccessChange} />
-          <ModeToggle value={mode} onChange={onModeChange} />
+          {!engine && <ReasoningPicker value={reasoning} onChange={onReasoningChange} />}
+          {!engine && <AccessPicker value={access} onChange={onAccessChange} />}
+          {!engine && <ModeToggle value={mode} onChange={onModeChange} />}
+          {engine && <ComposerDelivery snapshot={engine} mode={deliveryMode} onMode={onDeliveryMode ?? (() => {})} />}
           <div style={{ flexGrow: 1 }} />
           <div
             testId="send"
@@ -5599,10 +5559,8 @@ export function ChatApp({
   // The surface picker is a 2×2 grid of 196px cards inside 24px padding, so
   // the panel needs 452px before it can show the picker without clipping.
   const [rightPanelWidth, setRightPanelWidth] = useState(480)
-  const [inspectorWidth, setInspectorWidth] = useState(260)
-  const [resizing, setResizing] = useState<'left' | 'right' | 'inspector' | null>(null)
+  const [resizing, setResizing] = useState<'left' | 'right' | null>(null)
   const resizeOrigin = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 0 })
-  const [inspectorOpen, setInspectorOpen] = useState(false)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [activeSurface, setActiveSurface] = useState<SurfaceKind>('none')
   const [settingsInitialSection, setSettingsInitialSection] = useState('general')
@@ -5613,6 +5571,7 @@ export function ChatApp({
   const [query, setQuery] = useState('')
   const [projectOnly, setProjectOnly] = useState(false)
   const [draft, setDraft] = useState('')
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('queue')
   const [model, setModel] = useState('grok-4.6')
   const [reasoning, setReasoning] = useState('high')
   const [access, setAccess] = useState('ask')
@@ -5645,6 +5604,12 @@ export function ChatApp({
 
   const goTo = (id: string) => {
     setOverlay(null)
+    if (engineEnabled) {
+      if (id !== engineView.snapshot.sessionID) engineView.selectSession(id)
+      setDraft('')
+      setFocusTick((value) => value + 1)
+      return
+    }
     if (id === activeId) {
       setFocusTick((value) => value + 1)
       return
@@ -5736,6 +5701,8 @@ export function ChatApp({
     ? (engineView.snapshot.models.some((item) => item.id === model) ? model : engineView.snapshot.defaultModel)
     : model
   const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
+  const runView = cockpit(engineView.snapshot)
+  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === (typeof process !== 'undefined' ? process.cwd() : '')).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
   const latestEngineOutput = engineView.snapshot.steps.at(-1)?.output
   useEffect(() => {
     if (!engineEnabled || shownTurns.length === 0) return
@@ -5749,7 +5716,7 @@ export function ChatApp({
       <SettingsView
         onBack={() => setCurrentView('chat')}
         initialSection={settingsInitialSection}
-        engine={engineView.snapshot}
+        engine={engineEnabled ? engineView.snapshot : undefined}
         onRestartEngine={engineView.restart}
       />
     )
@@ -5783,12 +5750,13 @@ export function ChatApp({
       >
         <Sidebar
           width={sidebarWidth}
-          conversations={visibleConversations}
-          activeId={activeId}
+          conversations={engineEnabled ? engineConversations : visibleConversations}
+          activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
           onSelect={goTo}
-          onDelete={handleDeleteConversation}
+          onDelete={engineEnabled ? undefined : handleDeleteConversation}
           onCollapse={() => setCollapsed(true)}
           onNewTask={() => {
+            if (engineEnabled) { void engineView.newSession().catch(() => {}); setDraft(''); return }
             const id = `task-${nextTask.current++}`
             const created: Conversation = {
               id,
@@ -5841,12 +5809,14 @@ export function ChatApp({
         }}
       >
         <Header
+          runStatus={engineEnabled ? `${runView.phase} · ${runView.pending} pending` : undefined}
+          onUsage={engineEnabled ? () => { setSettingsInitialSection('usage'); setCurrentView('settings') } : undefined}
           collapsed={collapsed}
           onExpand={() => setCollapsed(false)}
-          title={active?.title ?? 'New task'}
-          turnCount={turns.length}
-          canGoBack={canGoBack}
-          canGoForward={canGoForward}
+          title={engineEnabled ? engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)?.title ?? 'Workspace' : active?.title ?? 'New task'}
+          turnCount={engineEnabled ? runView.turns : turns.length}
+          canGoBack={engineEnabled ? false : canGoBack}
+          canGoForward={engineEnabled ? false : canGoForward}
           onBack={goBack}
           onForward={goForward}
           onToggleRightPanel={() => setRightPanelOpen((value) => !value)}
@@ -5856,16 +5826,17 @@ export function ChatApp({
             setRightPanelOpen(true)
             setActiveSurface('review')
           }}
-          activeId={activeId}
+          activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
         />
         <Transcript
-          key={activeId}
+          key={engineEnabled ? engineView.snapshot.sessionID : activeId}
           turns={shownTurns}
           testId={engineEnabled ? 'engine-transcript' : undefined}
+          showActions={!engineEnabled}
           includeSafeMdx={engineEnabled ? false : showSafeMdx}
           listRef={listRef}
           onRetry={engineEnabled ? undefined : onRetry}
-          project={projectLabel}
+          project={engineEnabled ? engineView.snapshot.health?.workspace ?? 'workspace' : projectLabel}
         />
         {engineEnabled && (
           <CheckpointHistory checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
@@ -5873,19 +5844,22 @@ export function ChatApp({
             checkpointError={engineView.snapshot.checkpointError} onRestore={engineView.rewind} />
         )}
         {engineEnabled && (
-          <ToolActivity permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls.filter((call) => !call.messageID || !engineView.snapshot.activeMessageIDs || engineView.snapshot.activeMessageIDs.includes(call.messageID))}
+          <ToolActivity key={`tools:${engineView.snapshot.sessionID}`} permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls.filter((call) => !call.messageID || !engineView.snapshot.activeMessageIDs || engineView.snapshot.activeMessageIDs.includes(call.messageID))}
             onAnswer={engineView.answerPermission} onOutput={engineView.toolOutput} />
         )}
         {engineEnabled && engineView.snapshot.error && (
           <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
         )}
         <Composer
+          engine={engineEnabled ? engineView.snapshot : undefined}
+          deliveryMode={deliveryMode}
+          onDeliveryMode={setDeliveryMode}
           value={draft}
           onChange={setDraft}
           focusTick={focusTick}
           onSend={(text) => {
             if (engineEnabled) {
-              engineView.prompt(text, 'queue', chosenModel)
+              engineView.prompt(text, deliveryMode, chosenModel)
               setDraft('')
               setTailTick((value) => value + 1)
               return
@@ -5917,51 +5891,15 @@ export function ChatApp({
           mode={mode}
           onModeChange={setMode}
         />
-        <WorkspaceFooter
+        {engineEnabled ? <text testId="engine-workspace" style={{ fontSize: 11, color: C.tertiary, padding: 10 }}>{engineView.snapshot.health?.workspace ?? 'Connecting to workspace…'}</text> : <WorkspaceFooter
           project={project}
           onProjectChange={setProject}
           workspace={workspace}
           onWorkspaceChange={setWorkspace}
           branch={branch}
           onBranchChange={setBranch}
-        />
+        />}
       </div>
-      <motion.div
-        initial={false}
-        animate={{ width: inspectorOpen ? inspectorWidth : 0 }}
-        transition={{ duration: resizing === 'inspector' ? 0 : 0.2, ease: 'easeOut' }}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          height: '100%',
-          flexShrink: 0,
-          overflow: 'hidden',
-          position: 'relative',
-        }}
-      >
-        <div style={{ width: inspectorWidth, height: '100%', flexShrink: 0, display: 'flex' }}>
-          <Inspector
-            width={inspectorWidth}
-            conversation={active}
-            model={model}
-            reasoning={reasoning}
-            access={access}
-            mode={mode}
-            project={project}
-          />
-        </div>
-        <ResizeHandle
-          testId="resize-handle-inspector"
-          side="right"
-          isResizing={resizing === 'inspector'}
-          onMouseDown={(e: any) => {
-            if (e.button === 0) {
-              resizeOrigin.current = { startX: e.x ?? 0, startWidth: inspectorWidth }
-              setResizing('inspector')
-            }
-          }}
-        />
-      </motion.div>
       <motion.div
         initial={false}
         animate={{ width: rightPanelOpen ? rightPanelWidth : 0 }}
@@ -5977,11 +5915,12 @@ export function ChatApp({
       >
         <div style={{ width: rightPanelWidth, height: '100%', flexShrink: 0, display: 'flex' }}>
           <SurfacePanel
+            key={engineEnabled ? engineView.snapshot.sessionID : 'demo'}
             open={rightPanelOpen}
             activeSurface={activeSurface}
             onChangeSurface={setActiveSurface}
             onClose={() => setRightPanelOpen(false)}
-            project={project}
+            project={engineEnabled ? engineView.snapshot.health?.workspace ?? '' : project}
             engine={engineView}
           />
         </div>
@@ -6007,6 +5946,7 @@ export function ChatApp({
         open={overlay === 'search'}
         onClose={() => setOverlay(null)}
         onNewTask={() => {
+          if (engineEnabled) { void engineView.newSession().catch(() => {}); setOverlay(null); setDraft(''); return }
           const id = `task-${nextTask.current++}`
           const created: Conversation = {
             id,
@@ -6039,7 +5979,7 @@ export function ChatApp({
         onCollapseSidebar={() => {
           setCollapsed((v) => !v)
         }}
-        conversations={conversations}
+        conversations={engineEnabled ? engineConversations : conversations}
         onSelectConversation={goTo}
       />
       {resizing !== null && (
@@ -6062,10 +6002,6 @@ export function ChatApp({
               const delta = resizeOrigin.current.startX - currentX
               const newWidth = Math.max(460, Math.min(680, resizeOrigin.current.startWidth + delta))
               setRightPanelWidth(newWidth)
-            } else if (resizing === 'inspector') {
-              const delta = resizeOrigin.current.startX - currentX
-              const newWidth = Math.max(200, Math.min(450, resizeOrigin.current.startWidth + delta))
-              setInspectorWidth(newWidth)
             }
           }}
           onMouseUp={() => setResizing(null)}

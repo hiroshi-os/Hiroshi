@@ -1,6 +1,6 @@
 import { ProviderError, type Provider, type ProviderRequest, type ProviderPart, type RemoteModelOptions } from '../provider'
 import { anthropicHistory, anthropicTools } from './history'
-import { eventString, streamFailure, streamJSON } from './stream'
+import { eventString, streamFailure, streamJSON, tokenCount } from './stream'
 
 /** https://platform.claude.com/docs/en/build-with-claude/streaming */
 export class AnthropicProvider implements Provider {
@@ -29,6 +29,13 @@ export class AnthropicProvider implements Provider {
       max_tokens: request.reservedOutput, stream: true,
     }, request.signal, (event) => {
       if (completed) return false
+      const usage = event.type === 'message_start' ? event.message?.usage : event.type === 'message_delta' ? event.usage : null
+      if (usage) {
+        const input = tokenCount(usage.input_tokens)
+        const cacheRead = tokenCount(usage.cache_read_input_tokens) ?? 0
+        const cacheWrite = tokenCount(usage.cache_creation_input_tokens) ?? 0
+        onPart?.({ kind: 'usage', inputTokens: input === undefined ? undefined : input + cacheRead + cacheWrite, outputTokens: tokenCount(usage.output_tokens) })
+      }
       if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
         thinking.set(event.index, { thinking: event.content_block.thinking ?? '', signature: '' })
       }

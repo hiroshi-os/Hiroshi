@@ -1,6 +1,6 @@
 import { ProviderError, type Provider, type ProviderRequest, type ProviderPart, type RemoteModelOptions } from '../provider'
 import { openAIHistory, openAITools } from './history'
-import { eventString, streamFailure, streamJSON } from './stream'
+import { eventString, streamFailure, streamJSON, tokenCount } from './stream'
 
 /** https://developers.openai.com/api/reference/resources/responses/streaming-events */
 export class OpenAIProvider implements Provider {
@@ -60,6 +60,7 @@ export class OpenAIProvider implements Provider {
           break
         case 'response.completed':
           if (calls.size) throw new ProviderError('provider_protocol', 'the provider completed with unfinished tool arguments')
+          if (event.response?.usage) onPart?.({ kind: 'usage', inputTokens: tokenCount(event.response.usage.input_tokens), outputTokens: tokenCount(event.response.usage.output_tokens) })
           completed = true
           break
         case 'response.failed':

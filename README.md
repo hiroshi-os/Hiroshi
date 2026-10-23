@@ -18,12 +18,15 @@ window and persists its work in SQLite. It supports:
 - Model-requested tools with cockpit approvals, policy and durable results.
 - Pre-prompt checkpoints that rewind workspace files and conversation together.
 - Workspace file browsing, real Git review and commit/push, and a page-reader pane.
+- Engine-ordered transcript, real session state and provider-reported usage.
 - One typed HTTP protocol and a replayable event feed for multiple clients.
 
 The [workspace surfaces](docs/surfaces.mdx) connect to the engine: Terminal shows
 commands and model shell calls; Files reads the workspace; Review and commit/push
 use Git; Browser reads HTTP/HTTPS pages with link navigation (without JavaScript). The main composer streams answers from the selected
-engine model. OpenAI Responses and Anthropic Messages adapters use local
+engine model, and shows Send, Queue or Steer from engine state. Run phase and
+turn count live in the header; the Usage screen reads durable provider token
+counts and marks missing cost data as unreported. OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
 demonstrations. See [provider configuration](docs/providers.mdx) and

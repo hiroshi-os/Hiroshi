@@ -70,7 +70,7 @@ describe('provider adapters over HTTP', () => {
         await provider.stream(request(), (delta) => text.push(delta), (part) => parts.push(part))
         expect(text.join('')).toBe('Hello world')
         expect(parts[0]).toEqual({ kind: 'reasoning', text: 'A summary 漢🙂' })
-        expect(parts.filter((part) => part.kind === 'tool' && part.phase === 'delta').map((part) => part.text).join('')).toBe('{"path":"README.md"}')
+        expect(parts.filter((part) => part.kind === 'tool').filter((part) => part.phase === 'delta').map((part) => part.text).join('')).toBe('{"path":"README.md"}')
         expect(parts.at(-1)).toMatchObject({ kind: 'tool', phase: 'end', callID: 'call_1' })
         expect(body.model).toBe(model.model)
         expect(body.stream).toBe(true)
