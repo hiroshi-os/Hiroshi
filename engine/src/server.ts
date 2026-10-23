@@ -19,6 +19,7 @@ import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
 import type { Runs } from './runs'
 import type { Sessions } from './sessions'
 import type { Steps } from './steps'
+import type { Tools } from './tools/tools'
 import type { Store } from './store'
 
 export interface ServerOptions {
@@ -26,6 +27,7 @@ export interface ServerOptions {
   runs: Runs
   sessions: Sessions
   steps: Steps
+  tools?: Tools
   catalog?: ProviderCatalog
   log: Logger
   token: string
@@ -143,6 +145,16 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'answerPermission': {
+        if (!options.tools) throw notFound('permission service')
+        const input = await body<{ decision: 'allow' | 'deny'; remember?: boolean }>(request)
+        return json({ permission: options.tools.answer(params.id!, input.decision, input.remember ?? false) }, status)
+      }
+
+      case 'toolOutput':
+        if (!options.tools) throw notFound('tool output service')
+        return json(options.tools.output(params.id!), status)
+
       case 'models':
         return json({ models: options.catalog?.models() ?? [], defaultModel: options.catalog?.defaultModel ?? 'local/echo' }, status)
 

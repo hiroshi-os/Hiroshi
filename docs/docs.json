@@ -42,6 +42,7 @@
               "architecture",
               "engine",
               "providers",
+              "tools",
               "window"
             ]
           },

@@ -17,6 +17,8 @@ import { mkdirSync } from 'node:fs'
 
 import type {
   Compaction,
+  Permission,
+  SavedPermission,
   StepContext,
   StepPart,
   DeliveryMode,
@@ -206,6 +208,33 @@ const MIGRATIONS: Migration[] = [
       create index step_part_step on step_part(step_id, ordinal);
     `,
   },
+  {
+    id: 6,
+    name: 'tools-and-permissions',
+    sql: `
+      alter table step add column parent_id text references step(id);
+      drop index step_message;
+      create unique index step_message on step(message_id) where message_id is not null and parent_id is null;
+      create unique index step_parent on step(parent_id) where parent_id is not null;
+      alter table message add column details text;
+      alter table tool_call add column details text;
+      alter table tool_call add column provider_call_id text;
+      create unique index tool_step_call on tool_call(step_id, provider_call_id) where provider_call_id is not null;
+      create table permission (
+        id text primary key,
+        session_id text not null references session(id),
+        tool_call_id text not null unique references tool_call(id),
+        data text not null
+      );
+      create table saved_permission (
+        ordinal integer primary key autoincrement,
+        id text not null unique,
+        scope text not null,
+        data text not null
+      );
+      create index saved_permission_scope on saved_permission(scope, ordinal);
+    `,
+  },
 ]
 
 type Row = Record<string, any>
@@ -239,6 +268,7 @@ function toMessage(row: Row): Message {
     text: row.text,
     at: row.at,
   }
+  if (row.details) Object.assign(message, JSON.parse(row.details))
   if (row.mode) message.mode = row.mode as DeliveryMode
   if (row.model) message.model = row.model
   return message
@@ -286,6 +316,7 @@ function toStepError(row: Row): StepError | null {
 
 function toStep(row: Row): Step {
   return {
+    ...(row.parent_id ? { parentID: row.parent_id } : {}),
     id: row.id,
     sessionID: row.session_id,
     messageID: row.message_id ?? null,
@@ -305,6 +336,7 @@ function toStep(row: Row): Step {
 
 function toToolCall(row: Row): ToolCall {
   return {
+    ...(row.details ? JSON.parse(row.details) : {}),
     id: row.id,
     sessionID: row.session_id,
     stepID: row.step_id ?? null,
@@ -537,8 +569,8 @@ export class Store {
    */
   insertMessage(message: Message): void {
     this.#db.run(
-      'insert into message (id, session_id, seq, role, text, at, mode, model) values (?, ?, ?, ?, ?, ?, ?, ?)',
-      [message.id, message.sessionID, message.seq, message.role, message.text, message.at, message.mode ?? null, message.model ?? null],
+      'insert into message (id, session_id, seq, role, text, at, mode, model, details) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [message.id, message.sessionID, message.seq, message.role, message.text, message.at, message.mode ?? null, message.model ?? null, JSON.stringify(message)],
     )
   }
 
@@ -732,8 +764,8 @@ export class Store {
   insertStep(step: Step): void {
     this.#db.run(
       `insert into step (id, session_id, message_id, provider, model, attempt, status, claim,
-        output, truncated, error_code, error_message, error_retryable, started_at, ended_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        output, truncated, error_code, error_message, error_retryable, started_at, ended_at, parent_id)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         step.id,
         step.sessionID,
@@ -750,6 +782,7 @@ export class Store {
         step.error === null ? null : step.error.retryable ? 1 : 0,
         step.startedAt,
         step.endedAt,
+        step.parentID ?? null,
       ],
     )
   }
@@ -780,7 +813,7 @@ export class Store {
   }
 
   stepForMessage(messageID: string): Step | null {
-    const row = this.#db.query('select * from step where message_id = ?').get(messageID) as Row | null
+    const row = this.#db.query('select * from step where message_id = ? and parent_id is null').get(messageID) as Row | null
     return row ? toStep(row) : null
   }
 
@@ -811,8 +844,8 @@ export class Store {
 
   insertToolCall(call: ToolCall): void {
     this.#db.run(
-      `insert into tool_call (id, session_id, step_id, run_id, tool, input, status, error, created_at, ended_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert into tool_call (id, session_id, step_id, run_id, tool, input, status, error, created_at, ended_at, details, provider_call_id)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         call.id,
         call.sessionID,
@@ -824,16 +857,15 @@ export class Store {
         call.error,
         call.createdAt,
         call.endedAt,
+        JSON.stringify(call),
+        call.callID ?? null,
       ],
     )
   }
 
   updateToolCall(call: ToolCall): void {
-    this.#db.run('update tool_call set status = ?, error = ?, ended_at = ? where id = ?', [
-      call.status,
-      call.error,
-      call.endedAt,
-      call.id,
+    this.#db.run('update tool_call set status = ?, error = ?, ended_at = ?, details = ?, run_id = ? where id = ?', [
+      call.status, call.error, call.endedAt, JSON.stringify(call), call.runID, call.id,
     ])
   }
 
@@ -852,6 +884,39 @@ export class Store {
       .query('select * from tool_call where session_id = ? order by created_at asc, rowid asc')
       .all(sessionID) as Row[]
     return rows.map(toToolCall)
+  }
+
+  insertPermission(permission: Permission): void {
+    this.#db.run('insert into permission (id, session_id, tool_call_id, data) values (?, ?, ?, ?)',
+      [permission.id, permission.sessionID, permission.toolCallID, JSON.stringify(permission)])
+  }
+
+  updatePermission(permission: Permission): void {
+    this.#db.run('update permission set data = ? where id = ?', [JSON.stringify(permission), permission.id])
+  }
+
+  permission(id: string): Permission | null {
+    const row = this.#db.query('select data from permission where id = ?').get(id) as Row | null
+    return row ? JSON.parse(row.data) : null
+  }
+
+  permissions(sessionID: string): Permission[] {
+    return (this.#db.query('select data from permission where session_id = ? order by rowid').all(sessionID) as Row[])
+      .map((row) => JSON.parse(row.data))
+  }
+
+  insertSavedPermission(value: SavedPermission): void {
+    this.#db.run('insert into saved_permission (id, scope, data) values (?, ?, ?)', [value.id, value.scope, JSON.stringify(value)])
+  }
+
+  savedPermission(scope: string): SavedPermission | null {
+    const row = this.#db.query('select data from saved_permission where scope = ? order by ordinal desc limit 1').get(scope) as Row | null
+    return row ? JSON.parse(row.data) : null
+  }
+
+  childStep(id: string): Step | null {
+    const row = this.#db.query('select * from step where parent_id = ?').get(id) as Row | null
+    return row ? toStep(row) : null
   }
 
   // -- snapshots -----------------------------------------------------------
@@ -878,6 +943,7 @@ export class Store {
         compactions: this.compactions(sessionID),
         contexts: this.contexts(sessionID),
         parts: this.stepParts(sessionID),
+        permissions: this.permissions(sessionID),
         seq: this.lastSeq(),
       }
     })

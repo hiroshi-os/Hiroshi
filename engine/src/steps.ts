@@ -32,12 +32,14 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { Context, type ContextOptions } from './context'
 import type { Logger } from './log'
 import { ProviderError, type Provider, type ProviderPart } from './provider'
-import type { Step, StepError } from './protocol'
+import type { ModelToolRequest, Step, StepError } from './protocol'
 import type { Store } from './store'
+import type { Tools } from './tools/tools'
 
 export interface StepsOptions {
   provider: Provider
   context?: ContextOptions
+  tools?: Tools
   selectProvider?: (model?: string) => Provider
   /**
    * Physical attempts one step may spend, including the attempt it was
@@ -57,6 +59,7 @@ interface ActiveStep {
 }
 
 export class Steps {
+  readonly #tools?: Tools
   readonly #store: Store
   readonly #log: Logger
   readonly #contextOptions: ContextOptions
@@ -70,6 +73,7 @@ export class Steps {
 
   constructor(store: Store, log: Logger, options: StepsOptions) {
     this.#store = store
+    this.#tools = options.tools
     this.#log = log.child('steps')
     this.#provider = options.provider
     this.#contextOptions = options.context ?? {}
@@ -85,7 +89,7 @@ export class Steps {
 
   /** Whether a session has a step that has not ended. */
   busy(sessionID: string): boolean {
-    return this.#store.steps(sessionID).some((step) => step.status === 'running')
+    return this.#store.steps(sessionID).some((step) => step.status === 'running') || (this.#tools?.busy(sessionID) ?? false)
   }
 
   /**
@@ -109,19 +113,35 @@ export class Steps {
     if (!message) return null
 
     const existing = this.#store.stepForMessage(message.id)
-    if (existing) return existing
+    let parent: Step | undefined
+    let depth = 0
+    if (existing) {
+      if (!this.#tools) return existing
+      let latest = existing
+      depth = 1
+      for (;;) {
+        const child = this.#store.childStep(latest.id)
+        if (!child) break
+        latest = child
+        depth++
+      }
+      const calls = this.#store.toolCalls(sessionID).filter((call) => call.stepID === latest.id && call.callID)
+      if (latest.status !== 'succeeded' || !calls.length || calls.some((call) => !call.resultMessageID || call.status === 'cancelled')) return latest
+      parent = latest
+    }
 
     const running = this.#store.steps(sessionID).find((step) => step.status === 'running')
     if (running) return running
 
     // Prompts admitted before model selection existed belonged to local/echo.
     // A newly configured remote default must not retarget that durable work.
-    const selected = this.#selectProvider?.(message.model ?? 'local/echo') ?? this.#provider
+    const selected = this.#selectProvider?.(parent?.model ?? message.model ?? 'local/echo') ?? this.#provider
     const at = Date.now()
     const step: Step = {
       id: `step_${at.toString(36)}${randomBytes(4).toString('hex')}`,
       sessionID,
       messageID: message.id,
+      ...(parent ? { parentID: parent.id } : {}),
       provider: selected.name,
       model: selected.model,
       attempt: 1,
@@ -142,6 +162,10 @@ export class Steps {
       project: () => this.#store.insertStep(step),
     })
     this.#log.info(`step ${step.id} started in ${sessionID} on ${step.provider}/${step.model}`)
+    if (depth >= 32) {
+      this.#fail(step, { code: 'step_limit', message: 'this turn reached the limit of 32 model calls', retryable: false })
+      return this.#store.step(step.id)!
+    }
     this.#run(step)
     return step
   }
@@ -222,6 +246,7 @@ export class Steps {
    * step's loop sees a row that is no longer running and writes nothing else.
    */
   interrupt(sessionID: string, reason: string): Step[] {
+    this.#tools?.interrupt(sessionID)
     const running = this.#store.steps(sessionID).filter((step) => step.status === 'running')
     for (const step of running) {
       this.#cancel(step, reason)
@@ -280,7 +305,7 @@ export class Steps {
       try {
         const provider = this.#selectProvider?.(step.model) ?? this.#provider
         provider.check?.()
-        const request = new Context(this.#store, provider, this.#contextOptions).prepare(step, overflow)
+        const request = new Context(this.#store, provider, { ...this.#contextOptions, tools: this.#tools?.registry.definitions() ?? this.#contextOptions.tools }).prepare(step, overflow)
         overflow = false
         callingProvider = true
         await provider.stream(
@@ -410,23 +435,57 @@ export class Steps {
     if (!current || current.status !== 'running') return
 
     const at = Date.now()
-    const message =
-      current.output.length > 0
-        ? this.#store.newMessage(current.sessionID, 'assistant', current.output, at)
-        : null
+    const requests = this.#tools ? this.#requests(current) : []
+    const message = current.output.length > 0 || requests.length > 0
+      ? this.#store.newMessage(current.sessionID, 'assistant', current.output, at)
+      : null
+    if (message && this.#tools) {
+      message.stepID = current.id
+      if (requests.length) message.toolCalls = requests
+      const state = this.#store.stepParts(current.sessionID).filter((part) => part.stepID === current.id && part.kind === 'state')
+      if (state.length) message.providerState = state.map((part) => {
+        if (part.kind !== 'state') throw new Error('unreachable provider state')
+        return { provider: part.provider, value: JSON.parse(part.text) }
+      })
+    }
+    const toolCalls = message && this.#tools ? this.#tools.prepare(current, message, requests) : []
     const done: Step = { ...current, status: 'succeeded', claim: null, error: null, endedAt: at }
 
     this.#store.record({
       type: 'step.completed',
       sessionID: current.sessionID,
       at,
-      data: { step: done, message },
+      data: { step: done, message, ...(toolCalls.length ? { toolCalls } : {}) },
       project: () => {
         if (message) this.#store.insertMessage(message)
         this.#store.updateStep(done)
+        for (const call of toolCalls) this.#store.insertToolCall(call)
       },
     })
     this.#log.info(`step ${done.id} succeeded in ${done.attempt} attempt(s)`)
+    if (toolCalls.length) this.#tools?.kick(current.sessionID)
+  }
+
+  #requests(step: Step): ModelToolRequest[] {
+    const calls = new Map<string, ModelToolRequest & { ended: boolean }>()
+    for (const part of this.#store.stepParts(step.sessionID).filter((part) => part.stepID === step.id)) {
+      if (part.kind !== 'tool') continue
+      if (part.phase === 'start') {
+        if (calls.has(part.callID) || !part.callID || !part.name || !/^[a-zA-Z0-9_-]{1,64}$/.test(part.name) || calls.size >= 64) {
+          throw new ProviderError('tool_protocol', 'invalid, duplicate or excessive tool requests')
+        }
+        calls.set(part.callID, { id: part.callID, name: part.name, arguments: part.text, ended: false })
+      } else {
+        const call = calls.get(part.callID)
+        if (!call || call.ended) throw new ProviderError('tool_protocol', 'tool arguments arrived outside a live request')
+        call.arguments += part.text
+        if (part.phase === 'end') call.ended = true
+      }
+    }
+    return [...calls.values()].map(({ ended, ...call }) => {
+      if (!ended) throw new ProviderError('tool_protocol', 'the provider did not finish its tool arguments')
+      return { ...call, arguments: call.arguments || '{}' }
+    })
   }
 
   #fail(step: Step, error: StepError): void {

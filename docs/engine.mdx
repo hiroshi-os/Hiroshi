@@ -97,7 +97,8 @@ transaction, before the process exists, and `run.ended` ends both with the exit
 code and, when there is a reason, the sentence that says what it was. A call
 that is still `running` when the engine dies is settled as `interrupted` with
 that reason on the next start; it is never replayed. The same row will carry
-model-requested tools later, and `step_id` says which step asked for one.
+model-requested tools, and `step_id` says which step asked for one. See
+[tools and permissions](/tools) for the gate, results and recovery contract.
 
 ## The session inbox
 

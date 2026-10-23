@@ -1,4 +1,5 @@
 import { ProviderError, type Provider, type ProviderRequest, type ProviderPart, type RemoteModelOptions } from '../provider'
+import { openAIHistory, openAITools } from './history'
 import { eventString, streamFailure, streamJSON } from './stream'
 
 /** https://developers.openai.com/api/reference/resources/responses/streaming-events */
@@ -19,9 +20,11 @@ export class OpenAIProvider implements Provider {
     const calls = new Map<string, { id: string; name: string }>()
     await streamJSON(`${this.#options.baseURL}/responses`, { authorization: `Bearer ${this.#options.apiKey}` }, {
       model: this.#options.providerModel,
-      input: request.messages.map((m) => ({ role: m.role, content: m.text })),
+      input: openAIHistory(request.messages),
+      ...(request.tools.length ? { tools: openAITools(request.tools), parallel_tool_calls: false } : {}),
       instructions: request.instructions.map((s) => s.text).join('\n\n'),
       max_output_tokens: request.reservedOutput, stream: true, store: false,
+      include: ['reasoning.encrypted_content'],
     }, request.signal, (event) => {
       if (completed) return false
       switch (event.type) {
@@ -46,6 +49,7 @@ export class OpenAIProvider implements Provider {
           break
         }
         case 'response.output_item.done':
+          if (event.item?.type === 'reasoning') onPart?.({ kind: 'state', provider: 'openai', text: JSON.stringify(event.item) })
           if (event.item?.type === 'function_call') {
             const itemID = eventString(event.item.id)
             const call = calls.get(itemID)

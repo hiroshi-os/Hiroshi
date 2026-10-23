@@ -19,6 +19,25 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.8.0] - 2026-10-23
+
+### Added
+
+- One schema-validated tool registry for built-ins and extension runners; the
+  newest registration of a name wins. Built-ins read and atomically write
+  workspace files and run cancellable shell commands.
+- Durable allow/ask/deny permission gates, cockpit answers and exact-request
+  saved decisions. Repository denials override user grants; always-ask policy
+  requires a fresh answer. Policy is checked again before execution.
+- Linked tool requests and result messages, with each model continuation recorded
+  as a separate step. Claimed effects are never replayed after a restart.
+- Bounded result previews with explicit truncation markers and complete managed
+  output files that open in the cockpit. Protocol version 6 and additive storage
+  migration preserve earlier transcripts without executing historical requests.
+- Real-daemon integration tests for both provider protocols, restart during an
+  approval, denial, reasoning-state continuation and megabyte output retrieval.
+  Native and real-window tests exercise approval, denial, remember and output UI.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

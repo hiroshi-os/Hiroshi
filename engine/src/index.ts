@@ -23,6 +23,9 @@ import { Inbox } from './inbox'
 import { Sessions } from './sessions'
 import { Runs } from './runs'
 import { Steps } from './steps'
+import { ToolRegistry } from './tools/registry'
+import { registerBuiltins } from './tools/builtins'
+import { Tools } from './tools/tools'
 import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
@@ -148,7 +151,11 @@ async function serve(flags: Flags): Promise<number> {
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
   const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
     new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
+  const registry = new ToolRegistry()
+  registerBuiltins(registry)
+  const tools = new Tools(store, registry, paths.home)
   const steps = new Steps(store, log, {
+    tools,
     selectProvider: (model) => catalog.resolve(model),
     context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
     provider: catalog.resolve(),
@@ -160,6 +167,7 @@ async function serve(flags: Flags): Promise<number> {
   // A previous process may have died mid-step. The claim is still in the
   // database; resume the same step when it produced no output, and fail it
   // explicitly when it did.
+  tools.recover()
   steps.resume()
 
   // Only now may delivery start work. A prompt delivered before this line
@@ -170,6 +178,10 @@ async function serve(flags: Flags): Promise<number> {
     steps.start(sessionID)
   }
   inbox.busy = (sessionID) => steps.busy(sessionID)
+  tools.onIdle = (sessionID) => {
+    steps.start(sessionID)
+    void inbox.deliver(sessionID)
+  }
   steps.onEnd = (sessionID) => {
     void inbox.deliver(sessionID)
   }
@@ -177,6 +189,7 @@ async function serve(flags: Flags): Promise<number> {
   // delivered instead of waiting for a run that will never end.
   inbox.deliverIdle()
   steps.kickAll()
+  tools.kickAll()
 
   const hostname = stringFlag(flags, 'host') || '127.0.0.1'
   const port = numberFlag(flags, 'port') ?? 0
@@ -198,6 +211,7 @@ async function serve(flags: Flags): Promise<number> {
     // A step is left claimed, not cancelled: the next start resumes it. The
     // gate `stopAll` sets also stops new steps from starting while the runs
     // below deliver their last boundary.
+    tools.stopAll()
     steps.stopAll()
     await runs.stopAll()
     // A backstop: a run nothing was holding any more is genuinely unaccounted
@@ -215,7 +229,8 @@ async function serve(flags: Flags): Promise<number> {
       runs,
       sessions,
       steps,
-    catalog,
+      tools,
+      catalog,
       log,
       token,
       version: ENGINE_VERSION,
