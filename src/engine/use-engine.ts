@@ -37,6 +37,7 @@ export interface EngineHandle {
 }
 
 export interface EngineOptions {
+  initialSessionID?: string
   enabled: boolean
   workspace: string
 }
@@ -51,10 +52,10 @@ function describe(error: unknown): string {
   return String(error)
 }
 
-export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
+export function useEngine({ enabled, workspace, initialSessionID }: EngineOptions): EngineHandle {
   const [snapshot, setSnapshot] = useState<Snapshot>(initialSnapshot)
   const [attempt, setAttempt] = useState(0)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(initialSessionID ?? null)
   const client = useRef<EngineClient | null>(null)
   const session = useRef<string | null>(null)
 
@@ -91,7 +92,7 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
           update((current) => ({
             ...current,
             status: 'mismatch',
-            error: `the engine at ${attached.url} speaks protocol ${attached.health.protocol}; this cockpit speaks ${attached.expected}`,
+            error: `the engine at ${attached.url} is ${attached.health.version} (protocol ${attached.health.protocol}); this cockpit needs ${attached.expectedVersion} (protocol ${attached.expected})`,
           }))
           return
         }
@@ -114,7 +115,8 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
           const catalog = await connection.models()
           update((current) => ({ ...current, models: catalog.models, defaultModel: catalog.defaultModel }))
           const { sessions } = await connection.listSessions()
-          const existing = sessions.find((candidate) => candidate.id === selected && candidate.cwd === workspace) ?? sessions.find((candidate) => candidate.cwd === workspace)
+          const existing = selected ? sessions.find((candidate) => candidate.id === selected) : sessions.find((candidate) => candidate.cwd === workspace)
+          if (selected && !existing) throw new Error(`Session ${selected} was not found in this local engine`)
           const chosen =
             existing ?? (await connection.createSession({ cwd: workspace, reuseWorkspace: true })).session
           const detail = await connection.session({ id: chosen.id })

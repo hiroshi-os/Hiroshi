@@ -19,6 +19,29 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.12.0] - 2026-10-24
+
+### Added
+
+- A packaged shell with a compiled engine sidecar and embedded GPUIX binding.
+  A window watchdog replaces crashed or stalled windows without killing runs.
+- Local window size, display placement, selected session and open surface
+  preferences. Windows/macOS restore normal bounds and maximize state; Linux
+  restores size/layout while the compositor owns placement.
+- Validated `hiroshi://session/<id>?file=relative/path&line=1` links, with
+  per-user scheme registration and macOS URL event handling.
+- Release builds for Windows x64, macOS arm64 and Linux x64, checksum archives
+  and GitHub/Sigstore provenance signatures. Publisher OS certificates and
+  notarization are not included.
+- Verified, chunk-based delta staging through `hiroshi --update <version>`;
+  unchanged chunks stay local, and running files/engine processes stay intact.
+
+### Changed
+
+- Both engine release version and protocol are checked before attachment.
+- `bun run build` builds the cockpit and sidecar together. The packaged
+  launcher supervises its window; source hot-reload keeps the direct dev entry.
+
 ## [0.11.0] - 2026-10-23
 
 ### Added

@@ -10,7 +10,7 @@ import { engineTranscript } from '../../src/engine/transcript'
 
 const frame = (event: object) => `data: ${JSON.stringify(event)}\n\n`
 const git = (cwd: string, args: string[]) => {
-  const result = Bun.spawnSync({ cmd: ['git', '-C', cwd, ...args], stdout: 'pipe', stderr: 'pipe' })
+  const result = Bun.spawnSync({ cmd: ['git', '-c', 'commit.gpgsign=false', '-C', cwd, ...args], stdout: 'pipe', stderr: 'pipe', windowsHide: true })
   if (result.exitCode !== 0) throw new Error(result.stderr.toString())
   return result.stdout.toString()
 }

@@ -54,7 +54,15 @@ jobs:
       # The test isolates its state under `HIROSHI_HOME` in the temp directory,
       # so nothing here touches the runner's profile.
       - name: Run the windowed integration test
-        run: bun run test:integration
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:integration") -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 300'
+
+      - name: Build packaged desktop under resource limits
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","build") -MaxProcesses 3 -MemoryMB 2048 -TimeoutSeconds 120'
+
+      - name: Test packaged desktop and sidecar under resource limits
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:integration") -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 300'
+        env:
+          HIROSHI_TEST_PACKAGED: ${{ github.workspace }}/dist/hiroshi.exe
 
       - name: Keep what the window looked like
         if: always()
