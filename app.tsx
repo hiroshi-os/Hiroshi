@@ -10,6 +10,7 @@
  * Slow CPU: THROTTLE=utility bun --hot chat.tsx
  */
 
+import { ContextHistory } from './src/components/ContextHistory'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AnimatePresence,
@@ -4011,6 +4012,12 @@ function SurfacePanel({
               </text>
             </div>
           )}
+
+          <ContextHistory
+            messages={engine.snapshot.messages}
+            compactions={engine.snapshot.compactions}
+            contexts={engine.snapshot.contexts}
+          />
 
           {/* The session's inbox: prompts the engine has admitted, not delivered. */}
           <div

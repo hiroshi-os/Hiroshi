@@ -146,6 +146,7 @@ async function serve(flags: Flags): Promise<number> {
 
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
   const steps = new Steps(store, log, {
+    context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
     provider: new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }),
   })
 

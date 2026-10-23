@@ -29,6 +29,7 @@
 
 import { randomBytes } from 'node:crypto'
 
+import { Context, type ContextOptions } from './context'
 import type { Logger } from './log'
 import { ProviderError, type Provider } from './provider'
 import type { Step, StepError } from './protocol'
@@ -36,6 +37,7 @@ import type { Store } from './store'
 
 export interface StepsOptions {
   provider: Provider
+  context?: ContextOptions
   /**
    * Physical attempts one step may spend, including the attempt it was
    * created with. A restart counts as an attempt.
@@ -56,6 +58,7 @@ interface ActiveStep {
 export class Steps {
   readonly #store: Store
   readonly #log: Logger
+  readonly #context: Context
   readonly #provider: Provider
   readonly #maxAttempts: number
   readonly #backoff: (attempt: number) => number
@@ -67,6 +70,7 @@ export class Steps {
     this.#store = store
     this.#log = log.child('steps')
     this.#provider = options.provider
+    this.#context = new Context(store, options.provider, options.context)
     this.#maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)
     this.#backoff = options.backoff ?? defaultBackoff
   }
@@ -260,21 +264,16 @@ export class Steps {
   async #loop(initial: Step, controller: AbortController): Promise<void> {
     let step = initial
     let produced = false
+    let overflow = false
 
     for (;;) {
+      let callingProvider = false
       try {
-        // Every attempt reloads the history: the session is the source, not a
-        // buffer that a retry could have missed a delivery in.
-        const messages = this.#store.messages(step.sessionID)
+        const request = this.#context.prepare(step, overflow)
+        overflow = false
+        callingProvider = true
         await this.#provider.stream(
-          {
-            sessionID: step.sessionID,
-            stepID: step.id,
-            provider: step.provider,
-            model: step.model,
-            messages,
-            signal: controller.signal,
-          },
+          { ...request, signal: controller.signal },
           (text) => {
             if (!text || controller.signal.aborted) return
             produced = true
@@ -295,6 +294,26 @@ export class Steps {
         }
 
         const failure = classify(error)
+
+        if (failure.code === 'context_overflow') {
+          const recovered = this.#store.compactions(step.sessionID)
+            .some((boundary) => boundary.stepID === step.id && boundary.reason === 'provider_overflow')
+          if (!callingProvider || produced || recovered) {
+            this.#fail(step, {
+              code: 'context_overflow',
+              message: produced
+                ? 'the provider overflowed after producing output; the step was not replayed'
+                : recovered && callingProvider
+                  ? `the provider overflowed again after compaction: ${failure.message}`
+                  : failure.message,
+              retryable: false,
+            })
+            return
+          }
+          // Rebuild the same durable step once, independently of transient retries.
+          overflow = true
+          continue
+        }
 
         if (produced) {
           this.#fail(step, {

@@ -16,6 +16,8 @@ import { dirname } from 'node:path'
 import { mkdirSync } from 'node:fs'
 
 import type {
+  Compaction,
+  StepContext,
   DeliveryMode,
   EngineEvent,
   EventPayloads,
@@ -164,6 +166,26 @@ const MIGRATIONS: Migration[] = [
       );
       create index tool_call_session on tool_call (session_id, created_at);
       create index tool_call_run on tool_call (run_id);
+    `,
+  },
+  {
+    id: 4,
+    name: 'context',
+    sql: `
+      create table compaction (
+        id text not null unique,
+        session_id text not null references session(id),
+        ordinal integer primary key autoincrement,
+        data text not null
+      );
+      create index compaction_session on compaction(session_id, ordinal);
+      create table step_context (
+        ordinal integer primary key autoincrement,
+        id text not null unique,
+        session_id text not null references session(id),
+        data text not null
+      );
+      create index step_context_session on step_context(session_id, ordinal);
     `,
   },
 ]
@@ -509,6 +531,24 @@ export class Store {
     return row ? toMessage(row) : null
   }
 
+  insertCompaction(value: Compaction): void {
+    this.#db.run('insert into compaction (id, session_id, data) values (?, ?, ?)', [value.id, value.sessionID, JSON.stringify(value)])
+  }
+
+  compactions(sessionID: string): Compaction[] {
+    return (this.#db.query('select data from compaction where session_id = ? order by ordinal').all(sessionID) as Row[])
+      .map((row) => JSON.parse(row.data) as Compaction)
+  }
+
+  insertContext(value: StepContext): void {
+    this.#db.run('insert into step_context (id, session_id, data) values (?, ?, ?)', [value.id, value.sessionID, JSON.stringify(value)])
+  }
+
+  contexts(sessionID: string): StepContext[] {
+    return (this.#db.query('select data from step_context where session_id = ? order by ordinal').all(sessionID) as Row[])
+      .map((row) => JSON.parse(row.data) as StepContext)
+  }
+
   // -- inbox ---------------------------------------------------------------
 
   /** The next admission sequence inside a session. */
@@ -803,6 +843,8 @@ export class Store {
         inbox: this.inbox(sessionID, 'pending'),
         steps: this.steps(sessionID),
         toolCalls: this.toolCalls(sessionID),
+        compactions: this.compactions(sessionID),
+        contexts: this.contexts(sessionID),
         seq: this.lastSeq(),
       }
     })

@@ -12,7 +12,7 @@
  * plain exception is a bug or a failure that must not be replayed.
  */
 
-import type { Message } from './protocol'
+import type { Message, InstructionSource } from './protocol'
 
 export interface ProviderRequest {
   sessionID: string
@@ -21,12 +21,18 @@ export interface ProviderRequest {
   model: string
   /** The history the step sees, oldest first, reloaded for every attempt. */
   messages: Message[]
+  instructions: InstructionSource[]
+  tools: unknown[]
+  reservedOutput: number
   signal: AbortSignal
 }
 
 export interface Provider {
   readonly name: string
   readonly model: string
+  /** Model limits, including reserved output. Omission uses the conservative local default. */
+  readonly context?: { window: number; reservedOutput: number }
+  readonly tools?: unknown[]
   /**
    * Stream one answer. `onText` is called for each piece; the promise settles
    * when the answer is complete. An aborted signal must end the promise,

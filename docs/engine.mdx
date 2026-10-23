@@ -178,6 +178,49 @@ that cannot come.
 An idle connection gets a comment heartbeat every fifteen seconds, so a proxy or
 a sleeping laptop does not silently turn a live feed into a dead one.
 
+## Active history and compaction
+
+Before every provider attempt the engine reloads the durable messages and builds
+an active request. The provider declares its context window and reserved output;
+the request budget includes message framing, instructions and serialized tools.
+Without a tokenizer the estimator conservatively counts one UTF-8 byte per token.
+The local provider uses a 32,768 token window and reserves 1,024 for output.
+
+When the request is too large, a `context.compacted` event commits a summary and
+an inclusive message sequence boundary in one transaction. The active request
+contains that summary plus a bounded recent window starting at a user turn.
+System messages and the newest prompt remain intact. A request that cannot fit
+those values fails with `context_overflow`; the prompt is never silently cut.
+Compaction is on by default; `--no-compaction` or `HIROSHI_COMPACTION=off` disables
+new boundaries and fails oversized requests before the provider is called.
+
+The summary is deterministic and extractive: the original goal, labeled excerpts
+of recent covered messages, and an explicit omitted-message count. It does not
+make another model call or invent decisions. Repeated compactions rebuild from
+the original durable prefix rather than recursively summarizing a summary.
+Older details may be omitted from active history; every original message remains
+in the database and in the session snapshot.
+
+A provider reports overflow with `ProviderError('context_overflow', ...)`. Before
+any output, this triggers one forced compaction and a rebuild of the **same
+step**, independently of transient backoff retries. A second overflow or overflow
+after output fails with a clear reason. The forced boundary is durable, so a
+restart cannot grant another overflow recovery to the same step. This rebuild
+keeps the step allowance and attempt number; ordinary transient retries still
+increment the attempt as before.
+
+Instructions are `{ source, text }` values, separate from transcript messages.
+The default loader rereads the workspace's `AGENTS.md` each attempt. Adapters can
+supply additional instruction sources through the context options. A
+`context.prepared` event records the request estimate, model budget, active
+boundary, SHA-256 source hashes and names of sources added, edited or removed.
+It does not store the rendered instruction prose in that ledger.
+
+The Terminal's **Show context** control opens the full durable transcript,
+compaction summaries at their original boundaries, and changed source names.
+Both the session snapshot and the event reducer carry these records, so a
+reconnecting or second cockpit sees the same history.
+
 ## The data directory
 
 | platform | directory |
