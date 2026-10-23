@@ -114,7 +114,9 @@ export class Steps {
     const running = this.#store.steps(sessionID).find((step) => step.status === 'running')
     if (running) return running
 
-    const selected = this.#selectProvider?.(message.model) ?? this.#provider
+    // Prompts admitted before model selection existed belonged to local/echo.
+    // A newly configured remote default must not retarget that durable work.
+    const selected = this.#selectProvider?.(message.model ?? 'local/echo') ?? this.#provider
     const at = Date.now()
     const step: Step = {
       id: `step_${at.toString(36)}${randomBytes(4).toString('hex')}`,

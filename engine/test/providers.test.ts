@@ -5,6 +5,10 @@ import { ProviderCatalog, type ProvidersConfig } from '../src/providers/catalog'
 import { OpenAIProvider } from '../src/providers/openai'
 import { AnthropicProvider } from '../src/providers/anthropic'
 import type { ProviderRequest, ProviderPart } from '../src/provider'
+import { Store } from '../src/store'
+import { Sessions } from '../src/sessions'
+import { Steps } from '../src/steps'
+import { silentLogger } from '../src/log'
 import { engineTranscript } from '../../src/engine/transcript'
 import { apply, hydrate, initialSnapshot } from '../../src/engine/reducer'
 import { startDaemon, tempHome, until } from './harness'
@@ -139,6 +143,20 @@ describe('catalog and local policy', () => {
     expect(catalog.models()[1]!.reason).toBe('credentials_missing')
     await expect(catalog.resolve().stream(request(), () => {})).rejects.toMatchObject({ code: 'credentials_missing' })
     await expect(catalog.resolve('removed/chat').stream(request(), () => {})).rejects.toMatchObject({ code: 'model_unavailable' })
+  })
+  test('legacy prompts without a model stay local when a remote default is configured', async () => {
+    const store = Store.open(':memory:')
+    store.migrate()
+    const sessions = new Sessions(store, silentLogger(), { cwd: process.cwd() })
+    const session = sessions.create({})
+    sessions.prompt(session.id, { text: 'admitted before model selection' })
+    const catalog = new ProviderCatalog(config, {})
+    const steps = new Steps(store, silentLogger(), { provider: catalog.resolve(), selectProvider: (id) => catalog.resolve(id) })
+    try {
+      const step = steps.start(session.id)!
+      await until(() => store.step(step.id)?.status === 'succeeded')
+      expect(store.step(step.id)?.model).toBe('local/echo')
+    } finally { steps.stopAll(); store.close() }
   })
   test.each([
     { providers: [{ id: 'remote', adapter: 'unknown', models: [model] }] },
