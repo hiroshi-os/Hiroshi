@@ -19,6 +19,26 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.9.0] - 2026-10-23
+
+### Added
+
+- Pre-prompt checkpoints commit workspace Git trees and exact active message ids
+  at inbox delivery. A private Git database and hidden refs preserve unignored
+  content without changing the user's HEAD or staging index.
+- Cockpit checkpoint controls rewind files and conversation together, save the
+  current state first, retain archived history and expose recovery retries.
+- Durable rewind journals recover partially applied file plans before work
+  resumes. Unexpected later edits and ignored obstructions are preserved;
+  overlapping workspace work stays blocked until recovery completes.
+- Active model history and compaction follow the restored branch. Rewinds are
+  transcript facts; archived messages and prior events remain durable. Pending
+  prompts are cancelled rather than silently executed after a rewind.
+- Real Git/daemon integration tests cover index isolation, binary/CRLF content,
+  directory transitions, two clients, continued model history and crash recovery.
+  Native and actual-window tests restore files and chat, inspect old history and
+  reopen the cockpit. Protocol version 7 ships with an additive migration.
+
 ## [0.8.0] - 2026-10-23
 
 ### Added

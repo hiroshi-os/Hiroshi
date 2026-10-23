@@ -435,6 +435,41 @@ async function driveTheWindow(home: string): Promise<void> {
     await app.getByTestId('tool-output-close').click()
     note('the cockpit opened the complete managed tool result')
 
+    // A checkpoint precedes the prompt, so one click restores code and chat.
+    writeFileSync(path.join(workspace, 'approved.txt'), 'window-before-checkpoint')
+    await composer.fill('checkpoint-window-change')
+    await composer.press('enter')
+    await waitUntil(async () => (await treeText(app)).includes('Tool turn complete: checkpoint-window-change') || false, 'the checkpointed tool turn to finish')
+    check(readFileSync(path.join(workspace, 'approved.txt'), 'utf8') === 'approved from the model', 'the checkpointed tool did not change the workspace')
+    const target = await waitUntil(async () => {
+      for (const session of (await client.listSessions()).sessions) {
+        const detail = await client.session({ id: session.id })
+        const checkpoint = detail.checkpoints.find((checkpoint) => checkpoint.label === 'checkpoint-window-change')
+        if (checkpoint) return checkpoint
+      }
+      return false
+    }, 'the pre-prompt checkpoint')
+    await app.getByTestId('checkpoint-toggle').click()
+    await app.getByTestId(`checkpoint-restore-${target.id}`).waitFor()
+    await app.getByTestId(`checkpoint-restore-${target.id}`).click()
+    await waitUntil(async () => {
+      const nodes = await app.getByTestId('engine-transcript').all()
+      const text = nodes.map((node) => flatten(node).join('\n')).join('\n')
+      return text.includes('Rewound workspace and conversation to checkpoint') && !text.includes('Tool turn complete: checkpoint-window-change') || false
+    }, 'the checkpoint rewind to update the main transcript')
+    check(readFileSync(path.join(workspace, 'approved.txt'), 'utf8') === 'window-before-checkpoint', 'the checkpoint did not restore the workspace')
+    await app.getByTestId('checkpoint-toggle').click()
+    await app.getByTestId('rewind-history-toggle').click()
+    await app.getByTestId('rewind-archived-history').waitFor()
+    check((await treeText(app)).includes('Tool turn complete: checkpoint-window-change'), 'rewound history was lost')
+    try {
+      const shots = path.join(process.cwd(), 'screenshots')
+      mkdirSync(shots, { recursive: true })
+      await app.screenshot({ path: path.join(shots, 'windowed-checkpoints.png') })
+    } catch (error) { note(`checkpoint screenshot unavailable: ${String(error)}`) }
+    await app.getByTestId('rewind-history-toggle').click()
+    note('the cockpit restored workspace and conversation together, retaining earlier history')
+
     // A command that outlives the window. It is still running when the window
     // goes away, and the daemon has to finish it without one.
     await submit(app, SECOND_COMMAND)
@@ -551,6 +586,15 @@ async function main(): Promise<void> {
       `the durable log does not hold the run's output: ${JSON.stringify(survivor.output)}`,
     )
     note(`the run outlived the window: exit ${survivor.exitCode}, "${SURVIVOR}" is in the log`)
+    const reopened = await openWindow({ HIROSHI_HOME: home, GPUIX_BACKGROUND: '1', HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture' }, path.join(home, 'workspace'))
+    try {
+      await waitUntil(async () => (await treeText(reopened.app)).includes('Rewound workspace and conversation to checkpoint') || false,
+        'the reopened cockpit to show the restored conversation')
+      const nodes = await reopened.app.getByTestId('engine-transcript').all()
+      check(!nodes.map((node) => flatten(node).join('\n')).join('\n').includes('Tool turn complete: checkpoint-window-change'), 'reopening restored the archived turn into the active conversation')
+      note('reopening the cockpit preserved the rewind and its active transcript')
+    } finally { await reopened.close() }
+
   } catch (error) {
     failure = error
   }

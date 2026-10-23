@@ -9,6 +9,8 @@
  */
 
 import type {
+  Checkpoint,
+  Rewind,
   Compaction,
   Permission,
   StepContext,
@@ -49,6 +51,10 @@ export interface Snapshot {
   models: ModelInfo[]
   defaultModel: string
   parts: StepPart[]
+  checkpoints: Checkpoint[]
+  rewinds: Rewind[]
+  activeMessageIDs: string[] | null
+  checkpointError: string | null
   permissions: Permission[]
   /** Prompts admitted but not delivered yet, oldest first. */
   inbox: InboxItem[]
@@ -76,6 +82,10 @@ export function initialSnapshot(): Snapshot {
     models: [],
     defaultModel: 'local/echo',
     parts: [],
+    checkpoints: [],
+    rewinds: [],
+    activeMessageIDs: null,
+    checkpointError: null,
     permissions: [],
     inbox: [],
     runs: [],
@@ -140,6 +150,10 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     compactions: detail.compactions ?? [],
     contexts: detail.contexts ?? [],
     parts: detail.parts ?? [],
+    checkpoints: detail.checkpoints ?? [],
+    rewinds: detail.rewinds ?? [],
+    activeMessageIDs: detail.activeMessageIDs ?? null,
+    checkpointError: detail.checkpointError ?? null,
     permissions: detail.permissions ?? [],
     output,
     error: null,
@@ -159,6 +173,14 @@ function unreachable(event: never): never {
 
 /** Apply one durable event. */
 export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
+  const next = reduce(snapshot, event)
+  if (!snapshot.activeMessageIDs || next === snapshot || event.type === 'rewind.completed') return next
+  const old = new Set(snapshot.messages.map((message) => message.id))
+  const added = next.messages.filter((message) => !old.has(message.id)).map((message) => message.id)
+  return added.length ? { ...next, activeMessageIDs: [...(next.activeMessageIDs ?? []), ...added] } : next
+}
+
+function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
   switch (event.type) {
     case 'session.created':
     case 'session.updated': {
@@ -174,7 +196,7 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
     }
 
     case 'prompt.delivered': {
-      const { item, message } = event.data
+      const { item, message, checkpoint } = event.data
       if (item.sessionID !== snapshot.sessionID) return snapshot
       const inbox = snapshot.inbox.filter((existing) => existing.id !== item.id)
       // A delivery carries its message: the transcript line and the end of the
@@ -182,7 +204,7 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       const messages = snapshot.messages.some((existing) => existing.id === message.id)
         ? snapshot.messages
         : [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
-      return { ...snapshot, inbox, messages }
+      return { ...snapshot, inbox, messages, ...(checkpoint ? { checkpoints: [...snapshot.checkpoints.filter((item) => item.id !== checkpoint.id), checkpoint], checkpointError: null } : {}) }
     }
 
     case 'context.compacted': {
@@ -194,6 +216,27 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
       const { context } = event.data
       if (context.sessionID !== snapshot.sessionID || snapshot.contexts.some((c) => c.id === context.id)) return snapshot
       return { ...snapshot, contexts: [...snapshot.contexts, context] }
+    }
+
+    case 'checkpoint.created': {
+      const { checkpoint } = event.data
+      if (checkpoint.sessionID !== snapshot.sessionID) return snapshot
+      return { ...snapshot, checkpoints: [...snapshot.checkpoints.filter((item) => item.id !== checkpoint.id), checkpoint], checkpointError: null }
+    }
+    case 'checkpoint.failed':
+      return event.sessionID === snapshot.sessionID ? { ...snapshot, checkpointError: event.data.error } : snapshot
+    case 'rewind.started':
+    case 'rewind.failed': {
+      const { rewind } = event.data
+      if (rewind.sessionID !== snapshot.sessionID) return snapshot
+      return { ...snapshot, rewinds: [...snapshot.rewinds.filter((item) => item.id !== rewind.id), rewind] }
+    }
+    case 'rewind.completed': {
+      if (event.sessionID !== snapshot.sessionID) return snapshot
+      const { rewind, message, activeMessageIDs, cancelledInboxIDs } = event.data
+      return { ...snapshot, rewinds: [...snapshot.rewinds.filter((item) => item.id !== rewind.id), rewind],
+        messages: snapshot.messages.some((item) => item.id === message.id) ? snapshot.messages : [...snapshot.messages, message],
+        activeMessageIDs, checkpointError: null, inbox: snapshot.inbox.filter((item) => !cancelledInboxIDs.includes(item.id)) }
     }
 
     case 'tool.updated': {

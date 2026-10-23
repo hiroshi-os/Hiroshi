@@ -23,7 +23,7 @@
 
 import { invalid, notFound } from './errors'
 import type { Logger } from './log'
-import type { DeliveryMode, InboxItem, Message, PromptRequest } from './protocol'
+import type { Checkpoint, DeliveryMode, InboxItem, Message, PromptRequest } from './protocol'
 import type { Store } from './store'
 
 export interface Admitted {
@@ -70,6 +70,7 @@ export class Inbox {
    * the transcript. The step calls back into `deliver` when it ends.
    */
   busy: ((sessionID: string) => boolean) | null = null
+  beforeDeliver: ((sessionID: string, item: InboxItem) => Checkpoint) | null = null
 
   constructor(store: Store, log: Logger) {
     this.#store = store
@@ -156,6 +157,14 @@ export class Inbox {
 
     const delivered: Message[] = []
     for (const item of pending) {
+      let checkpoint: Checkpoint | undefined
+      try { checkpoint = this.beforeDeliver?.(sessionID, item) }
+      catch (error) {
+        const reason = error instanceof Error ? error.message : 'the workspace checkpoint failed'
+        this.#store.record({ type: 'checkpoint.failed', sessionID, data: { itemID: item.id, error: reason },
+          project: () => this.#store.setCheckpointError(sessionID, reason) })
+        break // Admission stays durable; no model or workspace effect can begin.
+      }
       const at = Date.now()
       // Reserve first: the message is part of the event that makes it durable,
       // and the projector that writes the row also closes the inbox item.
@@ -172,8 +181,9 @@ export class Inbox {
         type: 'prompt.delivered',
         sessionID,
         at,
-        data: { item: done, message },
+        data: { item: done, message, ...(checkpoint ? { checkpoint } : {}) },
         project: () => {
+          if (checkpoint) this.#store.insertCheckpoint(checkpoint)
           this.#store.insertMessage(message)
           this.#store.deliverInboxItem(item.id, message.id, at)
           this.#store.touchSession(sessionID, at)

@@ -240,6 +240,7 @@ describe('the projection', () => {
       contexts: [],
       parts: [],
       permissions: [],
+      checkpoints: [], rewinds: [], activeMessageIDs: ['msg_one'], checkpointError: null,
       toolCalls: [{ ...toolCall, status: 'succeeded', endedAt: 20 }],
       seq: 9,
     }

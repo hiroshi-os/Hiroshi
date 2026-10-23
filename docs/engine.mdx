@@ -100,6 +100,14 @@ that reason on the next start; it is never replayed. The same row will carry
 model-requested tools, and `step_id` says which step asked for one. See
 [tools and permissions](/tools) for the gate, results and recovery contract.
 
+## Checkpoints
+
+Prompt delivery commits a [workspace checkpoint](/checkpoints) before model work
+begins. Rewind restores files and the active conversation together, retaining
+older branches as readable history. Its durable journal and safety checkpoint
+allow recovery without replaying model or tool effects. Checkpoint refs and
+objects live in an independent Git database; the user's index and HEAD stay put.
+
 ## The session inbox
 
 A prompt is not a message yet when it arrives. It is admitted to the session's

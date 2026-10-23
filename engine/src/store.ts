@@ -17,6 +17,8 @@ import { mkdirSync } from 'node:fs'
 
 import type {
   Compaction,
+  Checkpoint,
+  Rewind,
   Permission,
   SavedPermission,
   StepContext,
@@ -233,6 +235,15 @@ const MIGRATIONS: Migration[] = [
         data text not null
       );
       create index saved_permission_scope on saved_permission(scope, ordinal);
+    `,
+  },
+  {
+    id: 7, name: 'checkpoints-and-rewinds',
+    sql: `
+      create table checkpoint (id text primary key, session_id text not null references session(id), data text not null);
+      create table rewind (id text primary key, session_id text not null references session(id), request_key text not null, data text not null, unique(session_id, request_key));
+      create table conversation_view (session_id text primary key references session(id), retained text not null, after_seq integer not null);
+      create table checkpoint_error (session_id text primary key references session(id), error text not null);
     `,
   },
 ]
@@ -834,10 +845,7 @@ export class Store {
 
   /** The newest prompt in a session, for the turn the next step answers. */
   lastUserMessage(sessionID: string): Message | null {
-    const row = this.#db
-      .query("select * from message where session_id = ? and role = 'user' order by seq desc limit 1")
-      .get(sessionID) as Row | null
-    return row ? toMessage(row) : null
+    return this.activeMessages(sessionID).filter((message) => message.role === 'user').at(-1) ?? null
   }
 
   // -- tool calls ----------------------------------------------------------
@@ -919,6 +927,62 @@ export class Store {
     return row ? toStep(row) : null
   }
 
+  insertCheckpoint(value: Checkpoint): void {
+    this.#db.run('insert into checkpoint (id, session_id, data) values (?, ?, ?)', [value.id, value.sessionID, JSON.stringify(value)])
+    this.#db.run('delete from checkpoint_error where session_id = ?', [value.sessionID])
+  }
+
+  checkpoint(id: string): Checkpoint | null {
+    const row = this.#db.query('select data from checkpoint where id = ?').get(id) as Row | null
+    return row ? JSON.parse(row.data) : null
+  }
+
+  checkpoints(sessionID: string): Checkpoint[] {
+    return (this.#db.query('select data from checkpoint where session_id = ? order by rowid').all(sessionID) as Row[]).map((row) => JSON.parse(row.data))
+  }
+
+  putRewind(value: Rewind): void {
+    this.#db.run('insert into rewind (id, session_id, request_key, data) values (?, ?, ?, ?) on conflict(id) do update set data = excluded.data',
+      [value.id, value.sessionID, value.key, JSON.stringify(value)])
+  }
+
+  rewinds(sessionID?: string): Rewind[] {
+    const rows = sessionID === undefined ? this.#db.query('select data from rewind order by rowid').all()
+      : this.#db.query('select data from rewind where session_id = ? order by rowid').all(sessionID)
+    return (rows as Row[]).map((row) => JSON.parse(row.data))
+  }
+
+  setConversationView(sessionID: string, retained: string[], afterSeq: number): void {
+    this.#db.run('delete from checkpoint_error where session_id = ?', [sessionID])
+    this.#db.run('insert into conversation_view (session_id, retained, after_seq) values (?, ?, ?) on conflict(session_id) do update set retained = excluded.retained, after_seq = excluded.after_seq',
+      [sessionID, JSON.stringify(retained), afterSeq])
+  }
+
+  activeMessages(sessionID: string): Message[] {
+    const row = this.#db.query('select retained, after_seq from conversation_view where session_id = ?').get(sessionID) as Row | null
+    const messages = this.messages(sessionID)
+    if (!row) return messages
+    const retained = new Set<string>(JSON.parse(row.retained))
+    return messages.filter((message) => retained.has(message.id) || message.seq >= row.after_seq)
+  }
+
+  activeCompactions(sessionID: string): Compaction[] {
+    const active = new Set(this.activeMessages(sessionID).map((message) => message.id))
+    return this.compactions(sessionID).filter((boundary) => active.has(this.step(boundary.stepID)?.messageID ?? ''))
+  }
+
+  cancelPendingInbox(sessionID: string): void {
+    this.#db.run("update inbox set state = 'cancelled' where session_id = ? and state = 'pending'", [sessionID])
+  }
+
+  setCheckpointError(sessionID: string, error: string): void {
+    this.#db.run('insert into checkpoint_error (session_id, error) values (?, ?) on conflict(session_id) do update set error = excluded.error', [sessionID, error])
+  }
+
+  checkpointError(sessionID: string): string | null {
+    return (this.#db.query('select error from checkpoint_error where session_id = ?').get(sessionID) as Row | null)?.error ?? null
+  }
+
   // -- snapshots -----------------------------------------------------------
 
   /**
@@ -944,6 +1008,10 @@ export class Store {
         contexts: this.contexts(sessionID),
         parts: this.stepParts(sessionID),
         permissions: this.permissions(sessionID),
+        checkpoints: this.checkpoints(sessionID),
+        rewinds: this.rewinds(sessionID),
+        activeMessageIDs: this.activeMessages(sessionID).map((message) => message.id),
+        checkpointError: this.checkpointError(sessionID),
         seq: this.lastSeq(),
       }
     })

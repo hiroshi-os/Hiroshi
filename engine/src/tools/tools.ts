@@ -14,12 +14,13 @@ export class Tools {
   readonly #workers = new Map<string, Promise<void>>()
   readonly #active = new Map<string, AbortController>()
   #stopping = false
+  blocked: ((sessionID: string) => boolean) | null = null
   onIdle: ((sessionID: string) => void) | null = null
 
   constructor(readonly store: Store, readonly registry: ToolRegistry, readonly home: string) {}
 
   busy(sessionID: string): boolean {
-    return this.store.toolCalls(sessionID).some((call) => call.callID !== undefined && !call.resultMessageID)
+    return [...this.#active.keys()].some((id) => this.store.toolCall(id)?.sessionID === sessionID) || this.store.toolCalls(sessionID).some((call) => call.callID !== undefined && !call.resultMessageID)
   }
 
   /** Prepared inside step.completed's transaction, before any dispatch. */
@@ -51,7 +52,7 @@ export class Tools {
   kickAll(): void { for (const session of this.store.sessions()) this.kick(session.id) }
 
   kick(sessionID: string): void {
-    if (this.#stopping || this.#workers.has(sessionID)) return
+    if (this.#stopping || this.blocked?.(sessionID) || this.#workers.has(sessionID)) return
     const work = Promise.resolve().then(() => this.#drain(sessionID)).finally(() => {
       this.#workers.delete(sessionID)
       if (this.#stopping) return

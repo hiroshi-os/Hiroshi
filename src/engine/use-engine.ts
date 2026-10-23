@@ -15,6 +15,7 @@ import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 
 export interface EngineHandle {
+  rewind: (checkpointID: string, key: string) => Promise<void>
   snapshot: Snapshot
   answerPermission: (id: string, decision: 'allow' | 'deny', remember: boolean) => Promise<void>
   toolOutput: (id: string) => Promise<{ path: string; text: string }>
@@ -223,5 +224,10 @@ export function useEngine({ enabled, workspace }: EngineOptions): EngineHandle {
     return client.current.toolOutput({ id })
   }, [])
 
-  return { snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  const rewind = useCallback(async (checkpointID: string, key: string) => {
+    if (!client.current || !session.current) throw new Error('the engine is not connected')
+    await client.current.rewind({ id: session.current, checkpointID, key })
+  }, [])
+
+  return { rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

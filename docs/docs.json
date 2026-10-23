@@ -43,6 +43,7 @@
               "engine",
               "providers",
               "tools",
+              "checkpoints",
               "window"
             ]
           },

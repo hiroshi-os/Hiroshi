@@ -1,6 +1,6 @@
 {
   "name": "hiroshi",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",

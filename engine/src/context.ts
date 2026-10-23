@@ -49,8 +49,8 @@ export class Context {
       .filter((source) => previous.find((s) => s.source === source)?.hash !== sources.find((s) => s.source === source)?.hash)
     const fixed = instructions.reduce((sum, s) => sum + estimateTokens(s.text) + 16, 0) + estimateTokens(JSON.stringify(tools)) + 32
     const budget = limits.window - limits.reservedOutput - fixed
-    const all = this.store.messages(step.sessionID)
-    const boundaries = this.store.compactions(step.sessionID)
+    const all = this.store.activeMessages(step.sessionID)
+    const boundaries = this.store.activeCompactions(step.sessionID)
     let boundary = boundaries.at(-1)
     let messages = all.filter((m) => m.role === 'system' || m.seq > (boundary?.throughSeq ?? -1))
     const cost = (items: Message[], summary?: Compaction) => items.reduce((n, m) => n + estimateTokens(m.text) + (m.toolCalls ? estimateTokens(JSON.stringify(m.toolCalls)) : 0) + (m.toolResult ? estimateTokens(JSON.stringify(m.toolResult)) : 0) + (m.providerState ? estimateTokens(JSON.stringify(m.providerState)) : 0) + 16, 0)

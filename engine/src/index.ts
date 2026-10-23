@@ -21,6 +21,7 @@ import { createLogger, type Logger } from './log'
 import { Store } from './store'
 import { Inbox } from './inbox'
 import { Sessions } from './sessions'
+import { Checkpoints } from './checkpoints'
 import { Runs } from './runs'
 import { Steps } from './steps'
 import { ToolRegistry } from './tools/registry'
@@ -142,6 +143,7 @@ async function serve(flags: Flags): Promise<number> {
   store.migrate()
 
   const workspace = stringFlag(flags, 'workspace') || process.cwd()
+  const checkpoints = new Checkpoints(store, paths.home)
   const inbox = new Inbox(store, log)
   const sessions = new Sessions(store, log, { cwd: workspace, inbox })
   // A run ending is the engine's safe boundary: the inbox reads the database
@@ -156,6 +158,7 @@ async function serve(flags: Flags): Promise<number> {
   const tools = new Tools(store, registry, paths.home)
   const steps = new Steps(store, log, {
     tools,
+    blocked: (id) => checkpoints.blocked(id),
     selectProvider: (model) => catalog.resolve(model),
     context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
     provider: catalog.resolve(),
@@ -167,6 +170,10 @@ async function serve(flags: Flags): Promise<number> {
   // A previous process may have died mid-step. The claim is still in the
   // database; resume the same step when it produced no output, and fail it
   // explicitly when it did.
+  checkpoints.busy = (id) => steps.busy(id)
+  inbox.beforeDeliver = (id, item) => checkpoints.prepare(id, item)
+  tools.blocked = (id) => checkpoints.blocked(id)
+  checkpoints.recover()
   tools.recover()
   steps.resume()
 
@@ -177,7 +184,7 @@ async function serve(flags: Flags): Promise<number> {
   inbox.onDelivered = (sessionID) => {
     steps.start(sessionID)
   }
-  inbox.busy = (sessionID) => steps.busy(sessionID)
+  inbox.busy = (sessionID) => steps.busy(sessionID) || checkpoints.blocked(sessionID)
   tools.onIdle = (sessionID) => {
     steps.start(sessionID)
     void inbox.deliver(sessionID)
@@ -230,6 +237,7 @@ async function serve(flags: Flags): Promise<number> {
       sessions,
       steps,
       tools,
+      checkpoints,
       catalog,
       log,
       token,
