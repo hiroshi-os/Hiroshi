@@ -236,6 +236,8 @@ describe('the projection', () => {
       ],
       inbox: [],
       steps: [{ ...step, status: 'succeeded', claim: null, output: 'hi', endedAt: 20 }],
+      compactions: [],
+      contexts: [],
       toolCalls: [{ ...toolCall, status: 'succeeded', endedAt: 20 }],
       seq: 9,
     }

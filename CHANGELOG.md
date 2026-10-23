@@ -19,6 +19,27 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.6.0] - 2026-10-23
+
+### Added
+
+- Active context budgeting before every provider attempt: model window, reserved
+  output, message framing, instructions and tool definitions all count. A
+  conservative UTF-8 byte estimate works without a provider tokenizer.
+- Durable compaction boundaries rebuild active history from a bounded extractive
+  summary and recent complete turns. The newest prompt and system messages stay
+  intact. The full transcript is never edited or deleted.
+- A provider `context_overflow` before output rebuilds the same step once. A
+  second overflow, an irreducible request, or overflow after output fails clearly.
+  The recovery boundary survives a restart, so restarting cannot reset the limit.
+- Instruction sources are values, reloaded each attempt. The context ledger
+  records SHA-256 hashes and changed source names, including removals, rather
+  than rendered instruction prose. Workspace `AGENTS.md` is the default source.
+- The Terminal's context viewer shows budget usage, source changes, all original
+  messages and the summaries at their boundaries. Snapshots and feed replay
+  carry the same records. The protocol is version 4.
+- Compaction can be disabled with `--no-compaction` or `HIROSHI_COMPACTION=off`.
+
 ## [0.5.0] - 2026-10-23
 
 ### Added

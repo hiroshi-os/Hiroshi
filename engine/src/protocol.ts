@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 3
+export const PROTOCOL_VERSION = 4
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.5.0'
+export const ENGINE_VERSION = '0.6.0'
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
@@ -99,6 +99,44 @@ export interface Message {
   at: number
   /** The delivery mode the prompt arrived with, when it came through the inbox. */
   mode?: DeliveryMode
+}
+
+/** Source values are sent to the provider; only hashes enter the context ledger. */
+export interface InstructionSource {
+  source: string
+  text: string
+}
+
+export interface InstructionHash {
+  source: string
+  hash: string
+}
+
+export interface Compaction {
+  id: string
+  sessionID: string
+  stepID: string
+  /** Inclusive durable message sequence replaced in active history only. */
+  throughSeq: number
+  retainedFromSeq: number
+  text: string
+  reason: 'budget' | 'provider_overflow'
+  at: number
+}
+
+export interface StepContext {
+  id: string
+  sessionID: string
+  stepID: string
+  attempt: number
+  sources: InstructionHash[]
+  /** Added, edited and removed source names, without rendered instruction prose. */
+  changed: string[]
+  estimatedInput: number
+  reservedOutput: number
+  window: number
+  compactionID: string | null
+  at: number
 }
 
 export interface Run {
@@ -221,6 +259,8 @@ export interface EventPayloads {
   'session.updated': { session: Session }
   'prompt.admitted': { item: InboxItem }
   'prompt.delivered': { item: InboxItem; message: Message }
+  'context.compacted': { compaction: Compaction }
+  'context.prepared': { context: StepContext }
   'step.started': { step: Step }
   'step.resumed': { step: Step; reason: string }
   'step.retry': { step: Step; delay: number; error: StepError }
@@ -266,6 +306,8 @@ export interface SessionDetail {
   steps: Step[]
   /** Effects recorded before they ran, oldest first. */
   toolCalls: ToolCall[]
+  compactions: Compaction[]
+  contexts: StepContext[]
   /** The watermark this snapshot was read at. Subscribe with `after: seq`. */
   seq: number
 }

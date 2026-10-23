@@ -9,6 +9,8 @@
  */
 
 import type {
+  Compaction,
+  StepContext,
   EngineEvent,
   Health,
   InboxItem,
@@ -46,6 +48,8 @@ export interface Snapshot {
   runs: Run[]
   /** Model calls, oldest first. */
   steps: Step[]
+  compactions: Compaction[]
+  contexts: StepContext[]
   /** Effects recorded before they ran, oldest first. */
   toolCalls: ToolCall[]
   output: Record<string, OutputState>
@@ -66,6 +70,8 @@ export function initialSnapshot(): Snapshot {
     runs: [],
     steps: [],
     toolCalls: [],
+    compactions: [],
+    contexts: [],
     output: {},
   }
 }
@@ -120,6 +126,8 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
     runs: detail.runs,
     steps: detail.steps ?? [],
     toolCalls: detail.toolCalls ?? [],
+    compactions: detail.compactions ?? [],
+    contexts: detail.contexts ?? [],
     output,
     error: null,
   }
@@ -162,6 +170,17 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
         ? snapshot.messages
         : [...snapshot.messages, message].sort((a, b) => a.seq - b.seq)
       return { ...snapshot, inbox, messages }
+    }
+
+    case 'context.compacted': {
+      const { compaction } = event.data
+      if (compaction.sessionID !== snapshot.sessionID || snapshot.compactions.some((c) => c.id === compaction.id)) return snapshot
+      return { ...snapshot, compactions: [...snapshot.compactions, compaction] }
+    }
+    case 'context.prepared': {
+      const { context } = event.data
+      if (context.sessionID !== snapshot.sessionID || snapshot.contexts.some((c) => c.id === context.id)) return snapshot
+      return { ...snapshot, contexts: [...snapshot.contexts, context] }
     }
 
     case 'step.started':

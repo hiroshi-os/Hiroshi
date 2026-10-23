@@ -44,6 +44,8 @@ const everyEvent: { [Type in EventType]: Type } = {
   'session.updated': 'session.updated',
   'prompt.admitted': 'prompt.admitted',
   'prompt.delivered': 'prompt.delivered',
+  'context.compacted': 'context.compacted',
+  'context.prepared': 'context.prepared',
   'step.started': 'step.started',
   'step.resumed': 'step.resumed',
   'step.retry': 'step.retry',
