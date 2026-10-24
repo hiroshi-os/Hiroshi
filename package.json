@@ -1,12 +1,13 @@
 {
   "name": "hiroshi",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun --hot app.tsx",
     "build": "bun scripts/build.ts",
+    "test:archive": "bun scripts/smoke-archive.ts",
     "web:dev": "bun web.ts",
     "web:build": "bun web.ts --build",
     "test:web": "bun scripts/browser-smoke.ts",

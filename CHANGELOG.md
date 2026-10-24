@@ -19,6 +19,19 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.12.2] - 2026-10-24
+
+### Fixed
+
+- Verify download archives after extraction on Windows, macOS and Linux: check
+  checksums, exact payloads, manifest/file hashes, executable permissions and
+  release versions, then run the extracted cockpit and its engine sidecar from
+  an isolated directory.
+- Reject publication before creating a draft if any platform archive, checksum,
+  manifest or new delta chunk is missing or corrupt. Publish only verified files.
+- Exercise the complete three-platform publication inputs in PR CI without
+  making GitHub release changes.
+
 ## [0.12.1] - 2026-10-24
 
 ### Fixed

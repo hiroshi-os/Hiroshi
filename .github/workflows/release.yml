@@ -47,6 +47,13 @@ jobs:
           gh release download --repo "$GITHUB_REPOSITORY" --pattern 'manifest-*.json' --dir tmp/previous
       - name: Build release archives, checksums, and delta chunks
         run: bun scripts/release.ts
+      - name: Test the extracted download archive on Windows under resource limits
+        if: runner.os == 'Windows'
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("scripts/smoke-archive.ts") -MaxProcesses 6 -MemoryMB 1536 -TimeoutSeconds 60'
+      - name: Test the extracted download archive on macOS and Linux
+        if: runner.os != 'Windows'
+        timeout-minutes: 2
+        run: bun scripts/smoke-archive.ts
       - name: Sign release provenance
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/attest-build-provenance@v3
@@ -64,16 +71,38 @@ jobs:
             dist/release/*.json
           retention-days: 7
       - name: Keep delta chunks for publication
-        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: delta-${{ matrix.os }}
           path: dist/release/blobs/
           retention-days: 1
 
+  verify:
+    name: verify complete release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: delta-*
+          path: assets/blobs
+          merge-multiple: true
+      - name: Validate the exact inputs to publication without changing GitHub
+        run: bun scripts/verify-release.ts
+
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: package
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write

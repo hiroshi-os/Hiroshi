@@ -56,7 +56,12 @@ skip themselves.
 `integration.yml` drives source and compiled windows on Windows, checks intentional
 close does not restart the packaged cockpit, and runs the browser preview smoke.
 `release.yml` packages and smoke-tests the compiled cockpit and engine on Windows,
-macOS and Linux. Tag builds publish signed release provenance and delta manifests.
+macOS and Linux, then extracts the actual archive and runs its binaries outside
+the checkout. The engine suite also tests incomplete, corrupt and inconsistent
+release artifacts against the publication gate. Tag builds publish signed release
+provenance and delta manifests only after all platforms pass. The aggregate
+`verify complete release` job downloads all three platforms and delta chunks and
+checks the actual publication inputs on every PR, without publishing a release.
 
 The install is `bun install --frozen-lockfile`, so the lockfile and
 `package.json` cannot drift apart. `.bun-version` pins Bun for the local

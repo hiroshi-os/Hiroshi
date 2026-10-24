@@ -41,6 +41,8 @@ Download [Hiroshi releases](https://github.com/hiroshi-os/Hiroshi/releases/lates
 for Windows x64, macOS arm64 or Linux x64. Each archive includes the compiled
 cockpit and its engine sidecar. Release archives and delta manifests have
 GitHub/Sigstore provenance signatures; OS publisher certificates are not included.
+Every archive is extracted and tested before publication. Its adjacent `.sha256`
+file checks download integrity; provenance verification is covered in the guide.
 See [the desktop shell guide](docs/shell.mdx) for verification, window restoration,
 deep links and delta updates.
 
@@ -74,6 +76,7 @@ bun run engine:status
 | `bun run test:integration` | Drive a real desktop window and its engine |
 | `bun run screenshot` | Capture desktop UI screenshots |
 | `bun run build` | Compile the cockpit and engine sidecar into `dist/` |
+| `bun run test:archive` | Verify and test an extracted archive after building and packaging |
 | `bun run web:dev` | Bundle and serve the browser preview |
 | `bun run web:build` | Check the browser bundle without starting a server |
 | `bun run test:web` | Render the Wasm preview and send a demo prompt in headless Chrome |

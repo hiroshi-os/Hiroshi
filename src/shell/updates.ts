@@ -12,9 +12,9 @@ export interface ReleaseManifest {
 }
 export const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 function version(value: unknown): value is string { return typeof value === 'string' && /^0\.\d{1,3}\.\d+$/.test(value) }
-export function validateManifest(value: unknown, expected: string): ReleaseManifest {
+export function validateManifest(value: unknown, expected: string, target: { platform: string; arch: string } = process): ReleaseManifest {
   const manifest = value as ReleaseManifest
-  if (!manifest || !version(manifest.version) || manifest.version !== expected || manifest.platform !== process.platform || manifest.arch !== process.arch || !Array.isArray(manifest.files) || !manifest.files.length || manifest.files.length > 100) throw new Error('Release does not match this version or platform')
+  if (!manifest || !version(manifest.version) || manifest.version !== expected || manifest.platform !== target.platform || manifest.arch !== target.arch || !Array.isArray(manifest.files) || !manifest.files.length || manifest.files.length > 100) throw new Error('Release does not match this version or platform')
   let total = 0
   const names = new Set<string>()
   for (const file of manifest.files) {
@@ -22,7 +22,7 @@ export function validateManifest(value: unknown, expected: string): ReleaseManif
     names.add(file.path.toLowerCase())
     for (const chunk of file.chunks) if (!chunk || !/^[a-f0-9]{64}$/.test(chunk.sha256) || !version(chunk.version)) throw new Error('Invalid release chunk')
   }
-  const suffix = process.platform === 'win32' ? '.exe' : ''
+  const suffix = target.platform === 'win32' ? '.exe' : ''
   if (!names.has(`hiroshi${suffix}`) || !names.has(`hiroshi-engine${suffix}`)) throw new Error('Release must include the cockpit and engine together')
   return manifest
 }
