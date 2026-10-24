@@ -133,8 +133,20 @@ describeNative('Hiroshi titlebar dragging', () => {
     setWindowDragStarter(() => { drags++; return true })
     await app.clock.pause()
     await app.getByTestId('panel-right-open').click()
+    const target = app.getByTestId('titlebar-drag-surface')
+    await target.waitFor({ timeoutMs: 10_000 })
     await app.clock.fastForward(300)
     await app.clock.resume()
+    let previous = '', stable = 0
+    for (let frame = 0; frame < 60; frame++) {
+      const bounds = await target.bounds()
+      const key = JSON.stringify(bounds)
+      stable = bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= 1201 && key === previous ? stable + 1 : 0
+      if (stable >= 3) break
+      previous = key
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    expect(stable).toBeGreaterThanOrEqual(3)
     await pressAt(app, 'titlebar-drag-surface')
     expect(drags).toBe(1)
     await app.close()
