@@ -52,6 +52,7 @@ jobs:
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("scripts/smoke-archive.ts") -MaxProcesses 6 -MemoryMB 1536 -TimeoutSeconds 60'
       - name: Test the extracted download archive on macOS and Linux
         if: runner.os != 'Windows'
+        timeout-minutes: 2
         run: bun scripts/smoke-archive.ts
       - name: Sign release provenance
         if: startsWith(github.ref, 'refs/tags/')

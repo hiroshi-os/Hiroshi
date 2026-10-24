@@ -8,6 +8,7 @@ const version = JSON.parse(readFileSync('package.json', 'utf8')).version as stri
 const target = `${process.platform}-${process.arch}`
 const home = mkdtempSync(path.join(os.tmpdir(), 'hiroshi-archive-'))
 try {
+  console.log(`[archive smoke] extracting and verifying ${target}`)
   const binaryDirectory = await extractReleaseArchive(path.resolve('dist/release'), version, target, path.join(home, 'extracted'))
   await smokePackaged(binaryDirectory)
   console.log(`Extracted release archive verified: ${releaseNames(version, target).archive}`)

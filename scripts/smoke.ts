@@ -12,11 +12,18 @@ export async function smokePackaged(directory: string): Promise<void> {
   const previous = process.env.HIROSHI_ENGINE
   process.env.HIROSHI_ENGINE = engine
   try {
-    const version = Bun.spawnSync([binary, '--version'], { cwd: home, windowsHide: true })
-    if (version.exitCode || version.stdout.toString().trim() !== ENGINE_VERSION) throw new Error(`Packaged version failed: ${version.stderr}`)
+    console.log(`[archive smoke] checking cockpit version: ${binary}`)
+    const version = Bun.spawn([binary, '--version'], { cwd: home, stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+    const timer = setTimeout(() => version.kill('SIGKILL'), 15000)
+    try {
+      const [code, output, errors] = await Promise.all([version.exited, new Response(version.stdout).text(), new Response(version.stderr).text()])
+      if (code !== 0 || output.trim() !== ENGINE_VERSION) throw new Error(`Packaged version failed (exit ${code}): ${errors}`)
+    } finally { clearTimeout(timer) }
+    console.log('[archive smoke] attaching the extracted sidecar')
     const attached = await ensureEngine({ home, workspace: home })
     if (attached.status !== 'ready') throw new Error(JSON.stringify(attached))
     const client = engineClient(attached), { session } = await client.createSession({ cwd: home })
+    console.log('[archive smoke] running a local-provider step')
     await client.prompt({ id: session.id, text: 'packaged sidecar smoke test', model: 'local/echo' })
     const deadline = Date.now() + 15000
     while (Date.now() < deadline) {
