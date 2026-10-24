@@ -61,6 +61,95 @@ records and logs. HTTP and streaming errors use bounded, classified messages;
 the engine does not copy provider error prose into the transcript. OpenAI
 requests set `store: false`.
 
+## Installed CLI responses
+
+`agy-cli` and `cursor-cli` implement CLI contract version 1: one response-only
+submission per durable engine step. They use the CLI's own sign-in and do not
+need an API credential in Hiroshi. Configure an explicit absolute executable
+path; automatic discovery and setup UI are tracked separately in #61.
+
+```json
+{
+  "defaultModel": "cursor/chat",
+  "providers": [{
+    "id": "cursor",
+    "adapter": "cursor-cli",
+    "command": ["/absolute/path/to/cursor-agent"],
+    "models": [{
+      "id": "chat", "model": "default", "label": "Cursor",
+      "contextWindow": 32768, "reservedOutput": 1024
+    }]
+  }]
+}
+```
+
+On Windows, point to a real executable. For Cursor's Node installation use
+`"command": ["C:/absolute/version/node.exe", "C:/absolute/version/index.js"]`.
+Shell wrappers (`.cmd`, `.bat`, `.ps1`), shell strings and extra command flags
+are rejected. Paths and authentication stay inside the engine, outside the
+public catalog. The configured model `default` lets the CLI choose its current
+default; any other value is passed as an explicit model id. This is not an
+account-model discovery result. Configure context limits conservatively.
+
+Cursor is invoked with `--print --mode ask --output-format stream-json
+--stream-partial-output`. It must already trust the workspace, or you must
+explicitly set `"trustWorkspace": true` in that provider's configuration.
+Hiroshi does not pass `--force`, `--yolo` or `--approve-mcps`. Workspace trust
+is distinct from tool approval. Profiles with global or project startup hooks
+are rejected for this response-only slice.
+
+Agy's `--mode plan` is a prompt prefix, not a permission gate. A configured
+Agy provider remains marked **policy required** unless its existing
+`~/.gemini/antigravity-cli/settings.json` has `"toolPermission": "strict"`
+and `permissions.deny` contains `write_file(*)`, `command(*)`,
+`unsandboxed(*)`, `mcp(*)` and `execute_url(*)`. Global/project hooks are
+unsupported. Hiroshi never rewrites these global settings. The stream must
+also acknowledge `permission_mode: "strict"`. This conservative prerequisite
+restricts other uses of that CLI profile too; a per-invocation approval bridge
+is tracked in #64. Do not weaken the gate to get a response.
+
+Prompts and the bounded active conversation/instructions go over stdin, not
+command-line arguments. Each invocation starts a fresh vendor conversation;
+follow-ups receive Hiroshi's active text history. Vendor identifiers are
+durable diagnostic facts, not an implemented native resume mapping (#63).
+CLI-managed instructions may also load; scoped instruction equivalence and
+provenance are tracked in #52. Native CLI tools do not become Hiroshi tool
+requests, and no remote tool output is treated as assistant text. Unexpected
+write/tool activity fails the response; that observation is not itself a
+pre-effect permission gate.
+
+Every invocation runs inside the admitted model slot and inherited execution
+limits. The default 512 MiB process budget may be insufficient for an installed
+CLI: the observed Agy startup exceeded 1 GiB. Set `processMemoryMB` in
+`execution.json` deliberately, subject to the shared free-RAM admission floor;
+never remove limits. Stdout and stderr share a 1 MiB total cap, each NDJSON
+line is limited to 128 KiB, and the assistant answer to 256 KiB. A successful
+terminal result and exit code zero are both required. Unknown stream schemas,
+failed sign-in, missing executables, truncation and nonzero exits produce
+classified failures without copying raw diagnostics into the transcript.
+CLI requests are not automatically retried. A claimed CLI step interrupted by
+restart fails explicitly, including before any stdout, rather than resubmitting
+a possibly accepted request. Cancellation and deadline expiry stop the owned
+process tree; platform containment limits are described in the engine guide.
+
+### Capability evidence
+
+| CLI | Response path | Current boundary |
+| :--- | :--- | :--- |
+| Agy | `--input-format stream-json --output-format stream-json --disable-slash-commands` | Parser/process fixtures pass; installed authenticated response observed, but existing always-proceed policy is rejected. Strict-profile live acceptance remains required before claiming supported coding. |
+| Cursor Agent | Print-mode NDJSON with partial output | Installed `2026.10.19-6bbf2c4` produced an authenticated streamed answer through this adapter in Ask mode. Writes, approval bridging and native continuation are unavailable. |
+| Pi | Not registered in contract v1 | Needs a documented headless protocol, version/capability probe and read-only policy proof in #61/#64. Installation alone is insufficient. |
+| Grok | Not registered in contract v1 | Same explicit prerequisites as Pi; never advertised ready by this adapter. |
+
+The protocols follow the official [Agy headless guide](https://www.antigravity.google/docs/cli/headless/),
+[Agy permission rules](https://www.antigravity.google/docs/permissions?tab=cli),
+[Cursor output format](https://cursor.com/docs/cli/reference/output-format) and
+[Cursor modes](https://cursor.com/docs/cli/reference/parameters).
+Real CLI executable fixtures and real-daemon integration exercise split UTF-8,
+duplicate Cursor flushes, final-result reconciliation, private thinking exclusion,
+auth/trust failures, output caps, cancellation, detached descendants, idempotent
+submission and completed/interrupted restart behavior. CI needs no CLI account.
+
 ## Provider policy
 
 Policy rules match the configured provider `id`, or `*` for every provider. The

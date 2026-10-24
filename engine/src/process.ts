@@ -62,7 +62,7 @@ export function containEngine(limits: ExecutionLimits): void {
   })
 }
 
-export function spawnOwned(options: { cmd: string[]; cwd: string; env?: Record<string, string | undefined>; limits?: ExecutionLimits }): OwnedProcess {
+export function spawnOwned(options: { cmd: string[]; cwd: string; input?: string; env?: Record<string, string | undefined>; limits?: ExecutionLimits }): OwnedProcess {
   const limits = options.limits ?? DEFAULT_EXECUTION_LIMITS
   const packaged = process.env.HIROSHI_PACKAGED_BUILD === '1'
   if (packaged ? !/^hiroshi-engine(?:\.exe)?$/i.test(path.basename(process.execPath)) : !/^bun(?:\.exe)?$/i.test(path.basename(process.execPath))) {
@@ -112,7 +112,7 @@ export function spawnOwned(options: { cmd: string[]; cwd: string; env?: Record<s
           } catch (error) { failure = error as Error; terminateTree() }
         }, 500)
       }
-      child.send({ cmd: options.cmd, cwd: options.cwd, env: options.env ?? process.env })
+      child.send({ cmd: options.cmd, cwd: options.cwd, input: options.input, env: options.env ?? process.env })
     } catch (error) { failure = error as Error; terminateTree() }
   })
   void exited.finally(() => clearTimeout(handshake)).catch(() => {})
@@ -134,7 +134,9 @@ export async function runProcessChild(): Promise<never> {
     clearTimeout(timer)
     if (!message || !Array.isArray(message.cmd) || !message.cmd.length || !message.cmd.every((arg: unknown) => typeof arg === 'string')) process.exit(126)
     try {
-      const proc = Bun.spawn({ cmd: message.cmd, cwd: message.cwd, env: message.env, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', windowsHide: true })
+      if (message.input !== undefined && (typeof message.input !== 'string' || Buffer.byteLength(message.input) > 256 * 1024)) process.exit(126)
+      const proc = Bun.spawn({ cmd: message.cmd, cwd: message.cwd, env: message.env,
+        stdin: message.input === undefined ? 'ignore' : Buffer.from(message.input), stdout: 'inherit', stderr: 'inherit', windowsHide: true })
       process.exit(await proc.exited)
     } catch { process.stderr.write('hiroshi-engine: command could not start\n'); process.exit(127) }
   })

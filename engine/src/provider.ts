@@ -24,12 +24,15 @@ export interface RemoteModelOptions {
 }
 
 export type ProviderPart =
+  | { kind: 'cli'; version: 1; adapter: 'agy' | 'cursor'; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
 
 export interface ProviderRequest {
+  /** The admitted session's workspace; never the daemon's incidental cwd. */
+  cwd?: string
   sessionID: string
   stepID: string
   provider: string
@@ -43,6 +46,8 @@ export interface ProviderRequest {
 }
 
 export interface Provider {
+  /** CLI submissions may have effects before the first stdout byte. */
+  readonly replayAfterRestart?: boolean
   readonly name: string
   readonly model: string
   /** Model limits, including reserved output. Omission uses the conservative local default. */

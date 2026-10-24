@@ -206,6 +206,11 @@ export class Steps {
 
       const admissions = this.#store.executions(current.sessionID).filter((item) => item.id.startsWith(`${current.id}:${current.attempt}`))
       const queued = this.#budget && (!admissions.length || admissions.some((item) => item.state === 'queued'))
+      const provider = this.#selectProvider?.(current.model) ?? this.#provider
+      if (!queued && provider.replayAfterRestart === false) {
+        this.#fail(current, { code: 'cli_interrupted', message: 'the CLI submission was interrupted; it was not replayed', retryable: false })
+        continue
+      }
       if (!queued && current.attempt >= this.#maxAttempts) {
         this.#fail(current, {
           code: 'retries_exhausted',

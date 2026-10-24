@@ -29,7 +29,9 @@ turn count live in the header; the Usage screen reads durable provider token
 counts and marks missing cost data as unreported. OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
-demonstrations. See [provider configuration](docs/providers.mdx) and
+demonstrations. Configured Agy and Cursor Agent CLIs can provide streamed,
+response-only answers using their own sign-in; coding approvals and native CLI
+session continuation are still separate work. See [provider configuration](docs/providers.mdx) and
 [tools and permissions](docs/tools.mdx), and [checkpoints](docs/checkpoints.mdx).
 
 Follow progress in [The cockpit that ships](https://github.com/hiroshi-os/Hiroshi/milestone/1).

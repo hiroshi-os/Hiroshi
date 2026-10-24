@@ -144,6 +144,7 @@ export class Context {
       }, ...messages]
     }
     return {
+      cwd: this.store.session(step.sessionID)?.cwd,
       sessionID: step.sessionID,
       stepID: step.id,
       provider: step.provider,
