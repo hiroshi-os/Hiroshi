@@ -1,10 +1,11 @@
 /** One admission queue for every session. A slot belongs to an effect until
  * it actually settles, including effects that ignore their abort signal. */
-import { freemem, totalmem } from 'node:os'
+import { totalmem } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Execution, ExecutionLimits } from './protocol'
 import type { Store } from './store'
+import { availableMemory as sampleAvailableMemory } from './memory'
 
 export const DEFAULT_EXECUTION_LIMITS: ExecutionLimits = {
   maxActive: 2, maxQueued: 64, queueTimeoutMs: 60000, timeoutMs: 120000,
@@ -51,7 +52,7 @@ export class ExecutionBudget {
   readonly #timer: ReturnType<typeof setInterval>
   #stopping = false
   constructor(readonly store: Store, readonly limits = DEFAULT_EXECUTION_LIMITS,
-    readonly availableMemory: () => number = freemem) {
+    readonly availableMemory: () => number = sampleAvailableMemory) {
     // Claims are evidence of possible effects. Never admit them again.
     for (const value of store.executions()) {
       if (value.state === 'running') this.#save({ ...value, state: 'interrupted', reason: 'engine_restart', endedAt: Date.now() })
@@ -76,7 +77,7 @@ export class ExecutionBudget {
     }
   }
 
-  execute<T>(request: Pick<Execution, 'id' | 'sessionID' | 'kind'>, signal: AbortSignal,
+  execute<T>(request: Pick<Execution, 'id' | 'sessionID' | 'kind' | 'messageID'>, signal: AbortSignal,
     effect: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const pending = this.#pending.get(request.id)
     if (pending) return pending as Promise<T>

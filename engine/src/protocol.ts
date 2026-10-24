@@ -64,6 +64,7 @@ export interface ExecutionLimits {
 }
 
 export interface Execution {
+  messageID?: string
   id: string
   sessionID: string
   kind: 'model' | 'tool' | 'command' | 'maintenance'

@@ -71,7 +71,9 @@ Create `execution.json` in the Hiroshi data directory to override defaults:
 ```
 
 The default free-memory floor is the larger of 1024 MB and one eighth of system
-RAM. `minFreeMemoryMB` overrides it. Limits are validated at daemon startup;
+RAM. Windows samples available physical RAM, Linux uses `MemAvailable`, and
+macOS estimates available RAM from free plus inactive pages. `minFreeMemoryMB`
+overrides the floor. Limits are validated at daemon startup;
 unknown keys, non-integers and values outside conservative bounds are rejected.
 Restart the daemon after editing limits. Provider credentials stay in their
 existing configuration and never enter execution records.

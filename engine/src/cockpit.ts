@@ -17,8 +17,8 @@ export function projectTranscript(rows: TranscriptEntry[], event: EngineEvent, s
     case 'execution.updated': {
       const execution = event.data.execution
       // Endings are already described by the owning step, tool or command.
-      if (!['queued', 'running'].includes(execution.state)) return rows
-      return add('boundary', `${execution.kind} ${execution.state}${execution.reason ? ` · ${execution.reason.replaceAll('_', ' ')}` : ''}`)
+      if (execution.kind === 'maintenance' || !['queued', 'running'].includes(execution.state)) return rows
+      return add('boundary', `${execution.kind} ${execution.state}${execution.reason ? ` · ${execution.reason.replaceAll('_', ' ')}` : ''}`, execution.messageID)
     }
     case 'prompt.delivered': return add('user', event.data.message.text, event.data.message.id)
     case 'step.started': return add('boundary', `Model call · ${event.data.step.model} · attempt ${event.data.step.attempt}`)

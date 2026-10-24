@@ -11,6 +11,7 @@ import { Tools } from '../src/tools/tools'
 import { ToolRegistry } from '../src/tools/registry'
 import { Steps } from '../src/steps'
 import { ProviderError } from '../src/provider'
+import { availableMemory } from '../src/memory'
 
 const signal = () => new AbortController().signal
 function deferred() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done }); return { promise, resolve } }
@@ -25,6 +26,14 @@ function setup(options: Partial<typeof DEFAULT_EXECUTION_LIMITS> = {}) {
 }
 
 describe('shared execution admission', () => {
+  test('the native memory sampler returns a physical-memory estimate and the default controller samples it', () => {
+    const memory = availableMemory()
+    expect(Number.isFinite(memory)).toBe(true)
+    expect(memory).toBeGreaterThan(0)
+    const store = Store.open(':memory:'); store.migrate()
+    const budget = new ExecutionBudget(store)
+    try { expect(budget.status().freeMemoryMB).toBeGreaterThan(0) } finally { budget.stop(); store.close() }
+  })
   test('different sessions and effect kinds share FIFO capacity; duplicates join one claim', async () => {
     const f = setup(), hold = deferred(), order: string[] = []
     try {

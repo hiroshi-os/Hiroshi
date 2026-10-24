@@ -204,7 +204,7 @@ export class Tools {
           return entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal })
         }
         const result = this.budget
-          ? await this.budget.execute({ id: call.id, sessionID, kind: 'tool' }, controller.signal, effect)
+          ? await this.budget.execute({ id: call.id, sessionID, kind: 'tool', messageID: call.messageID }, controller.signal, effect)
           : await effect(controller.signal)
         if (this.#stopping) return
         if (!entry.output(result)) throw new Error('tool result does not match its declared output schema')

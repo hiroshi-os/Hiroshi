@@ -343,7 +343,7 @@ export class Steps {
             },
           )
         }
-        if (this.#budget) await this.#budget.execute({ id: `${step.id}:${step.attempt}${recovered ? ':compacted' : ''}`, sessionID: step.sessionID, kind: 'model' }, controller.signal, stream)
+        if (this.#budget) await this.#budget.execute({ id: `${step.id}:${step.attempt}${recovered ? ':compacted' : ''}`, sessionID: step.sessionID, kind: 'model', messageID: step.messageID ?? undefined }, controller.signal, stream)
         else await stream(controller.signal)
 
         if (controller.signal.aborted) {
