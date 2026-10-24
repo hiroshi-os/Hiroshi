@@ -1521,6 +1521,13 @@ function DaemonPanel({
           { label: 'Wire', value: `protocol ${health.protocol} · engine ${health.version}` },
           { label: 'Started', value: new Date(health.startedAt).toLocaleTimeString() },
           { label: 'Sessions', value: running > 0 ? `${sessions} · ${running} running` : String(sessions) },
+          ...(health.execution ? [
+            { label: 'Execution limits', value: `${health.execution.limits.maxActive} active · ${health.execution.limits.maxQueued} queued maximum` },
+            { label: 'RAM at connection', value: `${health.execution.freeMemoryMB} MB free · floor ${health.execution.limits.minFreeMemoryMB} MB` },
+            { label: 'Commands', value: health.execution.containment === 'windows-job'
+              ? `Windows job · ${health.execution.limits.maxProcesses} processes · ${health.execution.limits.processMemoryMB} MB per command`
+              : 'Process group cleanup · memory and process limits monitored' },
+          ] : []),
           { label: 'Database', value: health.database },
         ]
       : []

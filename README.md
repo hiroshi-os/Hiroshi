@@ -113,6 +113,13 @@ See [development](docs/development.mdx) for integration coverage and resource li
 Set `HIROSHI_HOME` to use another directory. It contains `engine.db`, the discovery
 file `engine.json`, the startup lock `engine.lock` and `logs/engine.log`.
 
+The daemon shares one execution budget across sessions: two active operations,
+64 queued operations, a 60-second admission deadline and a two-minute execution
+deadline by default. It checks free RAM before admission and while work runs.
+Queued work and its reason appear in the cockpit. Configure limits in
+`execution.json` in the data directory; see [execution limits](docs/engine.mdx#execution-limits)
+for process containment and platform guarantees.
+
 ## Documentation and releases
 
 The [documentation source](docs/) is a Mintlify project. To preview it with the

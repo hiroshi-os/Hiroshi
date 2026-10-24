@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { spawnOwned } from './process'
 import { invalid, notFound } from './errors'
 import type { FileChange, WorkspaceDirectory, WorkspaceFile, WorkspaceReview } from './protocol'
 
@@ -76,8 +77,7 @@ export async function git(cwd: string, args: string[], limit = 1024 * 1024) {
 }
 async function runGit(cwd: string, args: string[], limit: number) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')))
-  const proc = Bun.spawn({ cmd: ['git', '-c', 'core.fsmonitor=false', '-C', cwd, ...args], env: { ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
-    stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+  const proc = spawnOwned({ cmd: ['git', '-c', 'core.fsmonitor=false', '-C', cwd, ...args], cwd, env: { ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' } })
   let truncated = false
   const hash = createHash('sha256')
   const timer = setTimeout(() => { truncated = true; proc.kill() }, 8000)
@@ -97,7 +97,7 @@ async function runGit(cwd: string, args: string[], limit: number) {
   try {
     const [stdout, stderr, code] = await Promise.all([collect(proc.stdout, true), collect(proc.stderr, false), proc.exited])
     return { stdout, stderr, code, truncated, digest: hash.digest('hex') }
-  } finally { clearTimeout(timer) }
+  } finally { clearTimeout(timer); proc.terminateTree() }
 }
 
 export async function reviewWorkspace(cwd: string, requestedBase?: string): Promise<WorkspaceReview> {

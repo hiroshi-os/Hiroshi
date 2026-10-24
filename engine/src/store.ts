@@ -17,6 +17,7 @@ import { mkdirSync } from 'node:fs'
 import { replayTranscript } from './cockpit'
 
 import type {
+  Execution,
   Compaction,
   Checkpoint,
   Rewind,
@@ -245,6 +246,14 @@ const MIGRATIONS: Migration[] = [
       create table rewind (id text primary key, session_id text not null references session(id), request_key text not null, data text not null, unique(session_id, request_key));
       create table conversation_view (session_id text primary key references session(id), retained text not null, after_seq integer not null);
       create table checkpoint_error (session_id text primary key references session(id), error text not null);
+    `,
+  },
+  {
+    id: 8, name: 'execution-budget',
+    sql: `
+      create table execution (id text primary key, session_id text not null references session(id), details text not null);
+      create index execution_session on execution(session_id);
+      create table command_queue (run_id text primary key references run(id), details text not null);
     `,
   },
 ]
@@ -986,6 +995,31 @@ export class Store {
 
   // -- snapshots -----------------------------------------------------------
 
+  execution(id: string): Execution | null {
+    const row = this.#db.query('select details from execution where id = ?').get(id) as Row | null
+    return row ? JSON.parse(row.details) : null
+  }
+
+  executions(sessionID?: string): Execution[] {
+    const rows = (sessionID ? this.#db.query('select details from execution where session_id = ? order by rowid').all(sessionID)
+      : this.#db.query('select details from execution order by rowid').all()) as Row[]
+    return rows.map((row) => JSON.parse(row.details))
+  }
+
+  saveExecution(value: Execution): void {
+    this.#db.run('insert into execution (id, session_id, details) values (?, ?, ?) on conflict(id) do update set details = excluded.details',
+      [value.id, value.sessionID, JSON.stringify(value)])
+  }
+
+  saveCommand(runID: string, commands: string[][], program: boolean): void {
+    this.#db.run('insert into command_queue (run_id, details) values (?, ?)', [runID, JSON.stringify({ commands, program })])
+  }
+
+  queuedCommand(runID: string): { commands: string[][]; program: boolean } | null {
+    const row = this.#db.query('select details from command_queue where run_id = ?').get(runID) as Row | null
+    return row ? JSON.parse(row.details) : null
+  }
+
   /**
    * Everything a client needs to draw a session, read at one watermark.
    *
@@ -998,6 +1032,7 @@ export class Store {
       const session = this.session(sessionID)
       if (!session) return null
       return {
+        executions: this.executions(sessionID),
         session,
         transcript: replayTranscript((this.#db.query('select * from event where session_id = ? order by seq').all(sessionID) as Row[]).map(toEvent)),
         messages: this.messages(sessionID),

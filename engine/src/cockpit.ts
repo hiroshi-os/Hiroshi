@@ -14,6 +14,12 @@ export function projectTranscript(rows: TranscriptEntry[], event: EngineEvent, s
     return [...rows, { seq: event.seq, kind, text, ...(messageID ? { messageID } : {}), ...(stream ? { stream } : {}) }]
   }
   switch (event.type) {
+    case 'execution.updated': {
+      const execution = event.data.execution
+      // Endings are already described by the owning step, tool or command.
+      if (!['queued', 'running'].includes(execution.state)) return rows
+      return add('boundary', `${execution.kind} ${execution.state}${execution.reason ? ` · ${execution.reason.replaceAll('_', ' ')}` : ''}`)
+    }
     case 'prompt.delivered': return add('user', event.data.message.text, event.data.message.id)
     case 'step.started': return add('boundary', `Model call · ${event.data.step.model} · attempt ${event.data.step.attempt}`)
     case 'step.resumed': return add('boundary', `Resumed · ${event.data.reason}`)
@@ -43,7 +49,7 @@ export function projectTranscript(rows: TranscriptEntry[], event: EngineEvent, s
     }
     case 'context.compacted': return add('boundary', `Context compacted · ${event.data.compaction.reason}`, steps.find((s) => s.id === event.data.compaction.stepID)?.messageID ?? undefined)
     case 'rewind.completed': return add('boundary', event.data.message.text, event.data.message.id)
-    case 'run.started': return add('boundary', `Command started · ${event.data.run.command}`, event.data.toolCall?.messageID)
+    case 'run.started': return add('boundary', `Command requested · ${event.data.run.command}`, event.data.toolCall?.messageID)
     case 'run.ended': return add('boundary', `Command ${event.data.run.status} · exit ${event.data.run.exitCode ?? 'unknown'}`, event.data.toolCall?.messageID)
     default: return rows
   }

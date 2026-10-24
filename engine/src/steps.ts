@@ -35,8 +35,10 @@ import { ProviderError, type Provider, type ProviderPart } from './provider'
 import type { ModelToolRequest, Step, StepError } from './protocol'
 import type { Store } from './store'
 import type { Tools } from './tools/tools'
+import { ExecutionBudget, ExecutionError } from './execution'
 
 export interface StepsOptions {
+  budget?: ExecutionBudget
   provider: Provider
   context?: ContextOptions
   blocked?: (sessionID: string) => boolean
@@ -61,6 +63,7 @@ interface ActiveStep {
 
 export class Steps {
   readonly #blocked?: (sessionID: string) => boolean
+  readonly #budget?: ExecutionBudget
   readonly #tools?: Tools
   readonly #store: Store
   readonly #log: Logger
@@ -75,6 +78,7 @@ export class Steps {
 
   constructor(store: Store, log: Logger, options: StepsOptions) {
     this.#store = store
+    this.#budget = options.budget
     this.#blocked = options.blocked
     this.#tools = options.tools
     this.#log = log.child('steps')
@@ -200,7 +204,9 @@ export class Steps {
         continue
       }
 
-      if (current.attempt >= this.#maxAttempts) {
+      const admissions = this.#store.executions(current.sessionID).filter((item) => item.id.startsWith(`${current.id}:${current.attempt}`))
+      const queued = this.#budget && (!admissions.length || admissions.some((item) => item.state === 'queued'))
+      if (!queued && current.attempt >= this.#maxAttempts) {
         this.#fail(current, {
           code: 'retries_exhausted',
           message: `the engine restarted ${current.attempt} times before this step produced output; it gave up`,
@@ -211,7 +217,7 @@ export class Steps {
 
       const next: Step = {
         ...current,
-        attempt: current.attempt + 1,
+        attempt: current.attempt + (queued ? 0 : 1),
         claim: process.pid,
         error: null,
       }
@@ -310,28 +316,35 @@ export class Steps {
       try {
         const provider = this.#selectProvider?.(step.model) ?? this.#provider
         provider.check?.()
-        const request = new Context(this.#store, provider, { ...this.#contextOptions, tools: this.#tools?.registry.definitions() ?? this.#contextOptions.tools }).prepare(step, overflow)
-        overflow = false
-        callingProvider = true
-        await provider.stream(
-          { ...request, signal: controller.signal },
-          (text) => {
-            if (!text || controller.signal.aborted) return
-            produced = true
-            step = this.#append(step, text)
-          },
-          (value: ProviderPart) => {
-            if (controller.signal.aborted) return
-            if (value.kind === 'reasoning' && !value.text) return
-            if (value.kind !== 'usage') produced = true
-            const size = JSON.stringify(value).length
-            if (++partCount > 4096 || (partBytes += size) > MAX_OUTPUT) {
-              throw new ProviderError('provider_output_limit', 'provider reasoning or tool output exceeded the durable limit')
-            }
-            const part = { ...value, id: `part_${randomUUID()}`, sessionID: step.sessionID, stepID: step.id, attempt: step.attempt, at: Date.now() }
-            this.#store.record({ type: 'step.part', sessionID: step.sessionID, data: { part }, project: () => this.#store.insertStepPart(part) })
-          },
-        )
+        const recovered = overflow || this.#store.compactions(step.sessionID).some((boundary) => boundary.stepID === step.id && boundary.reason === 'provider_overflow')
+        const stream = (signal: AbortSignal) => {
+          signal.throwIfAborted()
+          provider.check?.()
+          const request = new Context(this.#store, provider, { ...this.#contextOptions, tools: this.#tools?.registry.definitions() ?? this.#contextOptions.tools }).prepare(step, overflow)
+          overflow = false
+          callingProvider = true
+          return provider.stream(
+            { ...request, signal },
+            (text) => {
+              if (!text || signal.aborted) return
+              produced = true
+              step = this.#append(step, text)
+            },
+            (value: ProviderPart) => {
+              if (signal.aborted) return
+              if (value.kind === 'reasoning' && !value.text) return
+              if (value.kind !== 'usage') produced = true
+              const size = JSON.stringify(value).length
+              if (++partCount > 4096 || (partBytes += size) > MAX_OUTPUT) {
+                throw new ProviderError('provider_output_limit', 'provider reasoning or tool output exceeded the durable limit')
+              }
+              const part = { ...value, id: `part_${randomUUID()}`, sessionID: step.sessionID, stepID: step.id, attempt: step.attempt, at: Date.now() }
+              this.#store.record({ type: 'step.part', sessionID: step.sessionID, data: { part }, project: () => this.#store.insertStepPart(part) })
+            },
+          )
+        }
+        if (this.#budget) await this.#budget.execute({ id: `${step.id}:${step.attempt}${recovered ? ':compacted' : ''}`, sessionID: step.sessionID, kind: 'model' }, controller.signal, stream)
+        else await stream(controller.signal)
 
         if (controller.signal.aborted) {
           if (!this.#stopping) this.#cancel(step, 'the operator stopped this step')
@@ -345,7 +358,9 @@ export class Steps {
           return
         }
 
-        const failure = classify(error)
+        const failure = error instanceof ExecutionError
+          ? { code: error.code, message: error.message, retryable: false }
+          : classify(error)
 
         if (failure.code === 'context_overflow') {
           const recovered = this.#store.compactions(step.sessionID)

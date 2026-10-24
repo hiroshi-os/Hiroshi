@@ -24,8 +24,11 @@ import type { Steps } from './steps'
 import type { Checkpoints } from './checkpoints'
 import type { Tools } from './tools/tools'
 import type { Store } from './store'
+import { ExecutionError, type ExecutionBudget } from './execution'
+import { randomUUID } from 'node:crypto'
 
 export interface ServerOptions {
+  budget?: ExecutionBudget
   store: Store
   runs: Runs
   sessions: Sessions
@@ -107,8 +110,12 @@ export function startServer(
   // One subscription to the store, one encoding per event, one queue per client.
   const hub = new Feed(store)
 
+  const maintenance = <T>(sessionID: string, signal: AbortSignal, effect: () => Promise<T>): Promise<T> => options.budget
+    ? options.budget.execute({ id: `maintenance_${randomUUID()}`, sessionID, kind: 'maintenance' }, signal, effect) : effect()
+
   function health(): Health {
     return {
+      ...(options.budget ? { execution: options.budget.status() } : {}),
       name: ENGINE_NAME,
       version: options.version,
       protocol: options.protocol,
@@ -160,14 +167,14 @@ export function startServer(
         const files = new WorkspaceFiles(session.cwd, options.checkpoints?.home)
         if (operation.name === 'workspaceList') return json(await files.list(input.path ?? ''), status)
         if (operation.name === 'workspaceFile') return json(await files.file(input.path), status)
-        if (operation.name === 'workspaceReview') return json(await reviewWorkspace(session.cwd, input.base), status)
+        if (operation.name === 'workspaceReview') return json(await maintenance(session.id, request.signal, () => reviewWorkspace(session.cwd, input.base)), status)
         if (operation.name === 'browse') return json(await browsePage(input.url), status)
         const command = input as OperationRequest<'workspaceCommit'>
         options.checkpoints?.assertReady(session.id)
         if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'finish active work before committing')
         if (typeof command.message !== 'string' || (!command.pushOnly && !command.message.trim()) || command.message.length > 4000 ||
           typeof command.includeUnstaged !== 'boolean' || typeof command.push !== 'boolean' || (command.pushOnly !== undefined && typeof command.pushOnly !== 'boolean')) throw invalid('workspace_commit', 'provide a commit message and explicit commit options')
-        const review = await reviewWorkspace(session.cwd, command.base)
+        const review = await maintenance(session.id, request.signal, () => reviewWorkspace(session.cwd, command.base))
         if (!review.available || review.truncated || review.files.some((file) => file.status === 'U')) throw invalid('workspace_commit', review.reason ?? 'resolve conflicts or a truncated review before committing')
         if (review.revision !== command.revision) throw conflict('workspace_changed', 'the workspace changed; refresh the review before committing')
         // Recheck after asynchronous Git reads: a run or rewind may have begun.
@@ -186,7 +193,8 @@ export function startServer(
       case 'rewind': {
         if (!options.checkpoints) throw notFound('checkpoint service')
         const input = await body<{ checkpointID: string; key: string }>(request)
-        return json({ rewind: options.checkpoints.restore(params.id!, input.checkpointID, input.key) }, status)
+        const restore = () => options.checkpoints!.restore(params.id!, input.checkpointID, input.key)
+        return json({ rewind: options.budget ? options.budget.synchronous({ id: `rewind_${randomUUID()}`, sessionID: params.id!, kind: 'maintenance' }, restore) : restore() }, status)
       }
 
       case 'answerPermission': {
@@ -268,6 +276,7 @@ export function startServer(
       try {
         return await handle(request)
       } catch (error) {
+        if (error instanceof ExecutionError) return failure(error.code, error.message, error.code.includes('timeout') ? 408 : 429)
         if (error instanceof EngineError) return failure(error.code, error.message, error.status)
         log.error('request failed', {
           method: request.method,

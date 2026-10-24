@@ -33,6 +33,12 @@ import type { DeliveryMode } from '../../engine/src/protocol'
       expect(renderer.getPaintedText().join(' ')).toContain('Next safe boundary')
       expect(renderer.getPaintedText().join(' ')).toContain('0 model attempts · 1 commands · 0 tools')
       expect(renderer.getPaintedText().join(' ')).not.toContain('$')
+      snapshot.executions = [{ id: 'run', sessionID: 'session', kind: 'command', state: 'queued', reason: 'execution_capacity', queuedAt: 1, queueDeadline: 90000, startedAt: null, deadline: null, endedAt: null }]
+      render(<Surface />)
+      expect(await app.getByTestId('execution-queue').textContent()).toBe('Waiting for capacity · 1 queued')
+      snapshot.executions[0]!.reason = 'execution_low_memory'
+      render(<Surface />)
+      expect(await app.getByTestId('execution-queue').textContent()).toBe('Waiting for free RAM · 1 queued')
     } finally { await app.close() }
   })
 })

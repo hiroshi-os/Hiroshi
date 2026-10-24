@@ -49,6 +49,7 @@ const everyOperation: { [Name in OperationName]: Name } = {
 }
 
 const everyEvent: { [Type in EventType]: Type } = {
+  'execution.updated': 'execution.updated',
   'session.created': 'session.created',
   'session.updated': 'session.updated',
   'prompt.admitted': 'prompt.admitted',

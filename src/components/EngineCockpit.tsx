@@ -30,5 +30,6 @@ export function ComposerDelivery({ snapshot, mode, onMode }: { snapshot: Snapsho
       <text style={{ fontSize: 12, color, whiteSpace: 'nowrap' }}>{snapshot.status !== 'ready' || !snapshot.sessionID ? 'Connecting' : !view.busy ? 'Send' : mode === 'steer' ? 'Steer' : 'Queue'}</text>
     </Button>
     {view.busy && <text style={{ fontSize: 11, color: secondary }}>{`${mode === 'steer' ? 'Next safe boundary' : 'When idle'} · ${view.pending} pending`}</text>}
+    {view.queued > 0 && <text testId="execution-queue" style={{ fontSize: 11, color: secondary, whiteSpace: 'nowrap' }}>{`${view.phase} · ${view.queued} queued`}</text>}
   </div>
 }
