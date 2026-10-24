@@ -19,6 +19,8 @@ import { ENGINE_NAME, ENGINE_VERSION, PROTOCOL_VERSION, type RegistryRecord } fr
 import { enginePaths, type EnginePaths } from './paths'
 import { createLogger, type Logger } from './log'
 import { Store } from './store'
+import { ExecutionBudget, ExecutionError, readExecutionLimits } from './execution'
+import { containEngine, runProcessChild } from './process'
 import { Inbox } from './inbox'
 import { Sessions } from './sessions'
 import { Checkpoints } from './checkpoints'
@@ -141,6 +143,8 @@ async function serve(flags: Flags): Promise<number> {
 
   const store = Store.open(paths.database)
   store.migrate()
+  const budget = new ExecutionBudget(store, readExecutionLimits(paths.home))
+  containEngine(budget.limits)
 
   const workspace = stringFlag(flags, 'workspace') || process.cwd()
   const checkpoints = new Checkpoints(store, paths.home)
@@ -148,15 +152,16 @@ async function serve(flags: Flags): Promise<number> {
   const sessions = new Sessions(store, log, { cwd: workspace, inbox })
   // A run ending is the engine's safe boundary: the inbox reads the database
   // after `run.ended` is committed and delivers only when nothing is running.
-  const runs = new Runs(store, log, { onIdle: (sessionID) => void inbox.deliver(sessionID) })
+  const runs = new Runs(store, log, { budget, onIdle: (sessionID) => void inbox.deliver(sessionID) })
 
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
   const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
     new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
   const registry = new ToolRegistry()
-  registerBuiltins(registry, paths.home)
-  const tools = new Tools(store, registry, paths.home)
+  registerBuiltins(registry, paths.home, budget.limits)
+  const tools = new Tools(store, registry, paths.home, budget)
   const steps = new Steps(store, log, {
+    budget,
     tools,
     blocked: (id) => checkpoints.blocked(id),
     selectProvider: (model) => catalog.resolve(model),
@@ -171,10 +176,26 @@ async function serve(flags: Flags): Promise<number> {
   // database; resume the same step when it produced no output, and fail it
   // explicitly when it did.
   checkpoints.busy = (id) => steps.busy(id)
-  inbox.beforeDeliver = (id, item) => checkpoints.prepare(id, item)
+  const waitingCheckpoints = new Set<string>()
+  budget.onAvailable = () => {
+    if (!waitingCheckpoints.size) return
+    queueMicrotask(() => {
+      const sessions = [...waitingCheckpoints]
+      waitingCheckpoints.clear()
+      for (const id of sessions) inbox.deliver(id)
+    })
+  }
+  inbox.beforeDeliver = (id, item) => {
+    try { return budget.synchronous({ id: `checkpoint_${randomBytes(12).toString('hex')}`, sessionID: id, kind: 'maintenance' }, () => checkpoints.prepare(id, item)) }
+    catch (error) {
+      if (error instanceof ExecutionError && ['execution_capacity', 'execution_low_memory'].includes(error.code)) waitingCheckpoints.add(id)
+      throw error
+    }
+  }
   tools.blocked = (id) => checkpoints.blocked(id)
   checkpoints.recover()
   tools.recover()
+  budget.reconcile()
   steps.resume()
 
   // Only now may delivery start work. A prompt delivered before this line
@@ -197,6 +218,7 @@ async function serve(flags: Flags): Promise<number> {
   inbox.deliverIdle()
   steps.kickAll()
   tools.kickAll()
+  runs.resumeQueued()
 
   const hostname = stringFlag(flags, 'host') || '127.0.0.1'
   const port = numberFlag(flags, 'port') ?? 0
@@ -218,6 +240,7 @@ async function serve(flags: Flags): Promise<number> {
     // A step is left claimed, not cancelled: the next start resumes it. The
     // gate `stopAll` sets also stops new steps from starting while the runs
     // below deliver their last boundary.
+    budget.stop(false)
     tools.stopAll()
     steps.stopAll()
     await runs.stopAll()
@@ -233,6 +256,7 @@ async function serve(flags: Flags): Promise<number> {
   server = startServer(
     {
       store,
+      budget,
       runs,
       sessions,
       steps,
@@ -377,5 +401,6 @@ async function main(): Promise<number> {
   return 2
 }
 
+if (process.argv[2] === '__execution-child') await runProcessChild()
 const code = await main()
 process.exit(code)

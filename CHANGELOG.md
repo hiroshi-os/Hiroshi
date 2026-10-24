@@ -19,6 +19,19 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.14.0] - Unreleased
+
+### Added
+
+- One engine execution budget across sessions for model requests, tools,
+  commands and workspace maintenance. Durable admission records, bounded
+  queues, deadlines, cancellation and a monitored free RAM floor.
+- Windows Job Objects contain command descendants before user code starts,
+  enforce process and committed-memory ceilings, and clean up on engine exit.
+  POSIX commands use process groups with sampled RSS/process limits.
+- Cockpit queue reasons and daemon limit facts; restart resumes only commands
+  that never acquired an execution claim. Protocol 10 and schema migration 8.
+
 ## [0.13.0] - 2026-10-24
 
 ### Added

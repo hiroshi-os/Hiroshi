@@ -96,6 +96,11 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run the integration tests
+        # The native suite uses an in-process renderer. These additional tests
+        # exercise actual daemon/IPC/process-group and Windows Job behavior.
+        run: bun test engine/test/execution.test.ts engine/test/execution-daemon.test.ts
+
+      - name: Run the native integration tests
         run: bun run test
 
       - name: Test the native macOS window drag bridge

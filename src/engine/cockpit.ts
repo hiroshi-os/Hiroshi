@@ -10,9 +10,12 @@ export function cockpit(snapshot: Snapshot) {
   const running = steps.some((s) => s.status === 'running') || tools.some((c) => c.status === 'running' || c.status === 'queued') || snapshot.runs.some((r) => r.status === 'running')
   const busy = waiting || running || snapshot.inbox.length > 0
   const command = snapshot.runs.at(-1)
-  const phase = !snapshot.sessionID ? 'Connecting' : waiting ? 'Awaiting permission' : running ? 'Running' : snapshot.inbox.length ? 'Input pending' : latest ? latest.status === 'succeeded' ? 'Completed' : latest.status : command ? command.status : 'No run'
+  const queued = snapshot.executions.filter((item) => item.state === 'queued')
+  const executing = snapshot.executions.some((item) => item.state === 'running')
+  const queueReason = queued.some((item) => item.reason === 'execution_low_memory') ? 'Waiting for free RAM' : 'Waiting for capacity'
+  const phase = !snapshot.sessionID ? 'Connecting' : waiting ? 'Awaiting permission' : queued.length && !executing ? queueReason : running ? 'Running' : snapshot.inbox.length ? 'Input pending' : latest ? latest.status === 'succeeded' ? 'Completed' : latest.status : command ? command.status : 'No run'
   const agents = [...new Set(steps.filter((s) => s.messageID === latest?.messageID).map((s) => `${s.provider} / ${s.model}`))]
-  return { busy, phase, agents, turns: messages.filter((m) => m.role === 'user').length, calls: steps.length, pending: snapshot.inbox.length, latest }
+  return { busy, phase, queued: queued.length, agents, turns: messages.filter((m) => m.role === 'user').length, calls: steps.length, pending: snapshot.inbox.length, latest }
 }
 
 /** Counters are cumulative per provider attempt, including archived turns. */

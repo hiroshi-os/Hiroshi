@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 9
+export const PROTOCOL_VERSION = 10
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.13.0'
+export const ENGINE_VERSION = '0.14.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -53,7 +53,40 @@ export type StepPart = {
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
+export interface ExecutionLimits {
+  maxActive: number
+  maxQueued: number
+  queueTimeoutMs: number
+  timeoutMs: number
+  minFreeMemoryMB: number
+  processMemoryMB: number
+  maxProcesses: number
+}
+
+export interface Execution {
+  messageID?: string
+  id: string
+  sessionID: string
+  kind: 'model' | 'tool' | 'command' | 'maintenance'
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
+  reason: string | null
+  queuedAt: number
+  queueDeadline: number
+  startedAt: number | null
+  deadline: number | null
+  endedAt: number | null
+}
+
+export interface ExecutionStatus {
+  limits: ExecutionLimits
+  active: number
+  queued: number
+  freeMemoryMB: number
+  containment: 'windows-job' | 'process-group'
+}
+
 export interface Health {
+  execution?: ExecutionStatus
   name: string
   version: string
   protocol: number
@@ -370,6 +403,7 @@ export interface ToolCall {
  * here; nothing else in the protocol has to learn about it.
  */
 export interface EventPayloads {
+  'execution.updated': { execution: Execution }
   'session.created': { session: Session }
   'session.updated': { session: Session }
   'prompt.admitted': { item: InboxItem }
@@ -420,6 +454,7 @@ export type EngineEvent = {
 
 /** A session and everything the engine has committed about it. */
 export interface SessionDetail {
+  executions?: Execution[]
   /** Ordered from the durable event log, including retries and boundaries. */
   transcript?: TranscriptEntry[]
   session: Session

@@ -9,6 +9,7 @@
  */
 
 import type {
+  Execution,
   TranscriptEntry,
   Checkpoint,
   Rewind,
@@ -44,6 +45,7 @@ export interface OutputState {
 }
 
 export interface Snapshot {
+  executions: Execution[]
   transcript: TranscriptEntry[]
   transcriptSeq: number
   status: EngineStatus
@@ -77,6 +79,7 @@ const MEMORY_OUTPUT_LIMIT = 256 * 1024
 
 export function initialSnapshot(): Snapshot {
   return {
+    executions: [],
     transcript: [],
     transcriptSeq: 0,
     status: 'off',
@@ -147,6 +150,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   return {
     ...snapshot,
     sessionID: detail.session.id,
+    executions: detail.executions ?? [],
     transcript: detail.transcript ?? [],
     transcriptSeq: detail.seq,
     sessions: upsertSession(snapshot.sessions, detail.session),
@@ -193,6 +197,10 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
 
 function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
   switch (event.type) {
+    case 'execution.updated': {
+      const execution = event.data.execution
+      return { ...snapshot, executions: [...snapshot.executions.filter((item) => item.id !== execution.id), execution] }
+    }
     case 'session.created':
     case 'session.updated': {
       return { ...snapshot, sessions: upsertSession(snapshot.sessions, event.data.session) }

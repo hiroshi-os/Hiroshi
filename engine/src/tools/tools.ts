@@ -7,6 +7,7 @@ import type { Message, ModelToolRequest, Permission, SavedPermission, Step, Tool
 import type { Store } from '../store'
 import { canonical, digest, type ToolRegistry } from './registry'
 import { permissionPolicy } from './policy'
+import { ExecutionBudget } from '../execution'
 
 const PREVIEW_BYTES = 16 * 1024
 
@@ -17,7 +18,7 @@ export class Tools {
   blocked: ((sessionID: string) => boolean) | null = null
   onIdle: ((sessionID: string) => void) | null = null
 
-  constructor(readonly store: Store, readonly registry: ToolRegistry, readonly home: string) {}
+  constructor(readonly store: Store, readonly registry: ToolRegistry, readonly home: string, readonly budget?: ExecutionBudget) {}
 
   busy(sessionID: string): boolean {
     return [...this.#active.keys()].some((id) => this.store.toolCall(id)?.sessionID === sessionID) || this.store.toolCalls(sessionID).some((call) => call.callID !== undefined && !call.resultMessageID)
@@ -188,11 +189,23 @@ export class Tools {
         source = permission?.state === 'answered' ? 'operator' : 'saved'
       }
       const running: ToolCall = { ...call, status: 'running', decisionSource: source }
-      this.#update(running) // The claim is committed before the tool's effect.
       const controller = new AbortController()
       this.#active.set(call.id, controller)
       try {
-        const result = await entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal: controller.signal })
+        const effect = async (signal: AbortSignal) => {
+          signal.throwIfAborted()
+          if (this.store.toolCall(call.id)?.resultMessageID) throw new Error('this tool call already ended')
+          // Waiting for capacity must not preserve a revoked policy or stale tool.
+          const currentPolicy = permissionPolicy(this.home, call.cwd!, call.tool)
+          if (this.registry.get(call.tool)?.revision !== call.revision || currentPolicy.action === 'deny' ||
+            realpathSync(call.cwd!) !== call.cwd || (currentPolicy.action === 'ask' &&
+              (source === 'policy' || (currentPolicy.alwaysAsk && source === 'saved')))) throw new Error('tool definition or permission policy changed while queued; it was not executed')
+          this.#update(running) // Claim commits after admission, before the effect.
+          return entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal })
+        }
+        const result = this.budget
+          ? await this.budget.execute({ id: call.id, sessionID, kind: 'tool', messageID: call.messageID }, controller.signal, effect)
+          : await effect(controller.signal)
         if (this.#stopping) return
         if (!entry.output(result)) throw new Error('tool result does not match its declared output schema')
         this.#finish(running, 'succeeded', null, result)

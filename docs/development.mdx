@@ -21,6 +21,8 @@ bunx vitest run titlebar-drag.test.tsx   # one file
 | `titlebar-drag.test.tsx` | the window: the drag, the double click, the maximize button |
 | `integration.ts` | two real windows, the daemon, durable runs, inboxes, provider tools, workspace surfaces and reconnects |
 | `engine/test/` | real SQLite, daemon lifetimes, provider fixtures, checkpoints, tools and shell lifecycle |
+| `engine/test/execution.test.ts` | shared admission, cancellation, low RAM, deadlines, duplicate claims and durable UI replay |
+| `engine/test/execution-daemon.test.ts` | HTTP provider → shell tool → response, competing sessions, command restart, deadlines and native process containment |
 | `scripts/browser-smoke.ts` | published Wasm renderer, canvas/input readiness and a demo composer reply in Chrome |
 
 ### Two things the test renderer cannot do

@@ -11,10 +11,8 @@
  * stored output is bounded; a command that floods the terminal is marked
  * truncated instead of filling the disk.
  *
- * A run that was still marked `running` when the engine died is settled as
- * `interrupted` on the next start. The engine never replays a side effect it
- * cannot prove, so it does not resume the command either: it says what
- * happened and stops.
+ * A claimed command becomes interrupted on restart. A command that was only
+ * queued retains its deadline and argv and may acquire its first claim.
  */
 
 import { existsSync, statSync } from 'node:fs'
@@ -23,8 +21,10 @@ import path from 'node:path'
 import { invalid, notFound } from './errors'
 import type { Logger } from './log'
 import type { OutputStream, Run, RunStatus, ToolCall, ToolStatus } from './protocol'
-import { resolveShell, type ResolvedShell } from './shell'
+import { resolveShell } from './shell'
 import type { Store } from './store'
+import { ExecutionBudget, ExecutionError } from './execution'
+import { spawnOwned } from './process'
 
 /** Per run. Past this the output stops being stored and the run is marked. */
 const DEFAULT_OUTPUT_LIMIT = Number(process.env.HIROSHI_OUTPUT_LIMIT) || 512 * 1024
@@ -34,6 +34,7 @@ const FLUSH_MS = 40
 const FLUSH_CHARS = 8 * 1024
 
 interface Proc {
+  terminateTree?: () => void
   pid: number
   readonly exited: Promise<number>
   readonly stdout: ReadableStream<Uint8Array>
@@ -42,6 +43,8 @@ interface Proc {
 }
 
 interface ActiveRun {
+  abortStatus?: RunStatus
+  abortReason?: string
   run: Run
   proc: Proc
   cancelled: boolean
@@ -88,6 +91,7 @@ function sleep(ms: number): Promise<void> {
 
 /** Stop the process and everything it started. */
 export function killTree(proc: Proc): void {
+  if (proc.terminateTree) { proc.terminateTree(); return }
   if (process.platform === 'win32') {
     try {
       Bun.spawnSync({
@@ -121,12 +125,16 @@ export class Runs {
   readonly #active = new Map<string, ActiveRun>()
   readonly #limit: number
   readonly #onIdle: ((sessionID: string) => void) | undefined
+  readonly #budget?: ExecutionBudget
+  readonly #controllers = new Map<string, AbortController>()
+  #stopping = false
 
-  constructor(store: Store, log: Logger, options: { outputLimit?: number; onIdle?: (sessionID: string) => void } = {}) {
+  constructor(store: Store, log: Logger, options: { budget?: ExecutionBudget; outputLimit?: number; onIdle?: (sessionID: string) => void } = {}) {
     this.#store = store
     this.#log = log.child('runs')
     this.#limit = options.outputLimit ?? DEFAULT_OUTPUT_LIMIT
     this.#onIdle = options.onIdle
+    this.#budget = options.budget
   }
 
   /** The number of commands currently executing, for status output and tests. */
@@ -190,43 +198,75 @@ export class Runs {
       at,
       project: () => {
         this.#store.insertRun(run)
+        this.#store.saveCommand(run.id, programs ?? [[...shell.argv, trimmed]], !!programs)
         this.#store.insertToolCall(toolCall)
         this.#store.touchSession(sessionID, at)
       },
     })
 
-    let proc: Proc
-    try {
-      proc = Bun.spawn({
-        cmd: programs?.[0] ?? [...shell.argv, trimmed],
-        cwd: target,
-        env: programs ? { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' } : process.env,
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        windowsHide: true,
-      }) as unknown as Proc
-    } catch (error) {
-      const reason = `the command could not start: ${String(error)}`
-      this.#write(run, 'stderr', `hiroshi-engine: ${reason}\n`)
-      this.#finish(run, 'failed', null, { error: reason })
-      this.#log.error('spawn failed', { run: run.id, command: trimmed, error: String(error) })
-      return this.#store.run(run.id) ?? run
-    }
-
-    this.#active.set(run.id, { run, proc, cancelled: false })
-    this.#log.info('run started', { run: run.id, session: sessionID, shell: shell.label, pid: proc.pid })
-    void this.#execute(run, proc, shell, programs?.slice(1))
+    this.#launch(run, programs ?? [[...shell.argv, trimmed]], !!programs)
     return run
   }
 
-  /** Ask a run to stop. The end event is written when the process is gone. */
+  /** Only never-admitted commands may cross a restart. Claimed effects never do. */
+  resumeQueued(): void {
+    if (!this.#budget) return
+    for (const run of this.#store.runningRuns()) {
+      const execution = this.#store.execution(run.id)
+      const payload = this.#store.queuedCommand(run.id)
+      if (payload && (!execution || execution.state === 'queued')) this.#launch(run, payload.commands, payload.program)
+    }
+  }
+
+  #launch(run: Run, commands: string[][], program: boolean): void {
+    if (this.#stopping || this.#controllers.has(run.id)) return
+    const controller = new AbortController()
+    this.#controllers.set(run.id, controller)
+    const effect = async (signal: AbortSignal) => {
+      signal.throwIfAborted()
+      if (this.#store.run(run.id)?.status !== 'running') throw new Error('the command already ended')
+      const env = program ? { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' } : process.env
+      const proc = spawnOwned({ cmd: commands[0]!, cwd: run.cwd, env, limits: this.#budget?.limits })
+      const abort = () => {
+        const reason = signal.reason
+        const active = this.#active.get(run.id)
+        if (active) {
+          active.cancelled = true
+          active.abortStatus = reason instanceof ExecutionError && reason.code !== 'execution_cancelled' ? 'failed' : 'cancelled'
+          active.abortReason = reason instanceof Error ? reason.message : 'the command was cancelled'
+        }
+        killTree(active?.proc ?? proc)
+      }
+      signal.addEventListener('abort', abort, { once: true })
+      this.#active.set(run.id, { run, proc, cancelled: false })
+      try {
+        if (signal.aborted) abort()
+        await this.#execute(run, proc, commands.slice(1))
+        if (this.#store.run(run.id)?.status === 'failed') throw new Error(this.#store.run(run.id)?.error ?? 'the command failed')
+      } finally { signal.removeEventListener('abort', abort) }
+    }
+    const work = this.#budget ? this.#budget.execute({ id: run.id, sessionID: run.sessionID, kind: 'command' }, controller.signal, effect) : effect(controller.signal)
+    void work.catch((error) => {
+      if (this.#stopping || this.#store.run(run.id)?.status !== 'running') return
+      const reason = `the command could not finish: ${String(error)}`
+      this.#write(run, 'stderr', `hiroshi-engine: ${reason}\n`)
+      this.#finish(run, controller.signal.aborted ? 'cancelled' : 'failed', null, { error: reason })
+      this.#log.error('command failed', { run: run.id, error: String(error) })
+    }).finally(() => this.#controllers.delete(run.id))
+  }
+
+  /** Queued cancellation is immediate; active cancellation waits for exit. */
   cancel(runID: string): Run {
     const run = this.#store.run(runID)
     if (!run) throw notFound('run')
     const active = this.#active.get(runID)
-    if (!active) return run
+    if (!active) {
+      this.#controllers.get(runID)?.abort(new ExecutionError('execution_cancelled', 'the command was cancelled'))
+      this.#finish(run, 'cancelled', null, { error: 'the command was cancelled' })
+      return this.#store.run(runID) ?? run
+    }
     active.cancelled = true
+    this.#controllers.get(runID)?.abort(new ExecutionError('execution_cancelled', 'the command was cancelled'))
     this.#log.info('run cancel requested', { run: runID, pid: active.proc.pid })
     killTree(active.proc)
     return run
@@ -253,6 +293,7 @@ export class Runs {
     const stopped: Run[] = []
     for (const run of this.#store.runningRuns(sessionID)) {
       const active = this.#active.get(run.id)
+      this.#controllers.get(run.id)?.abort(new ExecutionError('execution_cancelled', note))
       if (active) active.cancelled = true
       this.#write(run, 'stderr', `${note}\n`)
       this.#finish(run, 'cancelled', null, { error: note })
@@ -274,7 +315,10 @@ export class Runs {
    * it is still `running`.
    */
   settleInterrupted(note: string): number {
-    const stale = this.#store.runningRuns()
+    const stale = this.#store.runningRuns().filter((run) => {
+      const execution = this.#store.execution(run.id)
+      return !this.#budget || !this.#store.queuedCommand(run.id) || (execution && execution.state !== 'queued')
+    })
     for (const run of stale) {
       const at = Date.now()
       this.#write(run, 'stderr', `${note}\n`)
@@ -293,6 +337,7 @@ export class Runs {
    * next start then finds nothing to guess about.
    */
   async stopAll(note = 'hiroshi-engine: the engine was shut down while this command was running'): Promise<void> {
+    this.#stopping = true
     const active = [...this.#active.values()]
     for (const entry of active) {
       entry.cancelled = true
@@ -370,7 +415,7 @@ export class Runs {
     this.#onIdle?.(run.sessionID)
   }
 
-  async #execute(run: Run, proc: Proc, shell: ResolvedShell, remaining: string[][] = []): Promise<void> {
+  async #execute(run: Run, proc: Proc, remaining: string[][] = []): Promise<void> {
     const buffers: Record<OutputStream, string> = { stdout: '', stderr: '' }
     let stored = 0
     let truncated = false
@@ -416,11 +461,11 @@ export class Runs {
         flush()
         const active = this.#active.get(run.id)
         if (active?.cancelled || code !== 0 || !remaining.length || this.#store.run(run.id)?.status !== 'running') {
-          const status: RunStatus = active?.cancelled ? 'cancelled' : code === 0 ? 'succeeded' : 'failed'
-          this.#finish(run, status, code)
+          const status: RunStatus = active?.abortStatus ?? (active?.cancelled ? 'cancelled' : code === 0 ? 'succeeded' : 'failed')
+          this.#finish(run, status, code, active?.abortReason ? { error: active.abortReason } : {})
           break
         }
-        proc = Bun.spawn({ cmd: remaining.shift()!, cwd: run.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' }, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true }) as unknown as Proc
+        proc = spawnOwned({ cmd: remaining.shift()!, cwd: run.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' }, limits: this.#budget?.limits })
         if (active) active.proc = proc
       }
     } catch (error) {
@@ -430,6 +475,7 @@ export class Runs {
       this.#log.error('run failed', { run: run.id, error: String(error) })
     } finally {
       clearInterval(timer)
+      killTree(proc)
       this.#active.delete(run.id)
     }
   }

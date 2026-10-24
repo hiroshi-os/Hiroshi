@@ -32,7 +32,7 @@ export class WorkspaceTrees {
       GIT_COMMITTER_NAME: 'Hiroshi', GIT_COMMITTER_EMAIL: 'checkpoint@hiroshi.local' })
     if (!existsSync(this.directory)) {
       mkdirSync(path.dirname(this.directory), { recursive: true })
-      const result = Bun.spawnSync({ cmd: ['git', 'init', '--bare', '--object-format=sha1', this.directory], env: this.env, windowsHide: true, stdout: 'pipe', stderr: 'pipe' })
+      const result = Bun.spawnSync({ cmd: ['git', 'init', '--bare', '--object-format=sha1', this.directory], env: this.env, windowsHide: true, stdout: 'pipe', stderr: 'pipe', timeout: 8000, maxBuffer: 1024 * 1024 })
       if (result.exitCode !== 0) throw invalid('checkpoint_git', 'Git is required to create workspace checkpoints')
     }
     // Preserve exact workspace bytes even when project attributes normalize
@@ -45,7 +45,7 @@ export class WorkspaceTrees {
     const result = Bun.spawnSync({ cmd: ['git', '--git-dir', this.directory, '--work-tree', this.root,
       '-c', 'core.autocrlf=false', '-c', 'core.fsync=all', '-c', 'core.fsmonitor=false',
       '-c', `core.hooksPath=${path.join(this.home, 'checkpoints', 'no-hooks')}`, ...args],
-      cwd: this.root, env: this.env, stdin: input, stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+      cwd: this.root, env: this.env, stdin: input, stdout: 'pipe', stderr: 'pipe', windowsHide: true, timeout: 8000, maxBuffer: 96 * 1024 * 1024 })
     if (result.exitCode !== 0) throw invalid('checkpoint_git', 'Git could not complete the checkpoint operation; workspace and conversation were not advanced')
     return Buffer.from(result.stdout)
   }
@@ -56,7 +56,7 @@ export class WorkspaceTrees {
     this.git(['read-tree', '--empty'])
     const excluded = ['.git', '**/.git']
     const relative = path.relative(this.root, path.resolve(this.home))
-    if (!relative) excluded.push('engine.db*', 'engine.json', 'engine.lock', 'logs', 'tool-results', 'checkpoints', 'providers.json', 'tools.json')
+    if (!relative) excluded.push('engine.db*', 'engine.json', 'engine.lock', 'logs', 'tool-results', 'checkpoints', 'providers.json', 'tools.json', 'execution.json')
     else if (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) excluded.push(relative.split(path.sep).join('/'))
     this.git(['add', '-A', '--', '.', ...excluded.map((name) => `:(exclude)${name}`)])
     const tree = this.git(['write-tree']).toString().trim()

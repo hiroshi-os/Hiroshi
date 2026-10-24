@@ -3,6 +3,8 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { WorkspaceFiles } from '../workspace'
 import { killTree } from '../runs'
+import { spawnOwned } from '../process'
+import type { ExecutionLimits } from '../protocol'
 import type { ToolRegistry } from './registry'
 
 /** Resolve real paths, including junctions. File tools only address the
@@ -27,7 +29,7 @@ async function filePath(cwd: string, requested: string, writing: boolean): Promi
 const fileInput = { type: 'object', properties: { path: { type: 'string', minLength: 1, maxLength: 4096 } }, required: ['path'], additionalProperties: false }
 const fileOutput = { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }
 
-export function registerBuiltins(registry: ToolRegistry, home?: string): void {
+export function registerBuiltins(registry: ToolRegistry, home?: string, limits?: ExecutionLimits): void {
   registry.register({ name: 'list_files', version: '1', description: 'List a workspace directory using the same tree as the Files surface.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', maxLength: 4096 } }, additionalProperties: false },
     outputSchema: { type: 'object', properties: { path: { type: 'string' }, truncated: { type: 'boolean' }, entries: { type: 'array', items: {
@@ -73,8 +75,7 @@ export function registerBuiltins(registry: ToolRegistry, home?: string): void {
       for (const key of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG', 'LC_ALL']) {
         if (process.env[key]) env[key] = process.env[key]!
       }
-      const proc = Bun.spawn({ cmd: [...shell.argv, input.command], cwd: context.cwd, env,
-        stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+      const proc = spawnOwned({ cmd: [...shell.argv, input.command], cwd: context.cwd, env, limits })
       let stopped = false
       const stop = () => { stopped = true; killTree(proc) }
       context.signal.addEventListener('abort', stop, { once: true })
