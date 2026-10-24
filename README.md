@@ -58,6 +58,9 @@ bun run dev
 
 The desktop app starts or attaches to the local engine. Closing the window leaves
 its shell commands running; another window can attach to the same engine.
+Custom titlebar dragging works on Windows and macOS. Linux uses your desktop's
+Move Window action; the limitation is shown in General settings. See
+[window behavior and verification](docs/window.mdx).
 
 To run or inspect the engine directly:
 

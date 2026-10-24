@@ -113,7 +113,35 @@ describeNative('Hiroshi titlebar dragging', () => {
     await app.close()
   })
 
-  it('ignores presses that are not on the titlebar', async () => {    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+  it('starts a drag from the settings titlebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+    let drags = 0
+    setWindowDragStarter(() => { drags++; return true })
+    await app.getByTestId('settings').click()
+    await pressAt(app, 'titlebar-drag-settings')
+    expect(drags).toBe(1)
+    await app.close()
+  })
+
+  it('starts a drag from the surface drawer titlebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    render(<HiroshiApp />)
+    const app = await connectTest(renderer)
+    let drags = 0
+    setWindowDragStarter(() => { drags++; return true })
+    await app.clock.pause()
+    await app.getByTestId('panel-right-open').click()
+    await app.clock.fastForward(300)
+    await app.clock.resume()
+    await pressAt(app, 'titlebar-drag-surface')
+    expect(drags).toBe(1)
+    await app.close()
+  })
+
+  it('ignores presses that are not on the titlebar', async () => {
+    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
 
