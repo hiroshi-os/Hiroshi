@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CliProvider, agyPolicyReady } from '../src/providers/cli'
 import { ProviderCatalog } from '../src/providers/catalog'
@@ -42,7 +42,7 @@ describe('CLI contract through real executable pipes', () => {
       expect(parts.find((part) => part.kind === 'usage')).toMatchObject({ inputTokens: 21, outputTokens: 4 })
       expect(JSON.stringify(parts)).not.toContain('private thinking')
       const run = JSON.parse(readFileSync(marker, 'utf8').trim())
-      expect(run.cwd.toLowerCase()).toBe(home.toLowerCase())
+      expect(realpathSync(run.cwd)).toBe(realpathSync(home))
       expect(run.input).toContain('literal ` $() --force ; 漢🙂')
       expect(run.args).not.toContain('--force'); expect(run.args.join(' ')).not.toContain('literal')
     } finally { rmSync(home, { recursive: true, force: true }) }
