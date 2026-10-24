@@ -124,7 +124,7 @@ describe('shared execution admission', () => {
     expect(readExecutionLimits(home).maxActive).toBe(2)
     writeFileSync(join(home, 'execution.json'), JSON.stringify({ maxActive: 1, timeoutMs: 5000 }))
     expect(readExecutionLimits(home).timeoutMs).toBe(5000)
-    for (const value of [{ maxActive: 0 }, { maxProcesses: 100 }, { timeoutMs: 'forever' }, { madeUp: 2 }]) {
+    for (const value of [{ maxActive: 0 }, { maxProcesses: 100 }, { timeoutMs: 'forever' }, { madeUp: 2 }, { constructor: 2 }, { toString: 2 }]) {
       writeFileSync(join(home, 'execution.json'), JSON.stringify(value))
       expect(() => readExecutionLimits(home)).toThrow('invalid execution limit')
     }

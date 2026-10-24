@@ -27,7 +27,7 @@ export function readExecutionLimits(home: string): ExecutionLimits {
   }
   for (const [key, value] of Object.entries(input)) {
     const range = ranges[key as keyof ExecutionLimits]
-    if (!range || !Number.isSafeInteger(value) || value < range[0] || value > range[1]) throw new Error(`invalid execution limit: ${key}`)
+    if (!Object.hasOwn(ranges, key) || !range || !Number.isSafeInteger(value) || value < range[0] || value > range[1]) throw new Error(`invalid execution limit: ${key}`)
   }
   return { ...DEFAULT_EXECUTION_LIMITS, ...input }
 }
