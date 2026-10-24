@@ -19,6 +19,18 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.15.0] - Unreleased
+
+### Added
+
+- Response-only CLI adapters for Agy and Cursor Agent with bounded NDJSON
+  streaming, stdin prompts, durable vendor session identifiers, explicit
+  completion/error handling and cancellation of the complete process tree.
+- Cursor uses read-only Ask mode. Agy requires strict tool permissions and
+  explicit side-effect denials; plan mode alone is not a write barrier.
+- Catalog and composer identify response-only operation. CLI submissions are
+  never automatically retried or replayed after admission. Protocol 11.
+
 ## [0.14.0] - Unreleased
 
 ### Added

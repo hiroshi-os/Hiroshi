@@ -404,6 +404,18 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     check(selected.includes('Local echo'), `the picker did not show the selected engine model: ${selected}`)
     note('the main composer used the catalog model and drew its real answer')
 
+    await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-cli/chat').click()
+    await composer.fill('window-cli-response')
+    await composer.press('enter')
+    await waitUntil(async () => {
+      const nodes = await app.getByTestId('engine-transcript').all()
+      return nodes.some((node) => flatten(node).join('\n').includes('Hello 漢🙂')) || false
+    }, 'the installed CLI adapter fixture to stream into the main transcript')
+    check((await app.getByTestId('cli-response-mode').textContent()).includes('response only'), 'CLI coding limits were not visible')
+    check((await app.getByTestId('model-picker').textContent()).includes('response only'), 'CLI model capability was not labelled')
+    note('the main composer drove a contained CLI process and drew its response-only answer')
+
     // Real tool requests travel through the daemon and the cockpit's gate.
     await app.getByTestId('model-picker').click()
     await app.getByTestId('model-fixture/tools').click()
@@ -663,7 +675,8 @@ async function main(): Promise<void> {
   writeFileSync(path.join(home, 'providers.json'), JSON.stringify({
     providers: [{ id: 'restricted', adapter: 'openai', models: [{
       id: 'chat', model: 'fixture-never-called', label: 'Restricted model', contextWindow: 32768, reservedOutput: 1024,
-    }] }, fixture.provider],
+    }] }, fixture.provider, { id: 'cli', adapter: 'cursor-cli', command: [process.execPath, path.join(import.meta.dir, 'engine/test/fixtures/cli-response.ts')],
+      models: [{ id: 'chat', model: 'default', label: 'CLI fixture', contextWindow: 32768, reservedOutput: 1024 }] }],
     policy: [{ provider: 'restricted', action: 'deny' }],
   }))
   const paths: LocalPaths = localPaths(home)

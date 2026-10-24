@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 10
+export const PROTOCOL_VERSION = 11
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.14.0'
+export const ENGINE_VERSION = '0.15.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -35,7 +35,7 @@ export interface ModelInfo {
   label: string
   contextWindow: number
   reservedOutput: number
-  reason: 'provider_denied' | 'credentials_missing' | null
+  reason: 'provider_denied' | 'credentials_missing' | 'cli_policy_required' | null
 }
 
 export type StepPart = {
@@ -45,6 +45,7 @@ export type StepPart = {
   at: number
   attempt?: number
 } & (
+  | { kind: 'cli'; version: 1; adapter: 'agy' | 'cursor'; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }

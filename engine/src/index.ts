@@ -156,7 +156,7 @@ async function serve(flags: Flags): Promise<number> {
 
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
   const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
-    new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
+    new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }), budget.limits)
   const registry = new ToolRegistry()
   registerBuiltins(registry, paths.home, budget.limits)
   const tools = new Tools(store, registry, paths.home, budget)

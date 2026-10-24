@@ -39,6 +39,11 @@ import type { DeliveryMode } from '../../engine/src/protocol'
       snapshot.executions[0]!.reason = 'execution_low_memory'
       render(<Surface />)
       expect(await app.getByTestId('execution-queue').textContent()).toBe('Waiting for free RAM · 1 queued')
+      snapshot.steps = [{ id: 'cli-step', sessionID: 'session', messageID: null, provider: 'cursor', model: 'cursor/chat', attempt: 1,
+        status: 'succeeded', claim: null, output: 'Real CLI answer', truncated: false, error: null, startedAt: 1, endedAt: 2 }]
+      snapshot.parts = [{ id: 'cli-part', sessionID: 'session', stepID: 'cli-step', at: 2, kind: 'cli', version: 1, adapter: 'cursor', phase: 'completed', text: 'CLI response completed' }]
+      render(<Surface />)
+      expect(await app.getByTestId('cli-response-mode').textContent()).toBe('Cursor · response only')
     } finally { await app.close() }
   })
 })
