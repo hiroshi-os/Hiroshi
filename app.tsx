@@ -1867,6 +1867,12 @@ function SettingsView({
                     General
                   </text>
 
+                  {typeof process !== 'undefined' && process.platform === 'linux' && (
+                    <text testId="linux-window-drag-notice" style={{ fontSize: 13, color: C.secondary, marginBottom: 12 }}>
+                      {'Titlebar dragging is unavailable on Linux. Use your desktop’s Move Window action.'}
+                    </text>
+                  )}
+
                   {/* Local by default */}
                   <div
                     style={{

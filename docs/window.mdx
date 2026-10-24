@@ -17,7 +17,7 @@ Windows would be a second titlebar on top of the first.
 
 ## Dragging
 
-There is no caption to grab, so the app moves the window itself. The press
+On **Windows**, there is no caption to grab, so the app moves the window itself. The press
 records where the window and the cursor are, every move pushes the window by
 the cursor delta, and the release lets go.
 
@@ -45,6 +45,38 @@ the foreground window, verifies the process id, and moves the window with
 titlebar, so the move handler checks the button state and ends the drag
 itself.
 
+On **macOS**, the app retains the original AppKit mouse-down event before GPUI
+delivers it to JavaScript. A titlebar press must match that event's window and
+coordinates while the left button is still held. Stale, repeated and unrelated
+requests fail. Tracking is queued on the Cocoa main thread through
+[`performWindowDragWithEvent:`](https://developer.apple.com/documentation/appkit/nswindow/performdrag(with:)?language=objc),
+so JavaScript does not wait inside the native drag loop. AppKit owns subsequent
+movement and release; native traffic lights and Spaces remain under OS control.
+The same handler covers the conversation, sidebar, surface and settings titlebars.
+
+On **Linux**, dragging the custom titlebar is deliberately disabled. GPUIX 0.11.0
+does not expose the compositor move request/Wayland input serial needed to do this
+correctly. Use your desktop's Move Window menu action or configured shortcut.
+General settings shows this limitation. Native chrome remains hidden on all
+platforms; do not change `titlebarTransparent` to work around it.
+
+The browser preview has no native window and does not drag the browser.
+
+## Development and verification
+
+`bun run dev` builds the macOS Cocoa helper before starting the source window.
+If running `bun app.tsx` directly on macOS, first run
+`bun scripts/build-window-macos.ts`. The packaged app carries the same helper
+beside its executable.
+
+GPU hit tests cover all four drag regions and existing double-click behavior on
+Windows/macOS. `bun scripts/test-window-macos.ts` compiles and runs the production
+Objective-C bridge against controlled window/event objects, verifying event
+identity, flipped coordinates, ownership, release races, stale requests and
+asynchronous dispatch. It does not generate physical mouse input or claim to
+measure window movement on a hosted macOS runner. The OS tracking call itself is
+AppKit's native implementation. Windows real-window integration remains in CI.
+
 ## Maximize, restore, and the double click
 
 The maximize button and a double click on the titlebar share one toggle.
@@ -59,7 +91,7 @@ The maximize button and a double click on the titlebar share one toggle.
 The double click is detected from the timestamps and the positions of two
 presses, because GPUIX `<div />` elements have no `onDoubleClick`.
 
-## Why the OS move loop is not used
+## Why Windows does not use the OS move loop
 
 The obvious way to drag a custom titlebar is to hand the drag to the OS
 modal move loop:

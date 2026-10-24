@@ -1,5 +1,31 @@
 #import <Cocoa/Cocoa.h>
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <math.h>
+
+// GPUI delivers input to JS asynchronously. Retain the original AppKit event,
+// then enter the OS tracking loop asynchronously so JS never waits for a drag.
+static NSEvent *dragMouseDown;
+static NSUInteger dragGeneration;
+static atomic_bool dragActive = false;
+#ifdef HIROSHI_WINDOW_TEST
+static NSUInteger testButtons;
+static dispatch_block_t testDragTask;
+#endif
+static NSUInteger dragButtons(void) {
+#ifdef HIROSHI_WINDOW_TEST
+  return testButtons;
+#else
+  return NSEvent.pressedMouseButtons;
+#endif
+}
+static void recordDragEvent(NSEvent *event) {
+  dragGeneration++;
+  dragMouseDown = nil;
+  if (event.type == NSEventTypeLeftMouseDown && event.clickCount == 1 &&
+      [event.window.title isEqualToString:@"Hiroshi · Multi-Agent Orchestrator"] &&
+      [NSApp.windows containsObject:event.window]) dragMouseDown = event;
+}
 
 static NSMutableArray<NSString *> *pendingLinks;
 @interface HiroshiLinks : NSObject
@@ -19,6 +45,48 @@ static NSWindow *hiroshiWindow(void) {
 }
 static void onMain(void (^work)(void)) {
   if (NSThread.isMainThread) work(); else dispatch_sync(dispatch_get_main_queue(), work);
+}
+void hiroshi_drag_install(void) {
+  onMain(^{
+    static id monitor;
+    if (!monitor) monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
+      recordDragEvent(event);
+      return event; // Controls and GPUI hit-testing still receive the event.
+    }];
+  });
+}
+bool hiroshi_drag_active(void) { return atomic_load(&dragActive); }
+bool hiroshi_drag_start(double x, double y) {
+  __block bool accepted = false;
+  onMain(^{
+    NSEvent *event = dragMouseDown;
+    NSWindow *window = event.window;
+    NSTimeInterval age = NSProcessInfo.processInfo.systemUptime - event.timestamp;
+    if (!event || atomic_load(&dragActive) || !(dragButtons() & 1) || age < 0 || age > 1 ||
+        !isfinite(x) || !isfinite(y) || !window.visible || ![NSApp.windows containsObject:window]) return;
+    NSView *view = window.contentView;
+    NSPoint point = [view convertPoint:event.locationInWindow fromView:nil];
+    double top = view.isFlipped ? point.y - NSMinY(view.bounds) : NSMaxY(view.bounds) - point.y;
+    if (fabs(point.x - NSMinX(view.bounds) - x) > 3 || fabs(top - y) > 3) return;
+    NSUInteger generation = dragGeneration;
+    dragMouseDown = nil; // A native press can authorize only one drag.
+    accepted = true;
+    atomic_store(&dragActive, true);
+    dispatch_block_t task = ^{
+      @try {
+        if (generation == dragGeneration && (dragButtons() & 1) && window.visible && [NSApp.windows containsObject:window])
+          [window performWindowDragWithEvent:event];
+      } @catch (NSException *exception) {
+        NSLog(@"Hiroshi: window drag rejected: %@", exception.reason);
+      } @finally { atomic_store(&dragActive, false); }
+    };
+#ifdef HIROSHI_WINDOW_TEST
+    testDragTask = task;
+#else
+    dispatch_async(dispatch_get_main_queue(), task);
+#endif
+  });
+  return accepted;
 }
 void hiroshi_links_install(void) {
   onMain(^{

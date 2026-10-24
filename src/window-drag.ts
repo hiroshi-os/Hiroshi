@@ -14,7 +14,11 @@
  *
  * The window handle is resolved from the foreground window and verified
  * against this process id, so a drag can never move somebody else's window.
+ * macOS delegates a retained native press to AppKit through window-drag-macos.
+ * Linux leaves movement to the compositor's Move Window action.
  */
+
+import { macWindowDrag } from './window-drag-macos'
 
 /** Must match the title passed to `render()`. */
 const WINDOW_TITLE = 'Hiroshi · Multi-Agent Orchestrator'
@@ -239,6 +243,7 @@ let session: DragSession | null = null
  * plain click on the titlebar never shifts the window.
  */
 function beginDrag(event?: any): boolean {
+  if (typeof process !== 'undefined' && process.platform === 'darwin') return macWindowDrag.start(event)
   const lib = loadUser32()
   if (!lib) return false
   try {
@@ -309,7 +314,13 @@ export function endWindowDrag(): void {
 
 /** True while a drag is running. */
 export function isDragging(): boolean {
+  if (typeof process !== 'undefined' && process.platform === 'darwin') return macWindowDrag.active()
   return session !== null
+}
+
+/** Capture native mouse-down events before asynchronous JS receives the press. */
+export function installWindowDrag(): void {
+  if (typeof process !== 'undefined' && process.platform === 'darwin') macWindowDrag.install()
 }
 
 /** The window rectangle from before the window was maximized. */

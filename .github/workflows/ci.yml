@@ -97,3 +97,8 @@ jobs:
 
       - name: Run the integration tests
         run: bun run test
+
+      - name: Test the native macOS window drag bridge
+        if: runner.os == 'macOS'
+        timeout-minutes: 2
+        run: bun scripts/test-window-macos.ts

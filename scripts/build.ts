@@ -1,5 +1,6 @@
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { buildMacWindow } from './build-window-macos'
 
 const root = path.resolve(import.meta.dir, '..')
 const out = path.join(root, 'dist')
@@ -19,10 +20,7 @@ const app = await Bun.build({ define, entrypoints: [path.join(root, 'desktop.ts'
 if (!app.success) throw new Error(app.logs.join('\n'))
 const engine = await Bun.build({ define, entrypoints: [path.join(root, 'engine/src/index.ts')], target: 'bun', compile: { outfile: path.join(out, `hiroshi-engine${suffix}`) } })
 if (!engine.success) throw new Error(engine.logs.join('\n'))
-if (process.platform === 'darwin') {
-  const build = Bun.spawnSync(['clang', '-dynamiclib', '-fobjc-arc', '-framework', 'Cocoa', path.join(root, 'scripts/window-macos.m'), '-o', path.join(out, 'libhiroshi-window.dylib')])
-  if (build.exitCode) throw new Error(build.stderr.toString())
-}
+buildMacWindow()
 const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version
 writeFileSync(path.join(out, 'VERSION'), `${version}\n`)
 writeFileSync(path.join(out, 'LICENSES.txt'), `Hiroshi ${version}\nIncludes Bun (MIT), React (MIT), GPUIX (Apache-2.0), Ajv (MIT), htmlparser2 (MIT), safe-mdx (MIT), and their dependencies.\n\n${readFileSync(path.join(root, 'node_modules/@gpuix/native/LICENSE'), 'utf8')}`)

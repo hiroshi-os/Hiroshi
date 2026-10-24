@@ -19,6 +19,19 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.13.0] - 2026-10-24
+
+### Added
+
+- Native macOS titlebar dragging through AppKit's window tracking loop. Retain
+  and validate the original press, consume it once, and queue tracking on the
+  main thread without blocking JavaScript. Preserve native traffic lights and
+  existing double-click zoom behavior.
+- Build the macOS helper automatically before local development. Cover the
+  native bridge in macOS CI and all four titlebar regions in GPU hit tests.
+- An explicit Linux notice in General settings: custom titlebar dragging remains
+  unavailable; use the desktop's Move Window action. Windows dragging is unchanged.
+
 ## [0.12.2] - 2026-10-24
 
 ### Fixed

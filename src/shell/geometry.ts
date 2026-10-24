@@ -1,4 +1,4 @@
-import { resolveWindowHandle } from '../window-drag'
+import { installWindowDrag, resolveWindowHandle } from '../window-drag'
 import { packagedBuild } from './runtime'
 import { clampBounds, readWindowState, saveWindowState, type WindowState } from './state'
 
@@ -71,6 +71,7 @@ export function restoreGeometry(state: WindowState): boolean {
   return false
 }
 export function trackWindow(renderer: { getWindowSize: () => { width: number; height: number } }, workspace: string): () => void {
+  installWindowDrag()
   let restored = false, last = ''
   const saved = readWindowState(workspace)
   const tick = () => {
