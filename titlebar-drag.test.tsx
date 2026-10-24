@@ -126,7 +126,8 @@ describeNative('Hiroshi titlebar dragging', () => {
   })
 
   it('starts a drag from the surface drawer titlebar', async () => {
-    const { render, renderer } = createTestRoot({ width: 1200, height: 800 })
+    // Keep the entire drawer visible beside the transcript's minimum width.
+    const { render, renderer } = createTestRoot({ width: 1800, height: 800 })
     render(<HiroshiApp />)
     const app = await connectTest(renderer)
     let drags = 0
@@ -141,7 +142,7 @@ describeNative('Hiroshi titlebar dragging', () => {
     for (let frame = 0; frame < 60; frame++) {
       const bounds = await target.bounds()
       const key = JSON.stringify(bounds)
-      stable = bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= 1201 && key === previous ? stable + 1 : 0
+      stable = bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= 1801 && key === previous ? stable + 1 : 0
       if (stable >= 3) break
       previous = key
       await new Promise((resolve) => setTimeout(resolve, 20))
