@@ -19,6 +19,15 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.18.0] - Unreleased
+
+### Changed
+
+- Match the compact Providers layout: one grouped panel, vector agent marks,
+  version/path metadata, observed status, switches and expandable setup rows.
+- Shared model picker with a provider rail, search, keyboard selection and
+  persisted favorites. Keep settings and composer on the real engine catalog.
+
 ## [0.17.0] - Unreleased
 
 ### Added

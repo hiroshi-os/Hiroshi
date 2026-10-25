@@ -25,10 +25,10 @@ const agent: AgentInfo = { id: 'cursor', name: 'Cursor Agent', enabled: true, tr
     const app = await connectTest(renderer)
     try {
       await app.getByTestId('provider-status-cursor').waitFor()
-      expect(await app.getByTestId('provider-evidence-cursor').textContent()).toContain('Never checked')
-      expect(await app.getByTestId('provider-default').textContent()).toContain('Unavailable selection: missing/old')
-      await app.getByTestId('providers-refresh').click()
       await app.getByTestId('provider-setup-cursor').click()
+      expect(await app.getByTestId('provider-evidence-cursor').textContent()).toContain('Never checked')
+      expect(await app.getByTestId('provider-default').textContent()).toContain('Unavailable model: missing/old')
+      await app.getByTestId('providers-refresh').click()
       await app.getByTestId('provider-path-cursor').fill('/absolute/node')
       await app.getByTestId('provider-entry-cursor').fill('/absolute/agent.js')
       await app.getByTestId('provider-save-cursor').click()
@@ -37,9 +37,13 @@ const agent: AgentInfo = { id: 'cursor', name: 'Cursor Agent', enabled: true, tr
       await new Promise((resolve) => setTimeout(resolve, 30))
       await app.getByTestId('provider-enable-cursor').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
+      await app.getByTestId('provider-setup-cursor').click()
       await app.getByTestId('provider-choose-default').click()
+      try { await app.getByTestId('provider-default-cli/chat').waitFor({ timeoutMs: 1000 }) }
+      catch (error) { console.error('Settings picker bounds:', await app.getByTestId('provider-choose-default').bounds(), 'Painted text:', renderer.getPaintedText()); throw error }
       await app.getByTestId('provider-default-cli/chat').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
+      await app.getByTestId('provider-setup-cursor').click()
       await app.getByTestId('provider-auto-cursor').click()
       expect(calls).toEqual(['refresh', { agent: 'cursor', command: ['/absolute/node', '/absolute/agent.js'] },
         { agent: 'cursor', trustWorkspace: true }, { agent: 'cursor', enabled: false }, { defaultModel: 'cli/chat' }, { agent: 'cursor', command: null }])
