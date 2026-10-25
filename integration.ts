@@ -404,8 +404,32 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     check(selected.includes('Local echo'), `the picker did not show the selected engine model: ${selected}`)
     note('the main composer used the catalog model and drew its real answer')
 
-    await app.getByTestId('model-picker').click()
-    await app.getByTestId('model-cli/chat').click()
+    await app.getByTestId('settings').click()
+    await app.getByTestId('settings-section-providers').click()
+    const providerClient = engineClient(readRegistry(localPaths(home).registry)!)
+    const pathRevision = (await providerClient.providers()).revision
+    await app.getByTestId('provider-setup-cursor').click()
+    await app.getByTestId('provider-path-cursor').fill(process.execPath)
+    await app.getByTestId('provider-entry-cursor').fill(path.join(import.meta.dir, 'engine/test/fixtures/provider-cli.ts'))
+    await app.getByTestId('provider-save-cursor').click()
+    await waitUntil(async () => (await providerClient.providers()).revision > pathRevision, 'the manual executable path to persist')
+    await sleep(100)
+    await app.getByTestId('provider-setup-cursor').click()
+    await app.getByTestId('providers-refresh').click()
+    await waitUntil(async () => (await app.getByTestId('provider-status-cursor').textContent()).includes('Ready') || false,
+      'metadata discovery to reach the native Providers screen')
+    try {
+      mkdirSync(path.join(process.cwd(), 'screenshots'), { recursive: true })
+      await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-providers.png') })
+    } catch (error) { note(`provider screenshot unavailable: ${String(error)}`) }
+    const providerState = await providerClient.providers()
+    const discoveredModel = providerState.agents.find((agent) => agent.id === 'cursor')!.models[0]!.catalogID
+    await app.getByTestId('provider-choose-default').click()
+    await app.getByTestId(`provider-default-${discoveredModel}`).click()
+    await waitUntil(async () => (await providerClient.providers()).defaultModel === discoveredModel, 'the default selection to persist')
+    await app.getByTestId('settings-back').click()
+    await waitUntil(async () => (await app.getByTestId('model-picker').textContent()).includes('Cursor Agent') || false,
+      'the composer to share the discovered default')
     await composer.fill('window-cli-response')
     await composer.press('enter')
     await waitUntil(async () => {
@@ -584,6 +608,10 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       await waitUntil(async () => (await twin.app.getByTestId('engine-run-status').textContent()).includes('Running') || false, 'the second window to show the same running command')
       check((await twin.app.getByTestId('engine-run-status').textContent()) === (await app.getByTestId('engine-run-status').textContent()), 'two windows disagree about the run state')
       check((await twin.app.getByTestId('composer-delivery-mode').textContent()) === 'Queue', 'the second composer cannot see that the engine is busy')
+      const beforeDefault = await providerClient.providers()
+      await providerClient.updateProviders({ revision: beforeDefault.revision, defaultModel: 'local/echo' })
+      await waitUntil(async () => (await app.getByTestId('model-picker').textContent()).includes('Local echo') &&
+        (await twin.app.getByTestId('model-picker').textContent()).includes('Local echo'), 'both open composers to receive the shared default change')
       await twin.app.getByTestId('run-usage-open').click()
       await twin.app.getByTestId('engine-usage').waitFor()
       const usage = await twin.app.getByTestId('engine-usage').textContent()
@@ -679,6 +707,10 @@ async function main(): Promise<void> {
       models: [{ id: 'chat', model: 'default', label: 'CLI fixture', contextWindow: 32768, reservedOutput: 1024 }] }],
     policy: [{ provider: 'restricted', action: 'deny' }],
   }))
+  writeFileSync(path.join(home, 'agents.json'), JSON.stringify({ version: 1, revision: 0, agents: [], preferences: {
+    agy: { enabled: false }, pi: { enabled: false }, grok: { enabled: false },
+    cursor: { enabled: true, command: [process.execPath, path.join(import.meta.dir, 'engine/test/fixtures/provider-cli.ts')] },
+  } }))
   const paths: LocalPaths = localPaths(home)
   note(`HIROSHI_HOME is ${home}`)
 

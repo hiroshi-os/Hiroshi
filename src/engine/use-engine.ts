@@ -9,12 +9,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest } from '../../engine/src/protocol'
+import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 
 export interface EngineHandle {
+  refreshProviders: () => Promise<void>
+  cancelProviderRefresh: () => Promise<void>
+  updateProviders: (input: Omit<ProviderUpdate, 'revision'>) => Promise<void>
   selectSession: (id: string) => void
   newSession: () => Promise<void>
   workspaceList: (path?: string) => Promise<WorkspaceDirectory>
@@ -113,20 +116,21 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
 
         let after = 0
         try {
-          const catalog = await connection.models()
-          update((current) => ({ ...current, models: catalog.models, defaultModel: catalog.defaultModel }))
           const { sessions } = await connection.listSessions()
           const existing = selected ? sessions.find((candidate) => candidate.id === selected) : sessions.find((candidate) => candidate.cwd === workspace)
           if (selected && !existing) throw new Error(`Session ${selected} was not found in this local engine`)
           const chosen =
             existing ?? (await connection.createSession({ cwd: workspace, reuseWorkspace: true })).session
           const detail = await connection.session({ id: chosen.id })
+          // Read global provider state after the session watermark. Feed replay
+          // then fills later changes; revision ordering ignores older replay.
+          const providers = await connection.providers()
           if (stopped) return
           session.current = chosen.id
           sessionWorkspace.current = detail.session.cwd
           after = detail.seq
           update((current) =>
-            hydrate({ ...current, status: 'ready', health: attached.health, sessions }, detail),
+            hydrate({ ...current, status: 'ready', health: attached.health, sessions, providers, models: providers.models, defaultModel: providers.defaultModel }, detail),
           )
         } catch (error) {
           update((current) => ({ ...current, status: 'unreachable', error: describe(error) }))
@@ -275,5 +279,24 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     return client.current.browse({ id: session.current, url })
   }, [])
 
-  return { selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  const revision = useRef(0)
+  revision.current = snapshot.providers?.revision ?? 0
+  const receiveProviders = useCallback((providers: ProviderState) => {
+    setSnapshot((current) => providers.revision < (current.providers?.revision ?? 0) ? current : { ...current, providers, models: providers.models, defaultModel: providers.defaultModel })
+  }, [])
+  const refreshProviders = useCallback(async () => {
+    if (!client.current || !session.current) throw new Error('The engine is not connected')
+    receiveProviders(await client.current.refreshProviders({ id: session.current }))
+  }, [])
+  const cancelProviderRefresh = useCallback(async () => {
+    if (!client.current) throw new Error('The engine is not connected')
+    receiveProviders(await client.current.cancelProviderRefresh())
+  }, [])
+  const updateProviders = useCallback(async (input: Omit<ProviderUpdate, 'revision'>) => {
+    if (!client.current) throw new Error('The engine is not connected')
+    try { receiveProviders(await client.current.updateProviders({ ...input, revision: revision.current })) }
+    catch (error) { receiveProviders(await client.current.providers()); setSnapshot((current) => ({ ...current, error: describe(error) })); throw error }
+  }, [])
+
+  return { refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

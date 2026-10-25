@@ -18,6 +18,7 @@ import type {
   StepContext,
   StepPart,
   ModelInfo,
+  ProviderState,
   EngineEvent,
   Health,
   InboxItem,
@@ -56,6 +57,7 @@ export interface Snapshot {
   messages: Message[]
   models: ModelInfo[]
   defaultModel: string
+  providers: ProviderState | null
   parts: StepPart[]
   checkpoints: Checkpoint[]
   rewinds: Rewind[]
@@ -90,6 +92,7 @@ export function initialSnapshot(): Snapshot {
     messages: [],
     models: [],
     defaultModel: 'local/echo',
+    providers: null,
     parts: [],
     checkpoints: [],
     rewinds: [],
@@ -186,7 +189,7 @@ function unreachable(event: never): never {
 /** Apply one durable event. */
 export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
   if (event.seq <= snapshot.transcriptSeq) return snapshot
-  if (event.sessionID !== snapshot.sessionID && event.type !== 'session.created' && event.type !== 'session.updated') return snapshot
+  if (event.sessionID !== snapshot.sessionID && event.type !== 'providers.updated' && event.type !== 'session.created' && event.type !== 'session.updated') return snapshot
   let next = reduce(snapshot, event)
   next = { ...next, transcriptSeq: event.seq, transcript: event.sessionID === snapshot.sessionID ? projectTranscript(snapshot.transcript, event, next.steps) : snapshot.transcript }
   if (!snapshot.activeMessageIDs || next.messages === snapshot.messages || event.type === 'rewind.completed') return next
@@ -197,6 +200,9 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
 
 function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
   switch (event.type) {
+    case 'providers.updated':
+      if (snapshot.providers && event.data.providers.revision < snapshot.providers.revision) return snapshot
+      return { ...snapshot, providers: event.data.providers, models: event.data.providers.models, defaultModel: event.data.providers.defaultModel }
     case 'execution.updated': {
       const execution = event.data.execution
       return { ...snapshot, executions: [...snapshot.executions.filter((item) => item.id !== execution.id), execution] }

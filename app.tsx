@@ -12,6 +12,7 @@
  */
 
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
+import { ProviderSettings } from './src/components/ProviderSettings'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
@@ -1631,11 +1632,13 @@ function SettingsView({
   initialSection = 'general',
   engine,
   onRestartEngine,
+  providerEngine,
 }: {
   onBack: () => void
   initialSection?: string
   engine?: EngineSnapshot
   onRestartEngine?: () => void
+  providerEngine?: EngineHandle
 }) {
   const [activeSection, setActiveSection] = useState(initialSection)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1651,11 +1654,6 @@ function SettingsView({
   const [langValue, setLangValue] = useState('system')
   const [uiFontSize, setUiFontSize] = useState('14px')
   const [codeFontSize, setCodeFontSize] = useState('13px')
-
-  // Providers state
-  const [cursorEnabled, setCursorEnabled] = useState(true)
-  const [aiderEnabled, setAiderEnabled] = useState(true)
-  const [grokEnabled, setGrokEnabled] = useState(true)
 
   // Skills state
   const [selectedSkill, setSelectedSkill] = useState('find-skills')
@@ -2158,189 +2156,7 @@ function SettingsView({
               )}
 
               {/* SECTION: PROVIDERS */}
-              {activeSection === 'providers' && (
-                <>
-                  <text
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 600,
-                      color: C.text,
-                      marginBottom: 10,
-                    }}
-                  >
-                    Providers
-                  </text>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      backgroundColor: '#202020',
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#E6EAF20A',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {/* Header */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        padding: 18,
-                        borderBottomWidth: 1,
-                        borderColor: '#E6EAF20A',
-                      }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexGrow: 1 }}>
-                        <text style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
-                          Coding agents
-                        </text>
-                        <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary, maxWidth: 480 }}>
-                          Hiroshi drives agent CLIs installed on this computer. Install or sign in with each agent's own CLI, then refresh
-                        </text>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                        <Button
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6,
-                            height: 28,
-                            paddingLeft: 10,
-                            paddingRight: 10,
-                            borderRadius: 6,
-                            borderWidth: 1,
-                            borderColor: C.border,
-                            backgroundColor: '#262626',
-                            cursor: 'pointer',
-                            hover: { backgroundColor: C.overlayStrong },
-                          }}
-                        >
-                          <Icon name="retry" size={12} color={C.secondary} />
-                          <text style={{ fontSize: 12.5, color: C.text }}>Refresh</text>
-                        </Button>
-                        <text style={{ fontSize: 11.5, color: C.ghost }}>Checked 12m ago</text>
-                      </div>
-                    </div>
-
-                    {/* Agent list */}
-                    {[
-                      {
-                        name: 'Amp',
-                        status: 'Not detected on PATH as amp',
-                        installed: false,
-                        icon: 'zap' as const,
-                      },
-                      {
-                        name: 'Claude Code',
-                        status: 'Not detected on PATH as claude',
-                        installed: false,
-                        icon: 'sparkle' as const,
-                      },
-                      {
-                        name: 'Codex CLI',
-                        status: 'Not detected on PATH as codex',
-                        installed: false,
-                        icon: 'sparkle' as const,
-                      },
-                      {
-                        name: 'Cursor CLI',
-                        status: '~/AppData\\Local\\cursor-agent\\cursor-agent.CMD · 233 models',
-                        installed: true,
-                        icon: 'arrowRight' as const,
-                        toggle: cursorEnabled,
-                        onToggle: setCursorEnabled,
-                      },
-                      {
-                        name: 'DeepSeek Harness',
-                        status: 'Not detected on PATH as dsh',
-                        installed: false,
-                        icon: 'sparkle' as const,
-                      },
-                      {
-                        name: 'Fx',
-                        status: 'Not detected on PATH as fx',
-                        installed: false,
-                        icon: 'wrench' as const,
-                      },
-                      {
-                        name: 'Aider v0.86.2',
-                        status: '~/.local\\bin\\aider.EXE · 72 models',
-                        installed: true,
-                        icon: 'laptop' as const,
-                        toggle: aiderEnabled,
-                        onToggle: setAiderEnabled,
-                      },
-                      {
-                        name: 'Grok Build v1.0.34',
-                        status: '~/.grok\\bin\\grok.EXE · 2 models',
-                        installed: true,
-                        icon: 'activity' as const,
-                        toggle: grokEnabled,
-                        onToggle: setGrokEnabled,
-                      },
-                    ].map((agent, index) => (
-                      <div
-                        key={agent.name}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          paddingLeft: 16,
-                          paddingRight: 16,
-                          height: 52,
-                          borderTopWidth: index === 0 ? 0 : 1,
-                          borderColor: '#E6EAF208',
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <div
-                            style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 6,
-                              backgroundColor: '#262626',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Icon name={agent.icon} size={14} color={agent.installed ? C.accent : C.secondary} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <text style={{ fontSize: 13.5, fontWeight: 500, color: C.text }}>
-                              {agent.name}
-                            </text>
-                            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <div
-                                style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: 3,
-                                  backgroundColor: agent.installed ? '#10B981' : '#6B7280',
-                                }}
-                              />
-                              <text style={{ fontSize: 12, color: C.secondary }}>{agent.status}</text>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <Icon name="chevronRight" size={13} color={C.ghost} />
-                          {agent.installed && agent.onToggle && (
-                            <ToggleSwitch checked={agent.toggle!} onChange={agent.onToggle} />
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+              {activeSection === 'providers' && <ProviderSettings engine={providerEngine} />}
 
               {/* SECTION: USAGE */}
               {activeSection === 'usage' && engine && <EngineUsage snapshot={engine} />}
@@ -4715,7 +4531,7 @@ function ChipSelect({
 }
 
 export function ModelPicker({ value, onChange, models = MODELS }: { value: string; onChange: (next: string) => void; models?: typeof MODELS }) {
-  const selected = models.find((model) => model.id === value) ?? models[0] ?? { id: '', label: 'No models available', group: '', icon: 'sparkle' as const }
+  const selected = models.find((model) => model.id === value) ?? { id: value, label: value ? `Unavailable model: ${value}` : 'No models available', group: '', icon: 'sparkle' as const }
   const groups = useMemo(() => {
     const out: { name: string; items: typeof MODELS }[] = []
     for (const model of models) {
@@ -5736,13 +5552,12 @@ export function ChatApp({
   }, [engineEnabled, collapsed, sidebarWidth, rightPanelWidth, rightPanelOpen, activeSurface, engineView.snapshot.sessionID])
   const reportedModels: typeof MODELS = engineView.snapshot.models.map((item) => ({
     id: item.id,
-    label: `${item.label}${item.reason === 'provider_denied' ? ' · denied' : item.reason === 'credentials_missing' ? ' · needs credential' : ''}`,
+    label: `${item.label}${item.reason === 'provider_denied' ? ' · denied' : item.reason === 'credentials_missing' ? ' · needs credential' : item.reason === 'provider_disabled' ? ' · disabled' : item.reason === 'cli_unavailable' ? ' · unavailable' : ''}`,
     group: item.provider,
     icon: 'sparkle' as const,
   }))
-  const chosenModel = engineEnabled
-    ? (engineView.snapshot.models.some((item) => item.id === model) ? model : engineView.snapshot.defaultModel)
-    : model
+  const [engineModel, setEngineModel] = useState<string | null>(null)
+  const chosenModel = engineEnabled ? engineModel ?? engineView.snapshot.defaultModel : model
   const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
   const runView = cockpit(engineView.snapshot)
   const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === actualWorkspace).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
@@ -5761,6 +5576,7 @@ export function ChatApp({
         initialSection={settingsInitialSection}
         engine={engineEnabled ? engineView.snapshot : undefined}
         onRestartEngine={engineView.restart}
+        providerEngine={engineEnabled ? engineView : undefined}
       />
     )
   }
@@ -5926,7 +5742,11 @@ export function ChatApp({
           }}
           model={chosenModel}
           models={engineEnabled ? reportedModels : undefined}
-          onModelChange={setModel}
+          onModelChange={(next) => {
+            if (!engineEnabled) { setModel(next); return }
+            setEngineModel(next)
+            void engineView.updateProviders({ defaultModel: next }).then(() => setEngineModel((current) => current === next ? null : current)).catch(() => {})
+          }}
           reasoning={reasoning}
           onReasoningChange={setReasoning}
           access={access}

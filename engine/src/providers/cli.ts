@@ -1,15 +1,15 @@
 /** Contract v1: one bounded response-only submission, never a shell command.
  * A CLI owns its auth. Raw diagnostic prose and arbitrary vendor fields are
  * deliberately excluded from durable events. Continuation belongs to #63. */
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { spawnOwned } from '../process'
 import { DEFAULT_EXECUTION_LIMITS } from '../execution'
-import type { ExecutionLimits } from '../protocol'
+import type { AgentID, ExecutionLimits } from '../protocol'
 import { ProviderError, type Provider, type ProviderPart, type ProviderRequest } from '../provider'
 
-export type CliAdapter = 'agy' | 'cursor'
+export type CliAdapter = AgentID
 export interface CliOptions {
   name: string; model: string; providerModel: string; adapter: CliAdapter; command: string[]
   context: { window: number; reservedOutput: number }
@@ -44,6 +44,7 @@ export function agyPolicyReady(env: Record<string, string | undefined>): boolean
  * so a duplicate flush cannot silently duplicate or replace the answer. */
 export class CliEvents {
   #session = ''; #initialized = false; #completed = false; #output = ''; #count = 0
+  #piFinal: any
   constructor(readonly adapter: CliAdapter, readonly onText: (value: string) => void, readonly onPart?: (part: ProviderPart) => void, readonly cwd?: string) {}
   get completed() { return this.#completed }
   #id(value: unknown): void {
@@ -73,11 +74,39 @@ export class CliEvents {
     let event: any
     try { event = JSON.parse(line) } catch { throw fail('cli_protocol', 'CLI emitted invalid NDJSON; check its supported version and stream format') }
     if (!object(event)) throw fail('cli_protocol', 'CLI event must be an object')
+    if (this.adapter === 'grok') {
+      if (event.type === 'text') this.#append(text(event.data))
+      else if (event.type === 'thought') return
+      else if (event.type === 'end') {
+        if (event.stopReason !== 'EndTurn') throw fail('cli_failed', 'Grok did not finish a response-only turn')
+        this.#id(event.sessionId); this.#finish(this.#output, undefined)
+      } else throw fail('cli_protocol', 'Grok emitted an unsupported response-only event')
+      return
+    }
+    if (this.adapter === 'pi' && event.type !== 'session') {
+      if (!this.#initialized) throw fail('cli_protocol', 'Pi emitted data before its session header')
+      if (event.type === 'message_update') {
+        const part = event.assistantMessageEvent
+        if (part?.type === 'text_delta') this.#append(text(part.delta))
+        else if (part?.type?.startsWith('toolcall')) throw fail('cli_capability', 'Pi tools are disabled in response-only mode')
+        else if (part?.type === 'error') throw fail('cli_failed', 'Pi reported a failed response')
+      } else if (event.type === 'message_end' && event.message?.role === 'assistant') {
+        if (event.message.stopReason !== 'stop' || !Array.isArray(event.message.content) || event.message.content.some((part: any) => part.type === 'toolCall')) throw fail('cli_failed', 'Pi did not complete a response-only answer')
+        this.#piFinal = event.message
+      } else if (event.type === 'agent_settled') {
+        if (event.aborted === true || !this.#piFinal) throw fail('cli_failed', 'Pi settled without a successful assistant answer')
+        const answer = this.#piFinal.content.filter((part: any) => part.type === 'text').map((part: any) => text(part.text)).join('')
+        this.#finish(answer, { input_tokens: this.#piFinal.usage?.input, output_tokens: this.#piFinal.usage?.output })
+      } else if (event.type === 'agent_end' && event.willRetry === true) throw fail('cli_failed', 'Pi requested automatic recovery; the response was stopped')
+      else if (!['agent_start', 'agent_end', 'turn_start', 'turn_end', 'message_start', 'message_end'].includes(event.type)) throw fail('cli_protocol', 'Pi event type is unsupported in response-only mode')
+      return
+    }
     const type = this.adapter === 'agy' ? event.event : event.type
     if (type === 'error') throw fail('cli_failed', 'CLI reported an error; check sign-in, model access and CLI version')
-    const init = this.adapter === 'agy' ? type === 'init' : type === 'system' && event.subtype === 'init'
+    const init = this.adapter === 'agy' ? type === 'init' : this.adapter === 'pi' ? type === 'session' : type === 'system' && event.subtype === 'init'
     if (init) {
       if (this.#initialized) throw fail('cli_protocol', 'CLI initialized more than once')
+      if (this.adapter === 'pi' && event.version !== 3) throw fail('cli_protocol', 'Unsupported Pi session format; version 3 is required')
       if (this.adapter === 'agy' && event.init?.permission_mode !== 'strict') throw fail('cli_policy_required', 'Agy did not acknowledge strict tool permissions; coding actions remain unavailable')
       if (this.cwd) {
         const actual = this.adapter === 'agy' ? event.init?.cwd : event.cwd
@@ -86,7 +115,7 @@ export class CliEvents {
           if (typeof actual !== 'string' || canonical(actual) !== canonical(this.cwd)) throw new Error('workspace mismatch')
         } catch { throw fail('cli_workspace', 'CLI did not acknowledge the admitted workspace; the response was stopped') }
       }
-      this.#id(this.adapter === 'agy' ? event.conversation_id : event.session_id)
+      this.#id(this.adapter === 'agy' ? event.conversation_id : this.adapter === 'pi' ? event.id : event.session_id)
       this.#initialized = true
       return
     }
@@ -151,7 +180,8 @@ export class CliProvider implements Provider {
     env.NO_OPEN_BROWSER = '1'
     const home = (process.platform === 'win32' ? env.USERPROFILE : env.HOME) || homedir()
     if ((adapter === 'agy' && existsSync(join(request.cwd, '.agents', 'hooks.json'))) ||
-      (adapter === 'cursor' && [join(request.cwd, '.cursor', 'hooks.json'), join(home, '.cursor', 'hooks.json')].some(existsSync))) {
+      (adapter === 'cursor' && [join(request.cwd, '.cursor', 'hooks.json'), join(home, '.cursor', 'hooks.json')].some(existsSync)) ||
+      (adapter === 'grok' && [join(request.cwd, '.grok', 'hooks.json'), join(home, '.grok', 'hooks.json')].some(existsSync))) {
       throw fail('cli_capability', 'CLI hooks are unavailable in response-only mode; use a workspace/profile without startup hooks')
     }
     const prompt = 'Answer using the conversation below. This is a response-only turn: do not edit files, run commands, delegate or invoke external tools.\n' +
@@ -160,13 +190,22 @@ export class CliProvider implements Provider {
     if (Buffer.byteLength(input) > 256 * 1024) throw fail('context_overflow', 'CLI input exceeds the bounded stdin limit')
     const flags = adapter === 'agy'
       ? ['--input-format', 'stream-json', '--output-format', 'stream-json', '--disable-slash-commands', '--print-timeout', '120s']
+      : adapter === 'pi' ? ['--mode', 'json', '--print', '--no-session', '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-approve', '--no-context-files']
+      : adapter === 'grok' ? ['--output-format', 'streaming-json', '--tools', '', '--deny', '*', '--no-subagents', '--disable-web-search', '--max-turns', '1', '--permission-mode', 'plan', '--cwd', request.cwd]
       : ['--print', '--output-format', 'stream-json', '--stream-partial-output', '--mode', 'ask']
     if (adapter === 'cursor' && this.options.trustWorkspace) flags.push('--trust')
     if (this.options.providerModel !== 'default') flags.push('--model', this.options.providerModel)
-    onPart?.({ kind: 'cli', version: 1, adapter, phase: 'started', text: 'CLI response only; coding actions and native session continuation are unavailable' })
+    let promptDirectory: string | undefined, promptFile: string | undefined
+    const cleanPrompt = () => { if (promptFile) { try { unlinkSync(promptFile) } catch {} }; if (promptDirectory) { try { rmdirSync(promptDirectory) } catch {} } }
+    if (adapter === 'grok') {
+      promptDirectory = mkdtempSync(join(tmpdir(), 'hiroshi-cli-prompt-')); promptFile = join(promptDirectory, 'prompt.txt')
+      try { writeFileSync(promptFile, prompt, { flag: 'wx', mode: 0o600 }); flags.push('--prompt-file', promptFile) } catch (error) { cleanPrompt(); throw fail('cli_start', 'Could not prepare the private Grok prompt file') }
+    }
+    try { onPart?.({ kind: 'cli', version: 1, adapter, phase: 'started', text: 'CLI response only; coding actions and native session continuation are unavailable' }) }
+    catch (error) { cleanPrompt(); throw error }
     let proc: ReturnType<typeof spawnOwned>
     try { proc = spawnOwned({ cmd: [...this.options.command, ...flags], cwd: request.cwd, input, env, limits: this.options.limits }) }
-    catch { throw fail('cli_start', 'CLI could not start; check its configured executable and runtime') }
+    catch { cleanPrompt(); throw fail('cli_start', 'CLI could not start; check its configured executable and runtime') }
     const readers = new Set<ReadableStreamDefaultReader<Uint8Array>>()
     const abort = () => {
       proc.terminateTree()
@@ -224,7 +263,7 @@ export class CliProvider implements Provider {
       if (error instanceof ProviderError || request.signal.aborted) throw error
       throw fail('cli_transport', 'CLI process or stream failed; the submission was not retried')
     } finally {
-      clearTimeout(timer); request.signal.removeEventListener('abort', abort); abort(); await proc.exited.catch(() => {})
+      clearTimeout(timer); request.signal.removeEventListener('abort', abort); abort(); await proc.exited.catch(() => {}); cleanPrompt()
     }
   }
 }

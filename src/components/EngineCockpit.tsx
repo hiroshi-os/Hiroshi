@@ -32,6 +32,6 @@ export function ComposerDelivery({ snapshot, mode, onMode }: { snapshot: Snapsho
     </Button>
     {view.busy && <text style={{ fontSize: 11, color: secondary }}>{`${mode === 'steer' ? 'Next safe boundary' : 'When idle'} · ${view.pending} pending`}</text>}
     {view.queued > 0 && <text testId="execution-queue" style={{ fontSize: 11, color: secondary, whiteSpace: 'nowrap' }}>{`${view.phase} · ${view.queued} queued`}</text>}
-    {cli?.kind === 'cli' && <text testId="cli-response-mode" style={{ fontSize: 11, color: secondary, whiteSpace: 'nowrap' }}>{`${cli.adapter === 'agy' ? 'Agy' : 'Cursor'} · response only`}</text>}
+    {cli?.kind === 'cli' && <text testId="cli-response-mode" style={{ fontSize: 11, color: secondary, whiteSpace: 'nowrap' }}>{`${({ agy: 'Agy', cursor: 'Cursor', pi: 'Pi', grok: 'Grok' })[cli.adapter]} · response only`}</text>}
   </div>
 }

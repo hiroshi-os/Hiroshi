@@ -12,7 +12,7 @@
  * plain exception is a bug or a failure that must not be replayed.
  */
 
-import type { Message, InstructionSource } from './protocol'
+import type { Message, InstructionSource, AgentID } from './protocol'
 
 export interface RemoteModelOptions {
   name: string
@@ -24,7 +24,7 @@ export interface RemoteModelOptions {
 }
 
 export type ProviderPart =
-  | { kind: 'cli'; version: 1; adapter: 'agy' | 'cursor'; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
+  | { kind: 'cli'; version: 1; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }

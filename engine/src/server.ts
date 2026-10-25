@@ -14,7 +14,9 @@ import { timingSafeEqual } from 'node:crypto'
 
 import { EngineError, invalid, notFound, conflict } from './errors'
 import { Feed } from './feed'
+import type { ProviderRegistry } from './providers/registry'
 import type { ProviderCatalog } from './providers/catalog'
+import { ProviderError } from './provider'
 import type { Logger } from './log'
 import type { CreateSessionRequest, Health, InterruptRequest, PromptRequest, StartRunRequest, OperationRequest } from './protocol'
 import { ENGINE_NAME, FEED_PATH, matchOperation } from './protocol'
@@ -35,7 +37,8 @@ export interface ServerOptions {
   steps: Steps
   checkpoints?: Checkpoints
   tools?: Tools
-  catalog?: ProviderCatalog
+  catalog?: Pick<ProviderCatalog, 'models' | 'defaultModel' | 'has' | 'resolve'>
+  providers?: ProviderRegistry
   log: Logger
   token: string
   version: string
@@ -156,6 +159,19 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'providers':
+        if (!options.providers) throw notFound('provider setup')
+        return json(options.providers.snapshot(), status)
+      case 'refreshProviders':
+        if (!options.providers) throw notFound('provider setup')
+        if (!store.session(params.id!)) throw notFound('session')
+        return json(options.providers.refresh(params.id!), status)
+      case 'cancelProviderRefresh':
+        if (!options.providers) throw notFound('provider setup')
+        return json(options.providers.cancel(), status)
+      case 'updateProviders':
+        if (!options.providers) throw notFound('provider setup')
+        return json(options.providers.update(await body<OperationRequest<'updateProviders'>>(request)), status)
       case 'workspaceList':
       case 'workspaceFile':
       case 'workspaceReview':
@@ -277,6 +293,7 @@ export function startServer(
         return await handle(request)
       } catch (error) {
         if (error instanceof ExecutionError) return failure(error.code, error.message, error.code.includes('timeout') ? 408 : 429)
+        if (error instanceof ProviderError) return failure(error.code, error.message, 400)
         if (error instanceof EngineError) return failure(error.code, error.message, error.status)
         log.error('request failed', {
           method: request.method,
