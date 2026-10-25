@@ -790,6 +790,10 @@ async function main(): Promise<void> {
       note('the open Files tab and window preferences survived another launch')
       const savedFavorites = JSON.parse(readFileSync(path.join(home, 'model-favorites.json'), 'utf8')).ids as string[]
       check(savedFavorites.length === 1, 'the favorite was not stored in the test profile')
+      await restored.app.clock.pause()
+      await restored.app.clock.fastForward(320)
+      await restored.app.clock.resume()
+      await settle(restored.app.getByTestId('model-picker'))
       await restored.app.getByTestId('model-picker').click()
       await restored.app.getByTestId('model-favorites').waitFor()
       await restored.app.getByTestId('model-favorites').click()
