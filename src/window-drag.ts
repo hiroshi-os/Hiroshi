@@ -40,6 +40,7 @@ const DOUBLE_CLICK_SLOP_PX = 5
 
 type User32Symbols = {
   FindWindowW: (className: any, windowName: any) => any
+  FindWindowExW: (parent: any, after: any, className: any, windowName: any) => any
   GetForegroundWindow: () => any
   GetWindowThreadProcessId: (hwnd: any, pidOut: any) => number
   GetWindowRect: (hwnd: any, rectOut: any) => boolean
@@ -80,6 +81,7 @@ function loadUser32(): { symbols: User32Symbols } | null {
     const { dlopen, FFIType } = require('bun:ffi')
     user32 = dlopen('user32.dll', {
       FindWindowW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+      FindWindowExW: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
       GetForegroundWindow: { args: [], returns: FFIType.ptr },
       GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
       GetWindowRect: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
@@ -164,12 +166,14 @@ export function resolveWindowHandle(event?: any): any {
     if (foreground && isOwnWindow(foreground)) return foreground
 
     const title = Buffer.from(`${WINDOW_TITLE}\0`, 'utf16le')
-    const found = lib.symbols.FindWindowW(null, title)
-    if (!found || !isOwnWindow(found)) return null
     const x = typeof event?.x === 'number' ? event.x : null
     const y = typeof event?.y === 'number' ? event.y : null
-    if (x !== null && y !== null && !containsClientPoint(found, x, y)) return null
-    return found
+    let found = lib.symbols.FindWindowW(null, title)
+    while (found) {
+      if (isOwnWindow(found) && (x === null || y === null || containsClientPoint(found, x, y))) return found
+      found = lib.symbols.FindWindowExW(null, found, null, title)
+    }
+    return null
   } catch {
     return null
   }

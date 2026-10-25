@@ -12,6 +12,7 @@ function windows() {
     GetMonitorInfoW: { args: [t.ptr, t.ptr], returns: t.bool },
     SetWindowPos: { args: [t.ptr, t.ptr, t.i32, t.i32, t.i32, t.i32, t.u32], returns: t.bool },
     ShowWindow: { args: [t.ptr, t.i32], returns: t.bool },
+    IsWindowVisible: { args: [t.ptr], returns: t.bool },
   }).symbols
   return native
 }
@@ -73,10 +74,22 @@ export function restoreGeometry(state: WindowState): boolean {
 export function trackWindow(renderer: { getWindowSize: () => { width: number; height: number } }, workspace: string): () => void {
   installWindowDrag()
   let restored = false, last = ''
+  let visibilityChecked = false, visibilityAttempts = 0
   const saved = readWindowState(workspace)
   const tick = () => {
     try {
       if (!restored) { restoreGeometry(saved); restored = true }
+      // Bun's script runner and the packaged supervisor suppress console
+      // windows with STARTUPINFO/SW_HIDE. Windows also applies that flag to
+      // GPUI's first ShowWindow call, leaving an otherwise healthy GUI hidden.
+      // Show our own HWND once; never undo a later user minimize/hide action.
+      if (process.platform === 'win32' && !visibilityChecked && visibilityAttempts++ < 8) {
+        const hwnd = resolveWindowHandle()
+        if (hwnd) {
+          if (!windows().IsWindowVisible(hwnd)) windows().ShowWindow(hwnd, saved.maximized ? 3 : process.env.GPUIX_BACKGROUND === '1' ? 4 : 5)
+          visibilityChecked = true
+        }
+      }
       let geometry: Partial<WindowState> = readGeometry() ?? renderer.getWindowSize()
       if (process.platform === 'darwin' && geometry.maximized) {
         const normal = readWindowState(workspace)

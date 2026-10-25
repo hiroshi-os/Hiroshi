@@ -19,6 +19,15 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.18.1] - Unreleased
+
+### Fixed
+
+- Show the Windows app window when launched through `bun dev` or the packaged
+  launcher, even when the parent suppresses console windows. Startup visibility
+  handling preserves subsequent minimize actions and checks window ownership.
+- Launch smoke tests now check actual OS visibility for both entry paths.
+
 ## [0.18.0] - Unreleased
 
 ### Changed
