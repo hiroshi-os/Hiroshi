@@ -5,6 +5,7 @@ const state = process.env.HIROSHI_PROBE_STATE && existsSync(process.env.HIROSHI_
 if (process.env.HIROSHI_PROBE_LOG) appendFileSync(process.env.HIROSHI_PROBE_LOG, JSON.stringify({ id, args, cwd: process.cwd() }) + '\n')
 if (args.includes('--help')) {
   if (state.hang) { await Bun.sleep(20000); process.exit(0) }
+  if (state.noise) { console.log('x'.repeat(128 * 1024 + 1)); await Bun.sleep(20000); process.exit(0) }
   const help = state.unsupported ? 'Unsupported old CLI' : '--input-format --output-format --disable-slash-commands --print --stream-partial-output --mode ask --no-extensions --no-mcp --no-tools --no-session --no-approve --tools --deny --no-subagents --prompt-file'
   if (id === 'agy') console.error(help); else console.log(help)
   process.exit(0)

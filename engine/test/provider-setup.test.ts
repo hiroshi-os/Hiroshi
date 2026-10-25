@@ -7,7 +7,9 @@ import { startDaemon, tempHome, until } from './harness'
 import { discoverCommand } from '../src/providers/discovery'
 import { initialSnapshot, apply } from '../../src/engine/reducer'
 import { CliProvider } from '../src/providers/cli'
-import { DEFAULT_EXECUTION_LIMITS } from '../src/execution'
+import { DEFAULT_EXECUTION_LIMITS, ExecutionBudget } from '../src/execution'
+import { Store } from '../src/store'
+import { ProviderRegistry } from '../src/providers/registry'
 
 const fixture = pathToFileURL(join(import.meta.dir, 'fixtures/provider-cli.ts')).href
 function setup(home: string) {
@@ -126,6 +128,13 @@ test('refresh cancellation keeps prior evidence; expired auth is reflected witho
     state = await refresh(daemon, session.id)
     expect(state.agents.find((row) => row.id === 'cursor')!.status).toBe('signed_out')
     expect(JSON.stringify(state)).not.toContain('private-fixture-secret')
+    writeFileSync(join(home, 'probe-state'), JSON.stringify({ unsupported: true }))
+    state = await refresh(daemon, session.id)
+    expect(state.agents.find((row) => row.id === 'cursor')).toMatchObject({ status: 'unsupported', models: [] })
+    expect(state.defaultModel).toBe(model)
+    writeFileSync(join(home, 'probe-state'), JSON.stringify({ noise: true }))
+    state = await refresh(daemon, session.id)
+    expect(state.agents.find((row) => row.id === 'cursor')).toMatchObject({ status: 'unsupported', models: [] })
     await expect(daemon.client.updateProviders({ revision: 0, agent: 'cursor', enabled: false })).rejects.toMatchObject({ code: 'provider_revision' })
   } finally { await daemon.stop() }
 }, 30000)
@@ -135,6 +144,39 @@ test('empty PATH does not search the working directory or execute wrappers', () 
   expect(discoverCommand('pi', { PATH: '', HOME: home, USERPROFILE: home })).toBeNull()
 })
 
+test('a queued request uses current workspace trust rather than the adapter captured at admission', async () => {
+  const home = tempHome(), commands = setup(home), store = Store.open(join(home, 'engine.sqlite'))
+  store.migrate()
+  store.createSession({ id: 'session', cwd: home, title: 'Test', createdAt: 1, updatedAt: 1 })
+  const budget = new ExecutionBudget(store, { ...DEFAULT_EXECUTION_LIMITS, maxActive: 1, minFreeMemoryMB: 128 })
+  const registry = new ProviderRegistry(home, store, budget, { ...process.env, ...env(home) })
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let holding: Promise<void> | undefined, queued: Promise<void> | undefined
+  try {
+    let state = registry.snapshot()
+    for (const agent of ['agy', 'pi', 'grok'] as const) state = registry.update({ revision: state.revision, agent, enabled: false })
+    registry.update({ revision: state.revision, agent: 'cursor', command: commands.cursor, trustWorkspace: true })
+    registry.refresh('session'); await until(() => !registry.snapshot().refreshing, 20000)
+    state = registry.snapshot()
+    const model = state.agents.find((row) => row.id === 'cursor')!.models[0]!.catalogID
+    const captured = registry.resolve(model)
+    holding = budget.execute({ id: 'holding', sessionID: 'session', kind: 'maintenance' }, new AbortController().signal, async () => gate)
+    await until(() => budget.status().active === 1)
+    queued = budget.execute({ id: 'queued', sessionID: 'session', kind: 'model' }, new AbortController().signal, async (signal) => {
+      await captured.stream({ cwd: home, signal, sessionID: 'session', stepID: 'step', provider: captured.name, model,
+        messages: [], instructions: [], tools: [], reservedOutput: 1024 }, () => {})
+    })
+    expect(store.executions().find((value) => value.id === 'queued')!.state).toBe('queued')
+    registry.update({ revision: state.revision, agent: 'cursor', trustWorkspace: false })
+    release(); await holding; await queued
+    const calls = readFileSync(join(home, 'probe-log'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    expect(calls.at(-1).args).toContain('--print')
+    expect(calls.at(-1).args).not.toContain('--trust')
+  } finally {
+    release(); budget.stop(); await Promise.allSettled([holding, queued]); await registry.stop(); store.close()
+  }
+}, 30000)
 for (const adapter of ['pi', 'grok'] as const) test(`${adapter}: incomplete, cancelled, failed and expired-auth responses never succeed`, async () => {
   const home = tempHome(), commands = setup(home)
   const cli = new CliProvider({ name: adapter, model: `${adapter}/chat`, providerModel: 'default', adapter, command: commands[adapter],

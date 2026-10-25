@@ -119,7 +119,9 @@ export class ProviderRegistry {
     }
     return { ...provider, check, stream: async (request, onText, onPart) => {
       check()
-      try { await provider.stream(request, onText, onPart) }
+      // Settings can change while this request waits for a shared slot.
+      // Use the current adapter so revoked workspace trust is respected too.
+      try { await this.#catalog.resolve(id).stream(request, onText, onPart) }
       catch (error) {
         if (error instanceof ProviderError && error.code === 'cli_authentication') {
           const row = this.#saved.agents.find((agent) => agent.models.some((model) => model.catalogID === id))
