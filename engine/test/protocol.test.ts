@@ -28,6 +28,8 @@ import {
  */
 const everyOperation: { [Name in OperationName]: Name } = {
   providers: 'providers',
+  projects: 'projects',
+  openProject: 'openProject',
   refreshProviders: 'refreshProviders',
   cancelProviderRefresh: 'cancelProviderRefresh',
   updateProviders: 'updateProviders',

@@ -8,6 +8,7 @@ import type { Store } from '../store'
 import { canonical, digest, type ToolRegistry } from './registry'
 import { permissionPolicy } from './policy'
 import { ExecutionBudget } from '../execution'
+import { assertWorkspace } from '../projects'
 
 const PREVIEW_BYTES = 16 * 1024
 
@@ -126,7 +127,7 @@ export class Tools {
   #scope(call: ToolCall): string {
     let input: unknown
     try { input = JSON.parse(call.input) } catch { input = call.input }
-    return digest(canonical([call.cwd, call.tool, call.revision, input]))
+    return digest(canonical([call.cwd, this.store.session(call.sessionID)?.workspaceIdentity, call.tool, call.revision, input]))
   }
 
   async #drain(sessionID: string): Promise<void> {
@@ -140,6 +141,7 @@ export class Tools {
       let input: unknown
       try {
         input = JSON.parse(call.input)
+        assertWorkspace(this.store, sessionID)
         if (!entry.input(input)) throw new Error('tool input does not match its declared schema')
         const cwd = realpathSync(call.cwd!)
         if (cwd !== call.cwd) { call = { ...call, cwd }; this.#update(call) }
@@ -194,6 +196,7 @@ export class Tools {
       try {
         const effect = async (signal: AbortSignal) => {
           signal.throwIfAborted()
+          assertWorkspace(this.store, sessionID)
           if (this.store.toolCall(call.id)?.resultMessageID) throw new Error('this tool call already ended')
           // Waiting for capacity must not preserve a revoked policy or stale tool.
           const currentPolicy = permissionPolicy(this.home, call.cwd!, call.tool)

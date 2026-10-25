@@ -1,5 +1,6 @@
 /** Active model history is a view. The message table is never edited. */
 import { createHash, randomUUID } from 'node:crypto'
+import { assertWorkspace } from './projects'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ProviderError, type Provider, type ProviderRequest } from './provider'
@@ -26,6 +27,7 @@ export class Context {
   ) {}
 
   prepare(step: Step, force = false): Omit<ProviderRequest, 'signal'> {
+    assertWorkspace(this.store, step.sessionID)
     const limits = this.provider.context ?? { window: 32768, reservedOutput: 1024 }
     if (
       !Number.isSafeInteger(limits.window) || !Number.isSafeInteger(limits.reservedOutput) ||

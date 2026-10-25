@@ -14,6 +14,7 @@ import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { invalid, notFound } from './errors'
+import { directory, project, assertWorkspace } from './projects'
 import { Inbox, type Admitted } from './inbox'
 import type { Logger } from './log'
 import type { CreateSessionRequest, PromptRequest, Session, SessionDetail } from './protocol'
@@ -43,12 +44,27 @@ export class Sessions {
     this.#log = log.child('sessions')
     this.#defaultCwd = defaults.cwd
     this.#inbox = defaults.inbox ?? new Inbox(store, log)
+    for (const session of store.sessions()) {
+      if (session.workspaceIdentity) continue
+      try {
+        const observed = directory(session.cwd)
+        store.record({ type: 'session.updated', sessionID: session.id, data: { session: { ...session, cwd: observed.cwd, workspaceIdentity: observed.identity } },
+          project: () => store.bindWorkspace(session.id, observed.identity, observed.cwd) })
+      } catch {
+        // Do not adopt an unrelated folder that later appears at this path.
+        store.record({ type: 'session.updated', sessionID: session.id, data: { session: { ...session, workspaceIdentity: 'unavailable-at-upgrade' } },
+          project: () => store.bindWorkspace(session.id, 'unavailable-at-upgrade') })
+      }
+    }
   }
 
   create(input: CreateSessionRequest = {}): Session {
-    const cwd = path.resolve(input.cwd || this.#defaultCwd)
+    let observed: ReturnType<typeof directory>
+    try { observed = directory(path.resolve(input.cwd || this.#defaultCwd)) }
+    catch { throw invalid('bad_working_directory', 'Choose an existing folder that you can read.') }
+    const { cwd, identity: workspaceIdentity } = observed
     if (input.reuseWorkspace === true) {
-      const existing = this.#store.sessions().find((session) => session.cwd === cwd)
+      const existing = this.#store.sessions().find((session) => session.cwd === cwd && session.workspaceIdentity === workspaceIdentity)
       if (existing) return existing
     }
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
@@ -58,7 +74,7 @@ export class Sessions {
     const at = Date.now()
     const id = newSessionID()
     const title = input.title?.trim() || DEFAULT_TITLE
-    const session = { id, title, cwd, createdAt: at, updatedAt: at }
+    const session = { id, title, cwd, workspaceIdentity, createdAt: at, updatedAt: at }
 
     this.#store.record({
       type: 'session.created',
@@ -74,6 +90,11 @@ export class Sessions {
 
   list(): Session[] {
     return this.#store.sessions()
+  }
+
+  projects() {
+    const seen = new Set<string>()
+    return this.list().map(project).filter((info) => { if (seen.has(info.id)) return false; seen.add(info.id); return true })
   }
 
   detail(id: string): SessionDetail {
@@ -92,6 +113,8 @@ export class Sessions {
   prompt(id: string, input: PromptRequest): Admitted {
     const session = this.#store.session(id)
     if (!session) throw notFound('session')
+    // A replayed admission is still the same operation when a folder is gone.
+    if (!input.key || !this.#store.inboxByKey(id, input.key)) assertWorkspace(this.#store, id)
 
     const rename = session.title === DEFAULT_TITLE ? titleFromText(input.text ?? '') : null
     const admitted = this.#inbox.admit(

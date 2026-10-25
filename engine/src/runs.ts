@@ -25,6 +25,7 @@ import { resolveShell } from './shell'
 import type { Store } from './store'
 import { ExecutionBudget, ExecutionError } from './execution'
 import { spawnOwned } from './process'
+import { assertWorkspace } from './projects'
 
 /** Per run. Past this the output stops being stored and the run is marked. */
 const DEFAULT_OUTPUT_LIMIT = Number(process.env.HIROSHI_OUTPUT_LIMIT) || 512 * 1024
@@ -224,6 +225,7 @@ export class Runs {
     this.#controllers.set(run.id, controller)
     const effect = async (signal: AbortSignal) => {
       signal.throwIfAborted()
+      assertWorkspace(this.#store, run.sessionID)
       if (this.#store.run(run.id)?.status !== 'running') throw new Error('the command already ended')
       const env = program ? { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' } : process.env
       const proc = spawnOwned({ cmd: commands[0]!, cwd: run.cwd, env, limits: this.#budget?.limits })
@@ -465,6 +467,7 @@ export class Runs {
           this.#finish(run, status, code, active?.abortReason ? { error: active.abortReason } : {})
           break
         }
+        assertWorkspace(this.#store, run.sessionID)
         proc = spawnOwned({ cmd: remaining.shift()!, cwd: run.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_TERMINAL_PROMPT: '0' }, limits: this.#budget?.limits })
         if (active) active.proc = proc
       }

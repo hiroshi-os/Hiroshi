@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, symlinkSync, unlinkSync, openSync, writeFileSync, fsyncSync, closeSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { conflict, invalid, notFound } from './errors'
+import { assertWorkspace } from './projects'
 import type { Checkpoint, GitEntry, InboxItem, Rewind } from './protocol'
 import type { Store } from './store'
 
@@ -240,6 +241,7 @@ export class Checkpoints {
   }
 
   #capture(sessionID: string, kind: Checkpoint['kind'], label: string, promptID: string | null): Checkpoint {
+    assertWorkspace(this.store, sessionID)
     const session = this.store.session(sessionID)
     if (!session) throw notFound('session')
     const id = `checkpoint_${randomUUID()}`
@@ -249,6 +251,7 @@ export class Checkpoints {
   }
 
   restore(sessionID: string, checkpointID: string, key: string): Rewind {
+    assertWorkspace(this.store, sessionID)
     if (typeof checkpointID !== 'string' || !checkpointID) throw invalid('bad_checkpoint', 'checkpointID is required')
     if (typeof key !== 'string' || !key.trim() || key.length > 128) throw invalid('bad_key', 'rewind requires an idempotency key up to 128 characters')
     const existing = this.store.rewinds(sessionID).find((rewind) => rewind.key === key)
@@ -288,6 +291,7 @@ export class Checkpoints {
   }
 
   #complete(rewind: Rewind): Rewind {
+    assertWorkspace(this.store, rewind.sessionID)
     try {
       const checkpoint = this.store.checkpoint(rewind.checkpointID)!
       const trees = new WorkspaceTrees(this.home, checkpoint.cwd)
