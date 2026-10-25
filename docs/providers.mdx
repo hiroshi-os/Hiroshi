@@ -70,6 +70,17 @@ metadata and Cursor's JSON sign-in status; refresh never sends an AI prompt or
 opens login. Cancel preserves the last completed inventory. Startup loads the
 cache without launching CLIs and resets cached sign-in evidence to unknown.
 
+Each agent row shows its observed version, executable, listed model count and
+status. Click the row to expand manual paths and setup controls; the switch
+enables or disables the agent.
+
+The model picker in Settings and the composer shares a searchable catalog.
+Use the icon rail to filter by provider, or star models and open the favorites
+filter. Stars do not select a model or change the default. Favorites persist in
+`model-favorites.json` in the engine data directory and reload when the picker
+opens. In search, Up/Down chooses a result, Enter selects it, and Escape closes
+the picker.
+
 Discovery searches absolute PATH entries and known user installation locations.
 Windows Cursor and Pi wrappers are resolved through known Node installation
 layouts; wrapper scripts are never interpreted. A manual absolute executable

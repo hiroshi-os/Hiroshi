@@ -383,6 +383,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     // The main composer uses the engine catalog, and its transcript draws
     // provider failures and real streamed answers rather than demo replies.
     await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-restricted/chat').waitFor()
     await app.getByTestId('model-restricted/chat').click()
     const composer = app.getByTestId('composer')
     await composer.fill('window-provider-denial')
@@ -398,6 +399,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     await app.getByTestId('settings').click()
     await app.getByTestId('settings-section-providers').click()
     await app.getByTestId('provider-choose-default').click()
+    await app.getByTestId('provider-default-local/echo').waitFor()
     await app.getByTestId('provider-default-local/echo').click()
     await sleep(100)
     await app.getByTestId('settings-back').click()
@@ -433,6 +435,11 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     const providerState = await providerClient.providers()
     const discoveredModel = providerState.agents.find((agent) => agent.id === 'cursor')!.models[0]!.catalogID
     await app.getByTestId('provider-choose-default').click()
+    await app.getByTestId(`model-star-${discoveredModel}`).waitFor()
+    await app.getByTestId(`model-star-${discoveredModel}`).click()
+    check((await providerClient.providers()).defaultModel === providerState.defaultModel, 'starring a model changed the default')
+    await app.getByTestId('model-favorites').click()
+    try { await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-model-picker.png') }) } catch {}
     await app.getByTestId(`provider-default-${discoveredModel}`).click()
     await waitUntil(async () => (await providerClient.providers()).defaultModel === discoveredModel, 'the default selection to persist')
     await app.getByTestId('settings-back').click()
@@ -450,6 +457,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
 
     // Real tool requests travel through the daemon and the cockpit's gate.
     await app.getByTestId('model-picker').click()
+    await app.getByTestId('model-fixture/tools').waitFor()
     await app.getByTestId('model-fixture/tools').click()
     const record = readRegistry(localPaths(home).registry)!
     const client = engineClient(record)
@@ -780,6 +788,14 @@ async function main(): Promise<void> {
     try {
       await restored.app.getByTestId('workspace-files').waitFor({ timeoutMs: WINDOW_DEADLINE_MS })
       note('the open Files tab and window preferences survived another launch')
+      const savedFavorites = JSON.parse(readFileSync(path.join(home, 'model-favorites.json'), 'utf8')).ids as string[]
+      check(savedFavorites.length === 1, 'the favorite was not stored in the test profile')
+      await restored.app.getByTestId('model-picker').click()
+      await restored.app.getByTestId('model-favorites').waitFor()
+      await restored.app.getByTestId('model-favorites').click()
+      await restored.app.getByTestId(`model-${savedFavorites[0]}`).waitFor()
+      await restored.app.getByTestId('model-search').press('escape')
+      note('model favorites survived a complete window restart')
     } finally { await restored.close() }
 
 

@@ -25,10 +25,10 @@ const agent: AgentInfo = { id: 'cursor', name: 'Cursor Agent', enabled: true, tr
     const app = await connectTest(renderer)
     try {
       await app.getByTestId('provider-status-cursor').waitFor()
-      expect(await app.getByTestId('provider-evidence-cursor').textContent()).toContain('Never checked')
-      expect(await app.getByTestId('provider-default').textContent()).toContain('Unavailable selection: missing/old')
-      await app.getByTestId('providers-refresh').click()
       await app.getByTestId('provider-setup-cursor').click()
+      expect(await app.getByTestId('provider-evidence-cursor').textContent()).toContain('Never checked')
+      expect(await app.getByTestId('provider-default').textContent()).toContain('Unavailable model: missing/old')
+      await app.getByTestId('providers-refresh').click()
       await app.getByTestId('provider-path-cursor').fill('/absolute/node')
       await app.getByTestId('provider-entry-cursor').fill('/absolute/agent.js')
       await app.getByTestId('provider-save-cursor').click()

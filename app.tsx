@@ -14,6 +14,7 @@
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
 import { ProviderSettings } from './src/components/ProviderSettings'
 import { ProjectSwitcher } from './src/components/ProjectSwitcher'
+import { CatalogPicker } from './src/components/CatalogPicker'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
@@ -44,6 +45,7 @@ import {
   SelectTrigger,
   useGpuix,
   useWindowInsets,
+  useWindowSize,
   type Props,
   type PublicInstance,
   type StyleDesc,
@@ -1645,6 +1647,7 @@ function SettingsView({
   const [activeSection, setActiveSection] = useState(initialSection)
   const [searchQuery, setSearchQuery] = useState('')
   const { renderer } = useGpuix()
+  const windowSize = useWindowSize()
 
   // General state
   const [shareUsage, setShareUsage] = useState(true)
@@ -1844,9 +1847,9 @@ function SettingsView({
             flexGrow: 1,
             minHeight: 0,
             overflowY: 'scroll',
-            paddingTop: 8,
-            paddingLeft: activeSection === 'skills' ? 0 : 44,
-            paddingRight: activeSection === 'skills' ? 0 : 44,
+            paddingTop: activeSection === 'providers' ? 16 : 8,
+            paddingLeft: activeSection === 'skills' ? 0 : activeSection === 'providers' ? windowSize.width < 1050 ? 32 : 84 : 44,
+            paddingRight: activeSection === 'skills' ? 0 : activeSection === 'providers' ? windowSize.width < 1050 ? 32 : 84 : 44,
             paddingBottom: 40,
           }}
         >
@@ -1856,7 +1859,7 @@ function SettingsView({
                 display: 'flex',
                 flexDirection: 'column',
                 width: '100%',
-                maxWidth: 720,
+                maxWidth: activeSection === 'providers' ? 760 : 720,
                 gap: 14,
               }}
             >
@@ -4533,59 +4536,7 @@ function ChipSelect({
 }
 
 export function ModelPicker({ value, onChange, models = MODELS }: { value: string; onChange: (next: string) => void; models?: typeof MODELS }) {
-  const selected = models.find((model) => model.id === value) ?? { id: value, label: value ? `Unavailable model: ${value}` : 'No models available', group: '', icon: 'sparkle' as const }
-  const groups = useMemo(() => {
-    const out: { name: string; items: typeof MODELS }[] = []
-    for (const model of models) {
-      const last = out[out.length - 1]
-      if (last && last.name === model.group) last.items.push(model)
-      else out.push({ name: model.group, items: [model] })
-    }
-    return out
-  }, [models])
-
-  return (
-    <ChipSelect
-      value={value}
-      onChange={onChange}
-      items={models.map((model) => ({ value: model.id, label: model.label }))}
-      icon={selected.icon}
-      label={selected.label}
-      testId="model-picker"
-    >
-      {groups.map((group, index) => (
-        <div key={group.name} style={{ display: 'flex', flexDirection: 'column' }}>
-          {index > 0 && (
-            <div style={{ height: 1, backgroundColor: C.border, marginTop: 4, marginBottom: 4 }} />
-          )}
-          <SelectLabel
-            style={{
-              height: 22,
-              paddingLeft: 8,
-              paddingRight: 8,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <text style={{ fontSize: 11.5, fontWeight: 500, color: C.ghost }}>{group.name}</text>
-          </SelectLabel>
-          {group.items.map((model) => (
-            <SelectItem
-              asChild
-              key={model.id}
-              value={model.id}
-              testId={`model-${model.id}`}
-              style={(state: any) => menuItemStyle(state)}
-            >
-              {(state: any) => (
-                <MenuRow label={model.label} icon={model.icon} selected={state.selected} />
-              )}
-            </SelectItem>
-          ))}
-        </div>
-      ))}
-    </ChipSelect>
-  )
+  return <CatalogPicker value={value} onChange={onChange} choices={models} />
 }
 
 function ReasoningPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
