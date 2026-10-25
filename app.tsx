@@ -5576,7 +5576,10 @@ export function ChatApp({
         initialSection={settingsInitialSection}
         engine={engineEnabled ? engineView.snapshot : undefined}
         onRestartEngine={engineView.restart}
-        providerEngine={engineEnabled ? engineView : undefined}
+        providerEngine={engineEnabled ? { ...engineView, updateProviders: async (input) => {
+          await engineView.updateProviders(input)
+          if (input.defaultModel !== undefined) setEngineModel(null)
+        } } : undefined}
       />
     )
   }

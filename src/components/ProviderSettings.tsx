@@ -72,8 +72,8 @@ export function ProviderSettings({ engine }: { engine?: EngineHandle }) {
       <Action id="provider-choose-default" label={choosing ? 'Hide model choices' : 'Change default'} disabled={!!busy} onClick={() => setChoosing(!choosing)} />
       {choosing && <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflow: 'scroll', flexShrink: 0 }}>
       {state.models.map((model) => <div key={model.id} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <text style={{ flexGrow: 1, fontSize: 12, color: muted }}>{`${model.label}${model.reason ? ` · ${model.reason}` : ''}`}</text>
-        <Action id={`provider-default-${model.id}`} label={model.id === state.defaultModel ? 'Selected' : 'Use by default'} disabled={!!busy || !!model.reason || model.id === state.defaultModel}
+        <text style={{ flexGrow: 1, fontSize: 12, color: muted }}>{`${model.label}${model.id === state.defaultModel ? ' · current default' : ''}${model.reason ? ` · ${model.reason}` : ''}`}</text>
+        <Action id={`provider-default-${model.id}`} label="Use by default" disabled={!!busy || !!model.reason}
           onClick={() => run(async () => { await update({ defaultModel: model.id }); setChoosing(false) })} />
       </div>)}
       </div>}

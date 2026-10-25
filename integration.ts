@@ -392,8 +392,15 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     }, 'a policy denial in the main transcript')
     note('the main transcript shows the denied provider')
 
-    await app.getByTestId('model-picker').click()
-    await app.getByTestId('model-local/echo').click()
+    // An explicit Settings selection also clears a rejected composer choice,
+    // including reselecting the existing saved default.
+    await app.getByTestId('settings').click()
+    await app.getByTestId('settings-section-providers').click()
+    await app.getByTestId('provider-choose-default').click()
+    await app.getByTestId('provider-default-local/echo').click()
+    await sleep(100)
+    await app.getByTestId('settings-back').click()
+    await waitUntil(async () => (await app.getByTestId('model-picker').textContent()).includes('Local echo') || false, 'an explicit Settings selection to clear the rejected composer choice')
     await composer.fill('window-main-composer')
     await composer.press('enter')
     await waitUntil(async () => {
