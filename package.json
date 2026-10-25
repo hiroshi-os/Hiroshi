@@ -27,8 +27,7 @@
     "ajv": "^8.20.0",
     "htmlparser2": "^12.0.0",
     "react": "^19.2.4",
-    "safe-mdx": "1.14.0",
-    "undici": "8.12.3"
+    "safe-mdx": "1.14.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
