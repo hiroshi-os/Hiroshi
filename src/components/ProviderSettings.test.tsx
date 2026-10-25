@@ -37,10 +37,13 @@ const agent: AgentInfo = { id: 'cursor', name: 'Cursor Agent', enabled: true, tr
       await new Promise((resolve) => setTimeout(resolve, 30))
       await app.getByTestId('provider-enable-cursor').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
+      await app.getByTestId('provider-setup-cursor').click()
       await app.getByTestId('provider-choose-default').click()
-      await app.getByTestId('provider-default-cli/chat').waitFor()
+      try { await app.getByTestId('provider-default-cli/chat').waitFor({ timeoutMs: 1000 }) }
+      catch (error) { console.error('Settings picker bounds:', await app.getByTestId('provider-choose-default').bounds(), 'Painted text:', renderer.getPaintedText()); throw error }
       await app.getByTestId('provider-default-cli/chat').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
+      await app.getByTestId('provider-setup-cursor').click()
       await app.getByTestId('provider-auto-cursor').click()
       expect(calls).toEqual(['refresh', { agent: 'cursor', command: ['/absolute/node', '/absolute/agent.js'] },
         { agent: 'cursor', trustWorkspace: true }, { agent: 'cursor', enabled: false }, { defaultModel: 'cli/chat' }, { agent: 'cursor', command: null }])
