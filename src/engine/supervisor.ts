@@ -12,6 +12,7 @@
  */
 
 import { ENGINE_VERSION, PROTOCOL_VERSION, type Health } from '../../engine/src/protocol'
+import { daemonFetch } from '../../engine/src/local-transport'
 import { packagedBuild, allowEngineSpawn, allowSourceRuntime } from '../shell/runtime'
 import { discover, localPaths, probe, readRegistry, processAlive, type LocalPaths } from './discovery'
 
@@ -144,6 +145,7 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
   const timeoutMs = options.timeoutMs ?? 20_000
 
   const existing = await discover(paths.registry)
+  if (existing.state === 'unreachable') return { status: 'failed', reason: existing.reason }
   if (existing.state === 'running') {
     if (existing.health.protocol !== PROTOCOL_VERSION || existing.health.version !== ENGINE_VERSION) {
       return {
@@ -188,6 +190,9 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
     }
 
     if (exitCode !== null) {
+      // Another launch may hold the startup lock before writing its registry.
+      // Wait for that owner within the existing deadline; do not respawn.
+      if (exitCode === 3) continue
       const record = readRegistry(paths.registry)
       if (record && record.pid !== child.pid && processAlive(record.pid)) {
         // Another window won the race; adopt its daemon.
@@ -205,7 +210,9 @@ export async function ensureEngine(options: EnsureOptions = {}): Promise<AttachR
     }
   }
 
-  return { status: 'failed', reason: `the engine did not start within ${Math.round(timeoutMs / 1000)}s` }
+  return { status: 'failed', reason: exitCode === 3
+    ? 'another live process holds the daemon startup lock but did not publish a reachable engine; no replacement was started'
+    : `the engine did not start within ${Math.round(timeoutMs / 1000)}s` }
 }
 
 /** Ask the daemon to stop and wait for it to be gone. */
@@ -215,7 +222,7 @@ export async function stopEngine(options: EnsureOptions = {}): Promise<boolean> 
   if (!record) return true
 
   try {
-    await fetch(`${record.url}/v1/shutdown`, {
+    await daemonFetch(`${record.url}/v1/shutdown`, {
       method: 'POST',
       headers: { authorization: `Bearer ${record.token}` },
       signal: AbortSignal.timeout(3000),

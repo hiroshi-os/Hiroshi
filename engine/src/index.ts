@@ -33,6 +33,7 @@ import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { ProviderRegistry } from './providers/registry'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
+import { daemonFetch } from './local-transport'
 import {
   acquireStartLock,
   clearRegistry,
@@ -94,6 +95,7 @@ function humanDuration(ms: number): string {
 }
 
 function describe(discovery: Discovery, paths: EnginePaths): string {
+  if (discovery.state === 'unreachable') return `${ENGINE_NAME} is unreachable\n  ${discovery.reason}`
   if (discovery.state === 'running') {
     const { record, health } = discovery
     return [
@@ -126,6 +128,11 @@ async function serve(flags: Flags): Promise<number> {
   const log = createLogger(paths.log)
 
   const existing = await discover(paths.registry)
+  if (existing.state === 'unreachable') {
+    log.warn('live engine is unreachable; refusing a second daemon', { pid: existing.record.pid })
+    process.stderr.write(`${ENGINE_NAME}: ${existing.reason}\n`)
+    return 4
+  }
   if (existing.state === 'running') {
     log.info('engine already running', { url: existing.record.url, pid: existing.record.pid })
     process.stdout.write(`${ENGINE_NAME} already running at ${existing.record.url} (pid ${existing.record.pid})\n`)
@@ -325,6 +332,10 @@ async function status(flags: Flags): Promise<number> {
 async function stop(flags: Flags): Promise<number> {
   const paths = resolvePaths(flags)
   const discovery = await discover(paths.registry)
+  if (discovery.state === 'unreachable') {
+    process.stderr.write(`${ENGINE_NAME}: ${discovery.reason}\n`)
+    return 4
+  }
   if (discovery.state !== 'running') {
     removeRegistry(paths.registry)
     process.stdout.write(`${ENGINE_NAME} is not running\n`)
@@ -333,7 +344,7 @@ async function stop(flags: Flags): Promise<number> {
 
   const { record } = discovery
   try {
-    await fetch(`${record.url}/v1/shutdown`, {
+    await daemonFetch(`${record.url}/v1/shutdown`, {
       method: 'POST',
       headers: { authorization: `Bearer ${record.token}` },
       signal: AbortSignal.timeout(3000),

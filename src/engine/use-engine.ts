@@ -111,8 +111,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
         }
         if (attached.status === 'failed') {
           update((current) => ({ ...current, status: 'failed', error: attached.reason }))
-          await sleep(1500)
-          continue
+          return
         }
 
         const connection = engineClient(attached)

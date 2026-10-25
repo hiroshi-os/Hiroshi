@@ -9,6 +9,7 @@
 
 import { currentEngineHome } from '../../engine/src/home'
 import type { Health, RegistryRecord } from '../../engine/src/protocol'
+import { daemonFetch } from '../../engine/src/local-transport'
 
 export interface LocalPaths {
   home: string
@@ -58,7 +59,7 @@ export function processAlive(pid: number): boolean {
 export async function probe(
   record: RegistryRecord,
   timeoutMs = 2000,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = daemonFetch,
 ): Promise<Health | null> {
   try {
     const response = await fetchImpl(`${record.url}/v1/health`, {
@@ -76,12 +77,13 @@ export type Discovery =
   | { state: 'running'; record: RegistryRecord; health: Health }
   | { state: 'absent' }
   | { state: 'stale'; reason: string }
+  | { state: 'unreachable'; record: RegistryRecord; reason: string }
 
-export async function discover(file: string, fetchImpl: typeof fetch = fetch): Promise<Discovery> {
+export async function discover(file: string, fetchImpl: typeof fetch = daemonFetch): Promise<Discovery> {
   const record = readRegistry(file)
   if (!record) return { state: 'absent' }
   if (!processAlive(record.pid)) return { state: 'stale', reason: `pid ${record.pid} is gone` }
   const health = await probe(record, 2000, fetchImpl)
-  if (!health) return { state: 'stale', reason: `pid ${record.pid} did not answer on ${record.url}` }
+  if (!health) return { state: 'unreachable', record, reason: `pid ${record.pid} is alive but did not answer on ${record.url}; its discovery file was preserved` }
   return { state: 'running', record, health }
 }

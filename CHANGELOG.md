@@ -19,6 +19,17 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.18.2] - Unreleased
+
+### Fixed
+
+- Keep daemon discovery, RPC, feed and shutdown on direct loopback connections
+  even when an HTTP proxy is inherited. External proxy settings stay intact.
+- Preserve discovery records and startup locks owned by live daemons; an
+  unreachable health endpoint cannot cause replacement database writers.
+- Stop automatic startup retries after failure. Show the failure until the
+  user retries, and wait for a competing startup within a bounded deadline.
+
 ## [0.18.1] - Unreleased
 
 ### Fixed
