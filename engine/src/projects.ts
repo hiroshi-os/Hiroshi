@@ -20,7 +20,7 @@ export function project(session: Pick<Session, 'id' | 'cwd' | 'workspaceIdentity
     id: createHash('sha256').update(`${session.cwd}\0${session.workspaceIdentity ?? ''}`).digest('hex').slice(0, 24) }
   try {
     const current = directory(session.cwd)
-    if (current.cwd !== session.cwd || (session.workspaceIdentity && current.identity !== session.workspaceIdentity)) return { ...base,
+    if (session.workspaceIdentity ? current.identity !== session.workspaceIdentity : current.cwd !== session.cwd) return { ...base,
       status: 'changed', detail: 'This path now identifies a different folder. Open the folder explicitly to start a new task; earlier history retains its original workspace.' }
     return { ...base, status: 'ready', detail: null }
   } catch (error) {

@@ -6,6 +6,7 @@ import { readProjectSelection, saveProjectSelection, readWindowState, saveWindow
 import { Store } from '../src/store'
 import { Sessions } from '../src/sessions'
 import { silentLogger } from '../src/log'
+import { directory } from '../src/projects'
 
 function repo(home: string, name: string) {
   const cwd = join(home, name); mkdirSync(cwd)
@@ -37,7 +38,7 @@ test('two real projects isolate CLI cwd, instructions, history, files and checkp
     }
     expect((await daemon.client.workspaceFile({ id: sa.id, path: 'alpha.txt' })).text).toBe('alpha')
     await expect(daemon.client.workspaceFile({ id: sb.id, path: 'alpha.txt' })).rejects.toMatchObject({ code: 'not_found' })
-    expect(realpathSync((await daemon.client.workspaceReview({ id: sb.id })).root!)).toBe(b)
+    expect(directory((await daemon.client.workspaceReview({ id: sb.id })).root!).identity).toBe(directory(b).identity)
     const alpha = await daemon.client.session({ id: sa.id })
     expect(alpha.checkpoints[0]!.cwd).toBe(a)
     expect((await daemon.client.openProject({ cwd: a })).session.id).toBe(sa.id)

@@ -1164,11 +1164,13 @@ const Transcript = memo(function Transcript({
   testId?: string
   showActions?: boolean
 }) {
-  if (turns.length === 0 && !includeSafeMdx) {
-    return (
+  const empty = turns.length === 0 && !includeSafeMdx
+  // Keep the native list host alive across session changes. Replacing the
+  // entire host can retain cached rows in the packaged GPUIX renderer.
+  return <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, width: '100%' }}>
       <div
         style={{
-          display: 'flex',
+          display: empty ? 'flex' : 'none',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1194,16 +1196,12 @@ const Transcript = memo(function Transcript({
           {`What should we build in ${project}?`}
         </text>
       </div>
-    )
-  }
-
-  return (
     <virtual-list
       testId={testId}
       ref={listRef}
       overdraw={240}
       estimatedItemHeight={220}
-      style={{ flexGrow: 1, minHeight: 0, width: '100%' }}
+      style={{ display: empty ? 'none' : 'flex', flexGrow: 1, minHeight: 0, width: '100%' }}
     >
       {includeSafeMdx && (
         <TranscriptRow key="safemdx" first>
@@ -1229,7 +1227,7 @@ const Transcript = memo(function Transcript({
         </TranscriptRow>
       ))}
     </virtual-list>
-  )
+  </div>
 })
 
 // The native drag lives in its own module so the titlebar press handler and
@@ -5641,6 +5639,7 @@ export function ChatApp({
         }}
       >
         <Sidebar
+          key={engineEnabled ? `${actualWorkspace}:${activeEngineSession?.workspaceIdentity ?? 'connecting'}` : 'demo'}
           width={sidebarWidth}
           conversations={engineEnabled ? engineConversations : visibleConversations}
           activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
@@ -5721,7 +5720,6 @@ export function ChatApp({
           activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
         />
         <Transcript
-          key={engineEnabled ? engineView.snapshot.sessionID : activeId}
           turns={shownTurns}
           testId={engineEnabled ? 'engine-transcript' : undefined}
           showActions={!engineEnabled}

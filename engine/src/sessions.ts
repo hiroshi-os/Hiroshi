@@ -62,9 +62,12 @@ export class Sessions {
     let observed: ReturnType<typeof directory>
     try { observed = directory(path.resolve(input.cwd || this.#defaultCwd)) }
     catch { throw invalid('bad_working_directory', 'Choose an existing folder that you can read.') }
-    const { cwd, identity: workspaceIdentity } = observed
+    const workspaceIdentity = observed.identity
+    // Windows can report both a DOS short path and a long path for one folder.
+    // Prefer the already bound spelling while that directory still exists.
+    const existing = this.#store.sessions().find((session) => session.workspaceIdentity === workspaceIdentity && project(session).status === 'ready')
+    const cwd = existing?.cwd ?? observed.cwd
     if (input.reuseWorkspace === true) {
-      const existing = this.#store.sessions().find((session) => session.cwd === cwd && session.workspaceIdentity === workspaceIdentity)
       if (existing) return existing
     }
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
