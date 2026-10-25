@@ -5731,7 +5731,7 @@ export function ChatApp({
           project={engineEnabled ? shownProject : projectLabel}
         />
         {engineEnabled && (
-          <CheckpointHistory checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
+          <CheckpointHistory key={engineView.snapshot.sessionID} checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
             messages={engineView.snapshot.messages} activeMessageIDs={engineView.snapshot.activeMessageIDs}
             checkpointError={engineView.snapshot.checkpointError} onRestore={engineView.rewind} />
         )}
@@ -5835,6 +5835,7 @@ export function ChatApp({
         />
       </motion.div>
       <WorkspaceCommitModal
+        key={engineEnabled ? engineView.snapshot.sessionID : 'demo'}
         open={commitModalOpen}
         onClose={() => setCommitModalOpen(false)}
         engine={engineView}

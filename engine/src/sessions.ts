@@ -94,7 +94,11 @@ export class Sessions {
 
   projects() {
     const seen = new Set<string>()
-    return this.list().map(project).filter((info) => { if (seen.has(info.id)) return false; seen.add(info.id); return true })
+    return this.list().filter((session) => {
+      const key = `${session.cwd}\0${session.workspaceIdentity ?? ''}`
+      if (seen.has(key)) return false
+      seen.add(key); return true
+    }).map(project)
   }
 
   detail(id: string): SessionDetail {

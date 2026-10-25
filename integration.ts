@@ -122,7 +122,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Prom
   }
 }
 
-async function waitUntil<T>(
+export async function waitUntil<T>(
   probe: () => Promise<T | false | null | undefined>,
   what: string,
   timeoutMs = STEP_DEADLINE_MS,
@@ -153,13 +153,14 @@ interface WindowSession {
   close: () => Promise<void>
 }
 
-async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: string[] = []): Promise<WindowSession> {
+export async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: string[] = []): Promise<WindowSession> {
   const packaged = process.env.HIROSHI_TEST_PACKAGED
   const child = spawn(packaged ?? process.execPath, packaged ? ['--window', ...args] : [path.resolve(import.meta.dir, 'app.tsx'), ...args], {
     cwd: workspace,
     env: { ...process.env, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
 
   const tail = createTail()
   const listeners: ((chunk: string) => void)[] = []
@@ -199,8 +200,8 @@ async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: strin
       app,
       output: () => tail.text(),
       close: async () => {
-        await app.close()
-        kill()
+        try { await app.close() }
+        finally { kill(); await withDeadline(exited, 5000, 'the test window to exit') }
       },
     }
   } catch (error) {
@@ -221,7 +222,7 @@ function flatten(node: TreeNode | null): string[] {
   return lines
 }
 
-async function treeText(app: App): Promise<string> {
+export async function treeText(app: App): Promise<string> {
   const { tree } = await app.call('getTree', {})
   return flatten(tree).join('\n')
 }
@@ -678,7 +679,7 @@ async function readTheSurvivor(client: EngineClient): Promise<{ exitCode: number
  * for the file rather than reading it once: a failed run must not leave a
  * daemon behind either.
  */
-async function stopTheDaemon(home: string): Promise<void> {
+export async function stopTheDaemon(home: string): Promise<void> {
   const registry = localPaths(home).registry
   const giveUpAt = Date.now() + DAEMON_DEADLINE_MS
   for (;;) {
@@ -779,46 +780,8 @@ async function main(): Promise<void> {
     try {
       await restored.app.getByTestId('workspace-files').waitFor({ timeoutMs: WINDOW_DEADLINE_MS })
       note('the open Files tab and window preferences survived another launch')
-      const app = restored.app, originalCwd = path.join(home, 'workspace'), secondCwd = path.join(home, 'second-project')
-      mkdirSync(secondCwd)
-      const init = Bun.spawnSync(['git', '-C', secondCwd, 'init', '-b', 'main']); check(init.exitCode === 0, 'could not initialize second project')
-      writeFileSync(path.join(secondCwd, 'AGENTS.md'), 'Instructions only for the second window project.')
-      writeFileSync(path.join(secondCwd, 'second.txt'), 'second project file')
-      const switchProject = async (cwd: string) => {
-        await app.getByTestId('open-project').click()
-        await app.getByTestId('project-path').fill(cwd)
-        await app.getByTestId('project-open-path').click()
-        await waitUntil(async () => (await app.getByTestId('engine-workspace').textContent()) === cwd, 'the selected project folder to become active')
-        await app.getByTestId('composer').waitFor()
-      }
-      await app.getByTestId('open-project').click()
-      await app.getByTestId('project-path').fill(path.join(home, 'does-not-exist'))
-      await app.getByTestId('project-open-path').click()
-      await app.getByTestId('project-error').waitFor()
-      await app.getByTestId('project-dialog-cancel').click()
-      check((await app.getByTestId('engine-workspace').textContent()) === originalCwd, 'invalid selection changed project')
-      await app.getByTestId('composer').fill('unsent text belonging to the original project')
-      await switchProject(secondCwd)
-      check(!(await treeText(app)).includes('Rewound workspace and conversation to checkpoint'), 'the old project transcript leaked into the new project')
-      await app.getByTestId('composer').press('enter')
-      await sleep(100)
-      const second = (await client.listSessions()).sessions.find((item) => item.cwd === secondCwd)!
-      check((await client.session({ id: second.id })).messages.length === 0, 'the old project draft leaked across the switch')
-      await app.getByTestId('composer').fill('window-second-project')
-      await app.getByTestId('composer').press('enter')
-      await waitUntil(async () => (await treeText(app)).includes('The local provider received: window-second-project'), 'a prompt in the selected project')
-      await switchProject(originalCwd)
-      await waitUntil(async () => (await treeText(app)).includes('Rewound workspace and conversation to checkpoint'), 'the original task and history to return')
-      await switchProject(secondCwd)
-      await waitUntil(async () => (await treeText(app)).includes('The local provider received: window-second-project'), 'the second project history to return')
-      try { await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-projects.png') }) } catch {}
-      note('real project selection rejects invalid paths, isolates drafts/history and restores each project task')
     } finally { await restored.close() }
-    const lastProject = await openWindow({ HIROSHI_HOME: home, GPUIX_BACKGROUND: '1' }, path.join(home, 'workspace'))
-    try {
-      await waitUntil(async () => (await lastProject.app.getByTestId('engine-workspace').textContent()) === path.join(home, 'second-project'), 'the last project to survive closing and reopening the window')
-      await waitUntil(async () => (await treeText(lastProject.app)).includes('The local provider received: window-second-project'), 'the last project task to survive window restart')
-    } finally { await lastProject.close() }
+
 
   } catch (error) {
     failure = error
@@ -831,4 +794,4 @@ async function main(): Promise<void> {
   note('all assertions passed')
 }
 
-await main()
+if (import.meta.main) await main()

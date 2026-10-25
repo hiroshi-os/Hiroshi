@@ -8,12 +8,12 @@ import type { Store } from './store'
 
 export function directory(cwd: string) {
   if (typeof cwd !== 'string' || !cwd || cwd.length > 8192 || cwd.includes('\0')) throw invalid('workspace_path', 'Choose an existing project folder.')
-  const canonical = realpathSync(cwd), stat = statSync(canonical)
+  const canonical = realpathSync(cwd), stat = statSync(canonical, { bigint: true })
   if (!stat.isDirectory()) throw invalid('workspace_directory', 'Choose a folder, rather than a file.')
   accessSync(canonical, constants.R_OK)
   if (process.platform !== 'win32') accessSync(canonical, constants.X_OK)
   const handle = opendirSync(canonical); handle.closeSync()
-  return { cwd: canonical, identity: `${stat.dev}:${stat.ino}:${stat.birthtimeMs}` }
+  return { cwd: canonical, identity: `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` }
 }
 export function project(session: Pick<Session, 'id' | 'cwd' | 'workspaceIdentity'>): ProjectInfo {
   const base = { cwd: session.cwd, name: path.basename(session.cwd) || session.cwd, sessionID: session.id,

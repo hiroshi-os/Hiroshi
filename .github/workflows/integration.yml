@@ -59,6 +59,9 @@ jobs:
       - name: Check the Wasm browser preview under resource limits
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:web") -MaxProcesses 12 -MemoryMB 3072 -TimeoutSeconds 90'
 
+      - name: Verify project switching and recovery in a source window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:projects") -MaxProcesses 8 -MemoryMB 3072 -TimeoutSeconds 120'
+
       - name: Build packaged desktop under resource limits
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","build") -MaxProcesses 3 -MemoryMB 2048 -TimeoutSeconds 120'
 
@@ -69,6 +72,11 @@ jobs:
 
       - name: Check intentional close does not restart the packaged window
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("scripts/smoke-window.ts") -MaxProcesses 6 -MemoryMB 1536 -TimeoutSeconds 45'
+
+      - name: Verify project switching and recovery in the packaged window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:projects") -MaxProcesses 8 -MemoryMB 3072 -TimeoutSeconds 120'
+        env:
+          HIROSHI_TEST_PACKAGED: ${{ github.workspace }}/dist/hiroshi.exe
 
       - name: Keep what the window looked like
         if: always()
