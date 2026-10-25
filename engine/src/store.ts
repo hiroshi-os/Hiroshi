@@ -256,12 +256,13 @@ const MIGRATIONS: Migration[] = [
       create table command_queue (run_id text primary key references run(id), details text not null);
     `,
   },
+  { id: 9, name: 'workspace-identity', sql: 'alter table session add column workspace_identity text;' },
 ]
 
 type Row = Record<string, any>
 
 const SESSION_SELECT = `
-  select s.id, s.title, s.cwd, s.created_at, s.updated_at,
+  select s.id, s.title, s.cwd, s.workspace_identity, s.created_at, s.updated_at,
     (select count(*) from run r where r.session_id = s.id)                              as runs,
     (select count(*) from run r where r.session_id = s.id and r.status = 'running')    as running,
     (select max(r.started_at) from run r where r.session_id = s.id)                    as last_run_at
@@ -272,6 +273,7 @@ function toSession(row: Row): Session {
     id: row.id,
     title: row.title,
     cwd: row.cwd,
+    ...(row.workspace_identity ? { workspaceIdentity: row.workspace_identity } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     runs: row.runs ?? 0,
@@ -538,17 +540,22 @@ export class Store {
   // -- sessions ------------------------------------------------------------
 
   createSession(session: Omit<Session, 'runs' | 'running' | 'lastRunAt'>): void {
-    this.#db.run('insert into session (id, title, cwd, created_at, updated_at) values (?, ?, ?, ?, ?)', [
+    this.#db.run('insert into session (id, title, cwd, created_at, updated_at, workspace_identity) values (?, ?, ?, ?, ?, ?)', [
       session.id,
       session.title,
       session.cwd,
       session.createdAt,
       session.updatedAt,
+      session.workspaceIdentity ?? null,
     ])
   }
 
   touchSession(id: string, at: number): void {
     this.#db.run('update session set updated_at = ? where id = ?', [at, id])
+  }
+
+  bindWorkspace(id: string, identity: string, cwd?: string): void {
+    this.#db.run('update session set workspace_identity = ?, cwd = coalesce(?, cwd) where id = ? and workspace_identity is null', [identity, cwd ?? null, id])
   }
 
   renameSession(id: string, title: string, at: number): void {

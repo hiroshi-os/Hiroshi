@@ -9,6 +9,8 @@
  */
 
 import { WorkspaceFiles, reviewWorkspace } from './workspace'
+import path from 'node:path'
+import { assertWorkspace } from './projects'
 import { browsePage } from './browser'
 import { timingSafeEqual } from 'node:crypto'
 
@@ -159,6 +161,12 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'projects': return json({ projects: sessions.projects() }, status)
+      case 'openProject': {
+        const input = await body<OperationRequest<'openProject'>>(request)
+        if (typeof input.cwd !== 'string' || !path.isAbsolute(input.cwd)) throw invalid('workspace_path', 'Choose an absolute project folder path.')
+        return json({ session: sessions.create({ cwd: input.cwd, reuseWorkspace: true }) }, status)
+      }
       case 'providers':
         if (!options.providers) throw notFound('provider setup')
         return json(options.providers.snapshot(), status)
@@ -178,12 +186,11 @@ export function startServer(
       case 'workspaceCommit':
       case 'browse': {
         const input = await body<any>(request)
-        const session = store.session(params.id!)
-        if (!session) throw notFound('session')
+        const session = assertWorkspace(store, params.id!)
         const files = new WorkspaceFiles(session.cwd, options.checkpoints?.home)
         if (operation.name === 'workspaceList') return json(await files.list(input.path ?? ''), status)
         if (operation.name === 'workspaceFile') return json(await files.file(input.path), status)
-        if (operation.name === 'workspaceReview') return json(await maintenance(session.id, request.signal, () => reviewWorkspace(session.cwd, input.base)), status)
+        if (operation.name === 'workspaceReview') return json(await maintenance(session.id, request.signal, () => { assertWorkspace(store, session.id); return reviewWorkspace(session.cwd, input.base) }), status)
         if (operation.name === 'browse') return json(await browsePage(input.url), status)
         const command = input as OperationRequest<'workspaceCommit'>
         options.checkpoints?.assertReady(session.id)

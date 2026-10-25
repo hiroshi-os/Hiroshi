@@ -13,8 +13,11 @@ import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, 
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
+import { readWindowState } from '../shell/state'
 
 export interface EngineHandle {
+  openProject: (cwd: string) => Promise<void>
+  refreshProjects: () => Promise<void>
   refreshProviders: () => Promise<void>
   cancelProviderRefresh: () => Promise<void>
   updateProviders: (input: Omit<ProviderUpdate, 'revision'>) => Promise<void>
@@ -62,6 +65,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
   const client = useRef<EngineClient | null>(null)
   const session = useRef<string | null>(null)
   const sessionWorkspace = useRef(workspace)
+  const generation = useRef(0)
 
   useEffect(() => {
     if (!enabled) return
@@ -76,9 +80,10 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     }
 
     let stopped = false
+    const epoch = generation.current
     const abort = new AbortController()
     const update = (next: (snapshot: Snapshot) => Snapshot) => {
-      if (!stopped) setSnapshot(next)
+      if (!stopped && epoch === generation.current) setSnapshot((current) => !stopped && epoch === generation.current ? next(current) : current)
     }
 
     const loop = async () => {
@@ -112,7 +117,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
 
         const connection = engineClient(attached)
         client.current = connection
-        update((current) => ({ ...current, status: 'ready', health: attached.health, error: null }))
+        update((current) => ({ ...current, health: attached.health, error: null }))
 
         let after = 0
         try {
@@ -125,12 +130,13 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
           // Read global provider state after the session watermark. Feed replay
           // then fills later changes; revision ordering ignores older replay.
           const providers = await connection.providers()
-          if (stopped) return
+          const { projects } = await connection.projects()
+          if (stopped || epoch !== generation.current) return
           session.current = chosen.id
           sessionWorkspace.current = detail.session.cwd
           after = detail.seq
           update((current) =>
-            hydrate({ ...current, status: 'ready', health: attached.health, sessions, providers, models: providers.models, defaultModel: providers.defaultModel }, detail),
+            hydrate({ ...current, status: 'ready', health: attached.health, sessions, providers, projects, models: providers.models, defaultModel: providers.defaultModel }, detail),
           )
         } catch (error) {
           update((current) => ({ ...current, status: 'unreachable', error: describe(error) }))
@@ -184,17 +190,38 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
   }, [enabled, workspace, attempt, selected])
 
   const selectSession = useCallback((id: string) => {
+    generation.current++
     client.current = null
     session.current = null
-    setSnapshot((current) => ({ ...initialSnapshot(), sessions: current.sessions, status: 'starting' }))
+    setSnapshot((current) => ({ ...initialSnapshot(), sessions: current.sessions, projects: current.projects, status: 'starting' }))
     setSelected(id)
     setAttempt((value) => value + 1)
   }, [])
   const newSession = useCallback(async () => {
     if (!client.current) throw new Error('the engine is not connected')
+    const epoch = generation.current
     const { session: created } = await client.current.createSession({ cwd: sessionWorkspace.current, title: 'New task' })
-    selectSession(created.id)
+    if (epoch === generation.current) selectSession(created.id)
   }, [workspace, selectSession])
+
+  const openProject = useCallback(async (cwd: string) => {
+    if (!client.current) throw new Error('The engine is not connected')
+    const epoch = generation.current, connection = client.current
+    const { session: opened } = await connection.openProject({ cwd })
+    let id = opened.id
+    const remembered = readWindowState(opened.cwd).sessionID
+    if (remembered) {
+      try { const saved = (await connection.session({ id: remembered })).session
+        if (saved.cwd === opened.cwd && saved.workspaceIdentity === opened.workspaceIdentity) id = saved.id
+      } catch { /* Removed local preference: use the validated project task. */ }
+    }
+    if (epoch === generation.current) selectSession(id)
+  }, [selectSession])
+  const refreshProjects = useCallback(async () => {
+    if (!client.current) throw new Error('The engine is not connected')
+    const epoch = generation.current, { projects } = await client.current.projects()
+    if (epoch === generation.current) setSnapshot((current) => ({ ...current, projects }))
+  }, [])
 
   const exec = useCallback((command: string) => {
     const connection = client.current
@@ -298,5 +325,5 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     catch (error) { receiveProviders(await client.current.providers()); setSnapshot((current) => ({ ...current, error: describe(error) })); throw error }
   }, [])
 
-  return { refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
 }

@@ -122,7 +122,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Prom
   }
 }
 
-async function waitUntil<T>(
+export async function waitUntil<T>(
   probe: () => Promise<T | false | null | undefined>,
   what: string,
   timeoutMs = STEP_DEADLINE_MS,
@@ -153,13 +153,14 @@ interface WindowSession {
   close: () => Promise<void>
 }
 
-async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: string[] = []): Promise<WindowSession> {
+export async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: string[] = []): Promise<WindowSession> {
   const packaged = process.env.HIROSHI_TEST_PACKAGED
   const child = spawn(packaged ?? process.execPath, packaged ? ['--window', ...args] : [path.resolve(import.meta.dir, 'app.tsx'), ...args], {
     cwd: workspace,
     env: { ...process.env, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
 
   const tail = createTail()
   const listeners: ((chunk: string) => void)[] = []
@@ -199,8 +200,8 @@ async function openWindow(env: NodeJS.ProcessEnv, workspace: string, args: strin
       app,
       output: () => tail.text(),
       close: async () => {
-        await app.close()
-        kill()
+        try { await app.close() }
+        finally { kill(); await withDeadline(exited, 5000, 'the test window to exit') }
       },
     }
   } catch (error) {
@@ -221,7 +222,7 @@ function flatten(node: TreeNode | null): string[] {
   return lines
 }
 
-async function treeText(app: App): Promise<string> {
+export async function treeText(app: App): Promise<string> {
   const { tree } = await app.call('getTree', {})
   return flatten(tree).join('\n')
 }
@@ -678,7 +679,7 @@ async function readTheSurvivor(client: EngineClient): Promise<{ exitCode: number
  * for the file rather than reading it once: a failed run must not leave a
  * daemon behind either.
  */
-async function stopTheDaemon(home: string): Promise<void> {
+export async function stopTheDaemon(home: string): Promise<void> {
   const registry = localPaths(home).registry
   const giveUpAt = Date.now() + DAEMON_DEADLINE_MS
   for (;;) {
@@ -781,6 +782,7 @@ async function main(): Promise<void> {
       note('the open Files tab and window preferences survived another launch')
     } finally { await restored.close() }
 
+
   } catch (error) {
     failure = error
   }
@@ -792,4 +794,4 @@ async function main(): Promise<void> {
   note('all assertions passed')
 }
 
-await main()
+if (import.meta.main) await main()

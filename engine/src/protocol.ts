@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 12
+export const PROTOCOL_VERSION = 13
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.16.0'
+export const ENGINE_VERSION = '0.17.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -139,11 +139,21 @@ export interface Session {
   id: string
   title: string
   cwd: string
+  workspaceIdentity?: string
   createdAt: number
   updatedAt: number
   runs: number
   running: number
   lastRunAt: number | null
+}
+
+export interface ProjectInfo {
+  id: string
+  cwd: string
+  name: string
+  sessionID: string
+  status: 'ready' | 'missing' | 'changed' | 'inaccessible'
+  detail: string | null
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
@@ -590,6 +600,8 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  projects: { request: NoInput; response: { projects: ProjectInfo[] } }
+  openProject: { request: { cwd: string }; response: { session: Session } }
   providers: { request: NoInput; response: ProviderState }
   refreshProviders: { request: SessionRef; response: ProviderState }
   cancelProviderRefresh: { request: NoInput; response: ProviderState }
@@ -638,6 +650,8 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'projects', method: 'GET', path: '/v1/projects' },
+  { name: 'openProject', method: 'POST', path: '/v1/projects/open' },
   { name: 'providers', method: 'GET', path: '/v1/providers' },
   { name: 'refreshProviders', method: 'POST', path: '/v1/sessions/:id/providers/refresh' },
   { name: 'cancelProviderRefresh', method: 'POST', path: '/v1/providers/cancel' },

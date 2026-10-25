@@ -13,11 +13,12 @@
 
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
 import { ProviderSettings } from './src/components/ProviderSettings'
+import { ProjectSwitcher } from './src/components/ProjectSwitcher'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
 import { launchLink, parseShellLink } from './src/shell/links'
-import { readWindowState, saveWindowState } from './src/shell/state'
+import { readWindowState, saveWindowState, readProjectSelection, saveProjectSelection } from './src/shell/state'
 import { trackWindow, nextNativeLink } from './src/shell/geometry'
 import { packagedBuild } from './src/shell/runtime'
 import { CheckpointHistory } from './src/components/CheckpointHistory'
@@ -1163,15 +1164,20 @@ const Transcript = memo(function Transcript({
   testId?: string
   showActions?: boolean
 }) {
-  if (turns.length === 0 && !includeSafeMdx) {
-    return (
+  const empty = turns.length === 0 && !includeSafeMdx
+  // Keep the native list host alive across session changes. Replacing the
+  // entire host can retain cached rows in the packaged GPUIX renderer.
+  return <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, width: '100%' }}>
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          flexGrow: 1,
+          flexGrow: empty ? 1 : 0,
+          height: empty ? undefined : 0,
+          opacity: empty ? 1 : 0,
+          overflow: 'hidden',
           minHeight: 0,
           width: '100%',
           gap: 16,
@@ -1190,19 +1196,15 @@ const Transcript = memo(function Transcript({
             whiteSpace: 'nowrap',
           }}
         >
-          {`What should we build in ${project}?`}
+          {empty ? `What should we build in ${project}?` : ''}
         </text>
       </div>
-    )
-  }
-
-  return (
     <virtual-list
       testId={testId}
       ref={listRef}
       overdraw={240}
       estimatedItemHeight={220}
-      style={{ flexGrow: 1, minHeight: 0, width: '100%' }}
+      style={{ flexGrow: empty ? 0 : 1, height: empty ? 0 : undefined, opacity: empty ? 0 : 1, overflow: 'hidden', minHeight: 0, width: '100%' }}
     >
       {includeSafeMdx && (
         <TranscriptRow key="safemdx" first>
@@ -1228,7 +1230,7 @@ const Transcript = memo(function Transcript({
         </TranscriptRow>
       ))}
     </virtual-list>
-  )
+  </div>
 })
 
 // The native drag lives in its own module so the titlebar press handler and
@@ -3595,7 +3597,7 @@ function SurfacePanel({
                   minWidth: 0,
                 }}
               >
-                {engine.snapshot.health?.workspace ?? project}
+                {project}
               </text>
             </div>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -3743,7 +3745,7 @@ function SurfacePanel({
                   flexShrink: 0,
                 }}
               >
-                {`${engine.snapshot.health?.workspace ?? project}> `}
+                {`${project}> `}
               </text>
               <input
                 testId="terminal-input"
@@ -4083,7 +4085,7 @@ function CommandPaletteModal({
   const suggestedItems = [
     { id: 'new-task', label: 'New task', icon: 'pencil' as const, shortcut: 'Ctrl+N', action: onNewTask },
     { id: 'resume', label: 'Resume...', icon: 'retry' as const, action: () => onClose() },
-    { id: 'open-project', label: 'Open project...', icon: 'folder' as const, shortcut: 'Ctrl+O', action: onOpenProject },
+    { id: 'open-project', label: 'Open project...', icon: 'folder' as const, action: onOpenProject },
     { id: 'choose-model', label: 'Choose model...', icon: 'blocks' as const, shortcut: 'Ctrl+/', action: onChooseModel },
   ]
 
@@ -5384,7 +5386,10 @@ export function ChatApp({
    */
   engine?: boolean
 } = {}) {
-  const [shellInitial] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? readWindowState(process.cwd()) : null)
+  const [initialProject] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? readProjectSelection(process.cwd()) : null)
+  const [shellInitial] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? readWindowState(initialProject?.cwd ?? process.cwd()) : null)
+  const [projectDialog, setProjectDialog] = useState(false)
+  const [projectPreferencesRevision, setProjectPreferencesRevision] = useState(0)
   const [shellLink, setShellLink] = useState(() => engineEnabled && typeof Bun !== 'undefined' ? launchLink() : null)
   const [conversations, setConversations] = useState(() =>
     CONVERSATIONS.map((conversation) => ({
@@ -5529,10 +5534,34 @@ export function ChatApp({
   // The daemon is the only owner of a run. The cockpit attaches and draws.
   const engineView = useEngine({
     enabled: engineEnabled,
-    initialSessionID: shellLink?.sessionID ?? shellInitial?.sessionID,
+    initialSessionID: shellLink?.sessionID ?? initialProject?.sessionID ?? shellInitial?.sessionID,
     workspace: typeof process !== 'undefined' ? process.cwd() : '',
   })
-  const actualWorkspace = engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
+  const activeEngineSession = engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)
+  const actualWorkspace = activeEngineSession?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
+  const shownProject = engineView.snapshot.projects.find((item) => item.cwd === actualWorkspace)?.name ?? actualWorkspace
+  const previousSession = useRef<string | null>(null)
+  const restoringProject = useRef(false)
+  const previousWorkspace = useRef<string | null>(null)
+  useEffect(() => {
+    const id = engineView.snapshot.sessionID
+    if (!engineEnabled || !id || typeof Bun === 'undefined') return
+    if (previousSession.current !== id) {
+      setDraft(''); setCommitModalOpen(false); setEngineModel(null)
+      if (previousSession.current && shellLink?.sessionID !== id) setShellLink(null)
+      previousSession.current = id
+    }
+    if (previousWorkspace.current !== actualWorkspace) {
+      restoringProject.current = true
+      const saved = readWindowState(actualWorkspace)
+      setCollapsed(saved.sidebarCollapsed); setSidebarWidth(saved.sidebarWidth); setRightPanelWidth(saved.panelWidth)
+      if (previousWorkspace.current) { setRightPanelOpen(saved.panelOpen); setActiveSurface(saved.surface) }
+      if (shellLink?.sessionID === id && shellLink.file) { setRightPanelOpen(true); setActiveSurface('files') }
+      previousWorkspace.current = actualWorkspace
+      setProjectPreferencesRevision((value) => value + 1)
+    }
+    saveProjectSelection(process.cwd(), actualWorkspace, id)
+  }, [engineEnabled, engineView.snapshot.sessionID, actualWorkspace])
   useEffect(() => {
     if (!engineEnabled || !renderer?.getWindowSize || typeof Bun === 'undefined') return
     const getWindowSize = () => renderer.getWindowSize!()
@@ -5548,8 +5577,10 @@ export function ChatApp({
   }, [engineEnabled, renderer])
   useEffect(() => {
     if (!engineEnabled || typeof Bun === 'undefined') return
-    try { saveWindowState(process.cwd(), { sidebarCollapsed: collapsed, sidebarWidth, panelWidth: rightPanelWidth, panelOpen: rightPanelOpen, surface: activeSurface, ...(engineView.snapshot.sessionID ? { sessionID: engineView.snapshot.sessionID } : {}) }) } catch {}
-  }, [engineEnabled, collapsed, sidebarWidth, rightPanelWidth, rightPanelOpen, activeSurface, engineView.snapshot.sessionID])
+    if (!engineView.snapshot.sessionID) return
+    if (restoringProject.current) { restoringProject.current = false; return }
+    try { saveWindowState(actualWorkspace, { sidebarCollapsed: collapsed, sidebarWidth, panelWidth: rightPanelWidth, panelOpen: rightPanelOpen, surface: activeSurface, sessionID: engineView.snapshot.sessionID }) } catch {}
+  }, [engineEnabled, collapsed, sidebarWidth, rightPanelWidth, rightPanelOpen, activeSurface, engineView.snapshot.sessionID, projectPreferencesRevision])
   const reportedModels: typeof MODELS = engineView.snapshot.models.map((item) => ({
     id: item.id,
     label: `${item.label}${item.reason === 'provider_denied' ? ' · denied' : item.reason === 'credentials_missing' ? ' · needs credential' : item.reason === 'provider_disabled' ? ' · disabled' : item.reason === 'cli_unavailable' ? ' · unavailable' : ''}`,
@@ -5560,7 +5591,7 @@ export function ChatApp({
   const chosenModel = engineEnabled ? engineModel ?? engineView.snapshot.defaultModel : model
   const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
   const runView = cockpit(engineView.snapshot)
-  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === actualWorkspace).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
+  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === actualWorkspace && s.workspaceIdentity === activeEngineSession?.workspaceIdentity).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
   const latestEngineOutput = engineView.snapshot.steps.at(-1)?.output
   useEffect(() => {
     if (!engineEnabled || shownTurns.length === 0) return
@@ -5611,6 +5642,7 @@ export function ChatApp({
         }}
       >
         <Sidebar
+          key={engineEnabled ? `${actualWorkspace}:${activeEngineSession?.workspaceIdentity ?? 'connecting'}` : 'demo'}
           width={sidebarWidth}
           conversations={engineEnabled ? engineConversations : visibleConversations}
           activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
@@ -5691,17 +5723,16 @@ export function ChatApp({
           activeId={engineEnabled ? engineView.snapshot.sessionID ?? '' : activeId}
         />
         <Transcript
-          key={engineEnabled ? engineView.snapshot.sessionID : activeId}
           turns={shownTurns}
           testId={engineEnabled ? 'engine-transcript' : undefined}
           showActions={!engineEnabled}
           includeSafeMdx={engineEnabled ? false : showSafeMdx}
           listRef={listRef}
           onRetry={engineEnabled ? undefined : onRetry}
-          project={engineEnabled ? actualWorkspace : projectLabel}
+          project={engineEnabled ? shownProject : projectLabel}
         />
         {engineEnabled && (
-          <CheckpointHistory checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
+          <CheckpointHistory key={engineView.snapshot.sessionID} checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}
             messages={engineView.snapshot.messages} activeMessageIDs={engineView.snapshot.activeMessageIDs}
             checkpointError={engineView.snapshot.checkpointError} onRestore={engineView.rewind} />
         )}
@@ -5757,7 +5788,7 @@ export function ChatApp({
           mode={mode}
           onModeChange={setMode}
         />
-        {engineEnabled ? <text testId="engine-workspace" style={{ fontSize: 11, color: C.tertiary, padding: 10 }}>{actualWorkspace}</text> : <WorkspaceFooter
+        {engineEnabled ? <ProjectSwitcher engine={engineView} cwd={actualWorkspace} open={projectDialog} onOpen={() => setProjectDialog(true)} onClose={() => setProjectDialog(false)} /> : <WorkspaceFooter
           project={project}
           onProjectChange={setProject}
           workspace={workspace}
@@ -5805,6 +5836,7 @@ export function ChatApp({
         />
       </motion.div>
       <WorkspaceCommitModal
+        key={engineEnabled ? engineView.snapshot.sessionID : 'demo'}
         open={commitModalOpen}
         onClose={() => setCommitModalOpen(false)}
         engine={engineView}
@@ -5829,6 +5861,7 @@ export function ChatApp({
           goTo(id)
         }}
         onOpenProject={() => {
+          if (engineEnabled) { setOverlay(null); setProjectDialog(true); void engineView.refreshProjects().catch(() => {}); return }
           setProject((curr) => (curr === 'gpuix' ? 'example-app' : 'gpuix'))
         }}
         onChooseModel={() => {

@@ -27,6 +27,21 @@ function valid(value: unknown): WindowState {
   return state
 }
 function location(home: string) { return require('node:path').join(home, 'shell.json') as string }
+export function readProjectSelection(launcher: string, home = currentEngineHome()): { cwd: string; sessionID: string } | null {
+  try {
+    const value = JSON.parse(require('node:fs').readFileSync(location(home), 'utf8')).selections?.[launcher]
+    return value && typeof value.cwd === 'string' && typeof value.sessionID === 'string' && /^ses_[\w-]+$/.test(value.sessionID) ? value : null
+  } catch { return null }
+}
+export function saveProjectSelection(launcher: string, cwd: string, sessionID: string, home = currentEngineHome()): void {
+  const fs = require('node:fs') as typeof import('node:fs')
+  let data: any = { version: 1, workspaces: {} }
+  try { const saved = JSON.parse(fs.readFileSync(location(home), 'utf8')); if (saved.version === 1 && saved.workspaces) data = saved } catch {}
+  data.selections = { ...data.selections, [launcher]: { cwd, sessionID } }
+  fs.mkdirSync(home, { recursive: true })
+  const temporary = `${location(home)}.${process.pid}.tmp`
+  fs.writeFileSync(temporary, JSON.stringify(data), { mode: 0o600 }); fs.renameSync(temporary, location(home))
+}
 export function readWindowState(workspace: string, home = currentEngineHome()): WindowState {
   try { const data = JSON.parse(require('node:fs').readFileSync(location(home), 'utf8')); return valid(data.version === 1 ? data.workspaces?.[workspace]?.current : null) }
   catch { return { ...defaults } }

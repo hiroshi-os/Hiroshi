@@ -19,6 +19,18 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.17.0] - Unreleased
+
+### Added
+
+- Real project opening through the native folder picker or an absolute path,
+  recent project history, and per-project task/panel restoration.
+- Canonical workspace identity bound to each task. Missing, inaccessible or
+  replaced folders keep their histories and reject effects; queued commands,
+  tools, model requests and checkpoints revalidate the original directory.
+- Two-repository CLI/instruction isolation and native project-switching checks.
+  Protocol 13 and schema migration 9.
+
 ## [0.16.0] - Unreleased
 
 ### Added

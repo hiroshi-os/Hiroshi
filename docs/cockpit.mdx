@@ -9,6 +9,25 @@ New Task creates one, and selecting a session switches the transcript and every
 engine command together. Closing a window leaves the engine running. A second
 window attached to that session draws the same facts.
 
+## Open a project
+
+The project button below the composer opens a native folder chooser, a manual
+absolute-path field and recent projects. Choose an existing readable directory.
+Cancelling or rejecting a selection keeps the current task. Non-Git folders work;
+Review explains when Git history is unavailable.
+
+Each task owns a canonical directory and a durable filesystem identity. Opening
+another project does not move running commands, prompts, CLI working directories,
+instructions, approvals or checkpoints. The sidebar shows tasks from the selected
+workspace identity. Unsent text is cleared when switching tasks; panel preferences
+are restored per project. Provider configuration remains shared.
+
+The last selected project and task reopen when the window restarts. Missing or
+inaccessible directories keep readable history with an explanation. A replacement
+at the same path cannot inherit execution or saved tool approvals. Reopen a moved
+or replaced folder explicitly to start a new workspace; existing tasks are never
+silently relocated. Folder identity is rechecked before queued effects start.
+
 ## Transcript
 
 The engine builds the transcript from its durable event sequence. The snapshot

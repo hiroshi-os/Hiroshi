@@ -19,6 +19,7 @@ import type {
   StepPart,
   ModelInfo,
   ProviderState,
+  ProjectInfo,
   EngineEvent,
   Health,
   InboxItem,
@@ -58,6 +59,7 @@ export interface Snapshot {
   models: ModelInfo[]
   defaultModel: string
   providers: ProviderState | null
+  projects: ProjectInfo[]
   parts: StepPart[]
   checkpoints: Checkpoint[]
   rewinds: Rewind[]
@@ -93,6 +95,7 @@ export function initialSnapshot(): Snapshot {
     models: [],
     defaultModel: 'local/echo',
     providers: null,
+    projects: [],
     parts: [],
     checkpoints: [],
     rewinds: [],
