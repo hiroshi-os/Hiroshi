@@ -51,6 +51,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify the development script opens a visible window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("scripts/smoke-window.ts","--dev") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 45'
+
       # The test isolates its state under `HIROSHI_HOME` in the temp directory,
       # so nothing here touches the runner's profile.
       - name: Run the windowed integration test
