@@ -38,6 +38,7 @@ const agent: AgentInfo = { id: 'cursor', name: 'Cursor Agent', enabled: true, tr
       await app.getByTestId('provider-enable-cursor').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
       await app.getByTestId('provider-choose-default').click()
+      await app.getByTestId('provider-default-cli/chat').waitFor()
       await app.getByTestId('provider-default-cli/chat').click()
       await new Promise((resolve) => setTimeout(resolve, 30))
       await app.getByTestId('provider-auto-cursor').click()
