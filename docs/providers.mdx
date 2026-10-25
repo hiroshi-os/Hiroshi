@@ -63,10 +63,37 @@ requests set `store: false`.
 
 ## Installed CLI responses
 
-`agy-cli` and `cursor-cli` implement CLI contract version 1: one response-only
+Open **Settings → Providers** and refresh to check Agy, Cursor Agent, Pi and
+Grok. Checks run serially inside one shared execution slot, with per-command
+deadlines, process/RAM limits and bounded output. They use help, version, model
+metadata and Cursor's JSON sign-in status; refresh never sends an AI prompt or
+opens login. Cancel preserves the last completed inventory. Startup loads the
+cache without launching CLIs and resets cached sign-in evidence to unknown.
+
+Discovery searches absolute PATH entries and known user installation locations.
+Windows Cursor and Pi wrappers are resolved through known Node installation
+layouts; wrapper scripts are never interpreted. A manual absolute executable
+and optional absolute JS entry point handle installations outside these paths.
+Missing, unsupported, disabled, signed-out and policy-blocked states have
+explicit explanations. Installed does not imply authenticated: Pi, Agy and Grok
+can remain **sign-in unknown** until a request provides evidence. No credential
+file contents, account identity or raw probe output are returned or stored.
+
+Enable/disable, manual paths, Cursor workspace trust and the default agent/model
+are stored atomically in `agents.json` in the engine data directory. Changes
+reach all windows through the engine feed. Settings and the composer use this
+same catalog; defaults survive restart. Replacing/removing an executable changes
+its catalog identity and leaves a stale selection visibly unavailable. It never
+silently redirects a queued request or substitutes local echo. Sign in through
+the CLI itself, then refresh. Model-list output is metadata, not proof of account
+access; “CLI default” explicitly leaves availability unknown. Disabling a CLI
+prevents new/queued requests; an already running request can be cancelled in the
+cockpit. Manual HTTP/CLI configuration in `providers.json` remains supported.
+
+`agy-cli`, `cursor-cli`, `pi-cli` and `grok-cli` implement CLI contract version 1: one response-only
 submission per durable engine step. They use the CLI's own sign-in and do not
-need an API credential in Hiroshi. Configure an explicit absolute executable
-path; automatic discovery and setup UI are tracked separately in #61.
+need an API credential in Hiroshi. The following manual configuration is an
+alternative to Settings:
 
 ```json
 {
@@ -86,8 +113,8 @@ path; automatic discovery and setup UI are tracked separately in #61.
 On Windows, point to a real executable. For Cursor's Node installation use
 `"command": ["C:/absolute/version/node.exe", "C:/absolute/version/index.js"]`.
 Shell wrappers (`.cmd`, `.bat`, `.ps1`), shell strings and extra command flags
-are rejected. Paths and authentication stay inside the engine, outside the
-public catalog. The configured model `default` lets the CLI choose its current
+are rejected. Paths are visible in local Providers settings; credentials never
+leave the CLI. The configured model `default` lets the CLI choose its current
 default; any other value is passed as an explicit model id. This is not an
 account-model discovery result. Configure context limits conservatively.
 
@@ -109,7 +136,9 @@ restricts other uses of that CLI profile too; a per-invocation approval bridge
 is tracked in #64. Do not weaken the gate to get a response.
 
 Prompts and the bounded active conversation/instructions go over stdin, not
-command-line arguments. Each invocation starts a fresh vendor conversation;
+command-line arguments. Grok instead reads a private temporary prompt file,
+removed after exit/cancellation; its path is the only prompt argument. Each
+invocation starts a fresh vendor conversation;
 follow-ups receive Hiroshi's active text history. Vendor identifiers are
 durable diagnostic facts, not an implemented native resume mapping (#63).
 CLI-managed instructions may also load; scoped instruction equivalence and
@@ -136,19 +165,31 @@ process tree; platform containment limits are described in the engine guide.
 
 | CLI | Response path | Current boundary |
 | :--- | :--- | :--- |
-| Agy | `--input-format stream-json --output-format stream-json --disable-slash-commands` | Parser/process fixtures pass; installed authenticated response observed, but existing always-proceed policy is rejected. Strict-profile live acceptance remains required before claiming supported coding. |
-| Cursor Agent | Print-mode NDJSON with partial output | Installed `2026.10.19-6bbf2c4` produced an authenticated streamed answer through this adapter in Ask mode. Writes, approval bridging and native continuation are unavailable. |
-| Pi | Not registered in contract v1 | Needs a documented headless protocol, version/capability probe and read-only policy proof in #61/#64. Installation alone is insufficient. |
-| Grok | Not registered in contract v1 | Same explicit prerequisites as Pi; never advertised ready by this adapter. |
+| Agy | `--input-format stream-json --output-format stream-json --disable-slash-commands` | Installed 1.1.27 metadata and real process fixtures pass; an installed authenticated response was observed in earlier adapter acceptance. Existing always-proceed profiles are blocked; strict permissions and side-effect denials are required. |
+| Cursor Agent | Print-mode NDJSON with partial output, Ask mode | Installed `2026.10.19-6bbf2c4` produced an authenticated streamed answer through the adapter. JSON status provides sign-in evidence. Workspace trust is explicit. |
+| Pi | JSON session format 3, text deltas, assistant stop and final `agent_settled` | Real executable protocol fixtures pass; no installed live-account acceptance claimed. All tools, extensions, MCP, skills, prompt templates and auto-approval are disabled. Native context files are skipped; Hiroshi supplies instructions. |
+| Grok | `streaming-json` text and successful `EndTurn` | Installed 1.0.70 metadata and real executable protocol fixtures pass; live-account acceptance is not inferred from installation. Empty tool allowlist, deny-all policy, no subagents/web search and one turn. Hook profiles are rejected. |
+
+All four support streamed text, cancellation and supplied conversation history.
+Coding tools, native continuation (#63) and approval bridging (#64) are unavailable
+for all four. Agy, Cursor and Grok may also load their native instructions; Pi
+uses supplied instructions only. These are response adapters, not coding agents.
 
 The protocols follow the official [Agy headless guide](https://www.antigravity.google/docs/cli/headless/),
 [Agy permission rules](https://www.antigravity.google/docs/permissions?tab=cli),
 [Cursor output format](https://cursor.com/docs/cli/reference/output-format) and
-[Cursor modes](https://cursor.com/docs/cli/reference/parameters).
+[Cursor modes](https://cursor.com/docs/cli/reference/parameters),
+[Pi CLI](https://pi.dev/docs/latest/cli),
+[Pi JSON lifecycle](https://pi.dev/docs/latest/json) and
+[Grok headless scripting](https://docs.x.ai/build/cli/headless-scripting).
 Real CLI executable fixtures and real-daemon integration exercise split UTF-8,
 duplicate Cursor flushes, final-result reconciliation, private thinking exclusion,
 auth/trust failures, output caps, cancellation, detached descendants, idempotent
-submission and completed/interrupted restart behavior. CI needs no CLI account.
+submission and completed/interrupted restart behavior. Discovery tests cover
+restart, changed/missing executables, empty PATH, expired sign-in, cancellation,
+selection conflicts and all four response protocols. Native Settings tests and
+the source/packaged window test drive refresh and shared default selection into
+an actual CLI response. CI needs no CLI account.
 
 ## Provider policy
 

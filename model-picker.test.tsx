@@ -27,4 +27,16 @@ import { ModelPicker } from './app'
       expect(chosen).toBe('restricted/other')
     } finally { await app.close() }
   })
+  it('keeps a removed model visibly unavailable instead of selecting the first remaining model', async () => {
+    const { render, renderer } = createTestRoot({ width: 800, height: 600 })
+    render(<div style={{ width: 800, height: 600, padding: 24, display: 'flex' }}>
+      <ModelPicker value="removed/chat" onChange={() => { throw new Error('selection must be explicit') }}
+        models={[{ id: 'local/echo', label: 'Local echo', group: 'local', icon: 'sparkle' }]} />
+    </div>)
+    const app = await connectTest(renderer)
+    try {
+      expect(await app.getByTestId('model-picker').textContent()).toContain('Unavailable model: removed/chat')
+      expect(await app.getByTestId('model-picker').textContent()).not.toContain('Local echo')
+    } finally { await app.close() }
+  })
 })

@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 11
+export const PROTOCOL_VERSION = 12
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.15.0'
+export const ENGINE_VERSION = '0.16.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -35,7 +35,42 @@ export interface ModelInfo {
   label: string
   contextWindow: number
   reservedOutput: number
-  reason: 'provider_denied' | 'credentials_missing' | 'cli_policy_required' | null
+  reason: 'provider_denied' | 'credentials_missing' | 'cli_policy_required' | 'provider_disabled' | 'cli_unavailable' | null
+}
+
+export type AgentID = 'agy' | 'cursor' | 'pi' | 'grok'
+export interface AgentInfo {
+  id: AgentID
+  name: string
+  enabled: boolean
+  trustWorkspace: boolean
+  command: string[] | null
+  source: 'manual' | 'discovered' | null
+  version: string | null
+  fingerprint: string | null
+  checkedAt: number | null
+  auth: 'unknown' | 'authenticated' | 'signed_out'
+  status: 'unchecked' | 'missing' | 'unsupported' | 'disabled' | 'installed' | 'signed_out' | 'blocked' | 'ready'
+  detail: string
+  models: { id: string; label: string; catalogID: string }[]
+  capabilities: { responses: boolean; coding: false; nativeContinuation: false; approvals: false; cancellation: boolean; instructions: 'native-and-supplied' | 'supplied-only' | 'unknown' }
+}
+export interface ProviderState {
+  revision: number
+  refreshing: boolean
+  error: string | null
+  agents: AgentInfo[]
+  models: ModelInfo[]
+  defaultModel: string
+}
+export interface ProviderUpdate {
+  revision: number
+  agent?: AgentID
+  enabled?: boolean
+  /** null restores automatic discovery. */
+  command?: string[] | null
+  trustWorkspace?: boolean
+  defaultModel?: string
 }
 
 export type StepPart = {
@@ -45,7 +80,7 @@ export type StepPart = {
   at: number
   attempt?: number
 } & (
-  | { kind: 'cli'; version: 1; adapter: 'agy' | 'cursor'; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
+  | { kind: 'cli'; version: 1; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
@@ -404,6 +439,7 @@ export interface ToolCall {
  * here; nothing else in the protocol has to learn about it.
  */
 export interface EventPayloads {
+  'providers.updated': { providers: ProviderState }
   'execution.updated': { execution: Execution }
   'session.created': { session: Session }
   'session.updated': { session: Session }
@@ -554,6 +590,10 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  providers: { request: NoInput; response: ProviderState }
+  refreshProviders: { request: SessionRef; response: ProviderState }
+  cancelProviderRefresh: { request: NoInput; response: ProviderState }
+  updateProviders: { request: ProviderUpdate; response: ProviderState }
   workspaceList: { request: SessionRef & { path?: string }; response: WorkspaceDirectory }
   workspaceFile: { request: SessionRef & { path: string }; response: WorkspaceFile }
   workspaceReview: { request: SessionRef & { base?: string }; response: WorkspaceReview }
@@ -598,6 +638,10 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'providers', method: 'GET', path: '/v1/providers' },
+  { name: 'refreshProviders', method: 'POST', path: '/v1/sessions/:id/providers/refresh' },
+  { name: 'cancelProviderRefresh', method: 'POST', path: '/v1/providers/cancel' },
+  { name: 'updateProviders', method: 'POST', path: '/v1/providers/settings' },
   { name: 'workspaceList', method: 'POST', path: '/v1/sessions/:id/workspace/list' },
   { name: 'workspaceFile', method: 'POST', path: '/v1/sessions/:id/workspace/file' },
   { name: 'workspaceReview', method: 'POST', path: '/v1/sessions/:id/workspace/review' },

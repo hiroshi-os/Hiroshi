@@ -27,6 +27,10 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  providers: 'providers',
+  refreshProviders: 'refreshProviders',
+  cancelProviderRefresh: 'cancelProviderRefresh',
+  updateProviders: 'updateProviders',
   workspaceList: 'workspaceList',
   workspaceFile: 'workspaceFile',
   workspaceReview: 'workspaceReview',
@@ -49,6 +53,7 @@ const everyOperation: { [Name in OperationName]: Name } = {
 }
 
 const everyEvent: { [Type in EventType]: Type } = {
+  'providers.updated': 'providers.updated',
   'execution.updated': 'execution.updated',
   'session.created': 'session.created',
   'session.updated': 'session.updated',

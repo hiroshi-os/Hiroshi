@@ -1,9 +1,10 @@
 /** The only adapter registration table. Credentials never leave this module. */
 import { readFileSync } from 'node:fs'
-import { basename, isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { ProviderError, type Provider, type RemoteModelOptions } from '../provider'
 import type { ExecutionLimits, ModelInfo } from '../protocol'
 import { CliProvider, agyPolicyReady } from './cli'
+import { validCommand } from './discovery'
 import { LocalProvider } from './local'
 import { OpenAIProvider } from './openai'
 import { AnthropicProvider } from './anthropic'
@@ -23,6 +24,8 @@ export interface ProviderConfig {
   /** Explicit executable, optionally followed by an absolute JS entry point. No shell wrappers. */
   command?: string[]
   trustWorkspace?: boolean
+  enabled?: boolean
+  unavailable?: boolean
   models: ModelConfig[]
 }
 export interface ProvidersConfig {
@@ -70,7 +73,9 @@ export class ProviderCatalog {
       const reason = info.reason
       const check = () => {
         if (reason) throw new ProviderError(reason, reason === 'provider_denied'
-          ? 'this provider is denied by local policy' : reason === 'cli_policy_required'
+          ? 'this provider is denied by local policy' : reason === 'provider_disabled' ? 'this provider is disabled; enable it in Providers'
+            : reason === 'cli_unavailable' ? 'the CLI is missing, changed or signed out; refresh Providers'
+            : reason === 'cli_policy_required'
             ? 'Agy response-only mode requires strict tool permissions and explicit write/command/MCP/browser denials; see provider configuration'
             : 'this provider needs a local credential')
         provider.check?.()
@@ -94,17 +99,14 @@ export class ProviderCatalog {
         throw new ProviderError('provider_configuration', 'provider ids must be unique lowercase names')
       }
       ids.add(entry.id)
-      const cli = entry.adapter === 'agy-cli' ? 'agy' : entry.adapter === 'cursor-cli' ? 'cursor' : null
+      if ((entry.enabled !== undefined && typeof entry.enabled !== 'boolean') || (entry.unavailable !== undefined && typeof entry.unavailable !== 'boolean')) throw new ProviderError('provider_configuration', 'enabled and unavailable must be booleans')
+      const cli = entry.adapter === 'agy-cli' ? 'agy' : entry.adapter === 'cursor-cli' ? 'cursor' : entry.adapter === 'pi-cli' ? 'pi' : entry.adapter === 'grok-cli' ? 'grok' : null
       if (entry.trustWorkspace !== undefined && typeof entry.trustWorkspace !== 'boolean') throw new ProviderError('provider_configuration', 'trustWorkspace must be a boolean')
       const adapter = Object.hasOwn(adapters, entry.adapter) ? adapters[entry.adapter] : undefined
       if ((!adapter && !cli) || !Array.isArray(entry.models) || entry.models.length === 0) {
         throw new ProviderError('provider_configuration', 'each provider needs a registered adapter and models')
       }
-      if (cli && (!Array.isArray(entry.command) || entry.command.length < 1 || entry.command.length > 2 ||
-        !entry.command.every((value) => typeof value === 'string' && isAbsolute(value) && !/[\r\n\0]/.test(value)) ||
-        /\.(cmd|bat|ps1)$/i.test(entry.command[0]!) ||
-        /^hiroshi(?:-engine)?(?:\.exe)?$/i.test(basename(entry.command[0]!)) ||
-        (entry.command.length === 2 && !/\.[cm]?js$|\.ts$/i.test(entry.command[1]!)))) {
+      if (cli && !validCommand(entry.command)) {
         throw new ProviderError('provider_configuration', 'CLI command needs an absolute executable, optionally followed by an absolute JavaScript entry point; shell wrappers and extra flags are unsupported')
       }
       const credential = entry.apiKeyEnv ?? adapter?.credential ?? 'UNUSED'
@@ -127,7 +129,8 @@ export class ProviderCatalog {
         }
         const id = `${entry.id}/${model.id}`
         const apiKey = env[credential]?.trim() ?? ''
-        const reason = denied(entry.id) ? 'provider_denied' : cli ? cli === 'agy' && !agyPolicyReady(env) ? 'cli_policy_required' : null : !apiKey ? 'credentials_missing' : null
+        const reason = denied(entry.id) ? 'provider_denied' : entry.enabled === false ? 'provider_disabled' : entry.unavailable ? 'cli_unavailable'
+          : cli ? cli === 'agy' && !agyPolicyReady(env) ? 'cli_policy_required' : null : !apiKey ? 'credentials_missing' : null
         const context = { window: model.contextWindow, reservedOutput: model.reservedOutput }
         add({ id, provider: entry.id, label: cli ? `${model.label} · response only${reason === 'cli_policy_required' ? ' · policy required' : ''}` : model.label,
           contextWindow: model.contextWindow, reservedOutput: model.reservedOutput, reason },

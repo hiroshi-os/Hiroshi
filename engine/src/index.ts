@@ -30,6 +30,7 @@ import { ToolRegistry } from './tools/registry'
 import { registerBuiltins } from './tools/builtins'
 import { Tools } from './tools/tools'
 import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
+import { ProviderRegistry } from './providers/registry'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import {
@@ -155,8 +156,8 @@ async function serve(flags: Flags): Promise<number> {
   const runs = new Runs(store, log, { budget, onIdle: (sessionID) => void inbox.deliver(sessionID) })
 
   const configuredDelay = numberFlag(flags, 'provider-delay') ?? Number(process.env.HIROSHI_PROVIDER_DELAY_MS)
-  const catalog = new ProviderCatalog(readProvidersConfig(paths.home), process.env,
-    new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }), budget.limits)
+  const catalog = new ProviderRegistry(paths.home, store, budget, process.env,
+    new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
   const registry = new ToolRegistry()
   registerBuiltins(registry, paths.home, budget.limits)
   const tools = new Tools(store, registry, paths.home, budget)
@@ -240,10 +241,12 @@ async function serve(flags: Flags): Promise<number> {
     // A step is left claimed, not cancelled: the next start resumes it. The
     // gate `stopAll` sets also stops new steps from starting while the runs
     // below deliver their last boundary.
+    const stoppingProviders = catalog.stop()
     budget.stop(false)
     tools.stopAll()
     steps.stopAll()
     await runs.stopAll()
+    await stoppingProviders
     // A backstop: a run nothing was holding any more is genuinely unaccounted
     // for, so it gets the crash wording rather than the shutdown one.
     runs.settleInterrupted('hiroshi-engine: the engine stopped while this command was running; it was not resumed')
@@ -263,6 +266,7 @@ async function serve(flags: Flags): Promise<number> {
       tools,
       checkpoints,
       catalog,
+      providers: catalog,
       log,
       token,
       version: ENGINE_VERSION,

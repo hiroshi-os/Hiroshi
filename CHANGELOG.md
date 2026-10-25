@@ -19,6 +19,19 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.16.0] - Unreleased
+
+### Added
+
+- Real Providers settings for Agy, Cursor Agent, Pi and Grok: bounded metadata
+  discovery, observed status, cancellation and manual executable paths.
+- Durable enabled/default selections and explicit Cursor workspace trust,
+  shared by Settings and the composer across windows. Changed executables keep
+  old selections visibly unavailable rather than redirecting requests.
+- Response-only Pi and Grok adapters with explicit tool restrictions and
+  terminal-result validation. Unknown account/model access remains unknown.
+  Engine-to-native-window integration coverage; protocol 12.
+
 ## [0.15.0] - Unreleased
 
 ### Added
