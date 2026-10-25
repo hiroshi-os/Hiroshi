@@ -207,6 +207,16 @@ what is waiting before it follows the feed.
 
 ## The wire
 
+Desktop discovery, RPC, event feeds and shutdown use a direct loopback transport,
+so inherited HTTP proxies cannot intercept daemon traffic or its bearer token.
+External provider requests retain their configured proxy behavior; no shell or
+system proxy setting needs to be changed.
+
+A live daemon that fails a health check is reported as unreachable. Its
+discovery file and startup lock are preserved instead of launching another
+database writer. Failed startup waits for an explicit retry in Daemon settings;
+normal feed reconnection still resumes from the last event sequence.
+
 - **HTTP** on loopback, one JSON response per request, typed errors with a
   stable `code`.
 - **One SSE feed** (`/v1/events`) that replays from a sequence number and then

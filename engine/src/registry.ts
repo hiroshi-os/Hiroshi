@@ -9,21 +9,22 @@
  *
  * Two windows launching at the same moment must not start two engines, which
  * is what the startup lock is for: it is created exclusively and only taken
- * over when its owner is gone or has been starting for too long.
+ * over when its owner is gone. A live owner is never displaced by a timeout.
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { Health, RegistryRecord } from './protocol'
+import { daemonFetch } from './local-transport'
 
-const START_LOCK_GRACE_MS = 30_000
 const PROBE_TIMEOUT_MS = 2_000
 
 export type Discovery =
   | { state: 'running'; record: RegistryRecord; health: Health }
   | { state: 'absent' }
   | { state: 'stale'; reason: string }
+  | { state: 'unreachable'; record: RegistryRecord; reason: string }
 
 export function readRegistry(file: string): RegistryRecord | null {
   try {
@@ -70,7 +71,7 @@ export function processAlive(pid: number): boolean {
   }
 }
 
-export async function probe(record: RegistryRecord, fetchImpl: typeof fetch = fetch): Promise<Health | null> {
+export async function probe(record: RegistryRecord, fetchImpl: typeof fetch = daemonFetch): Promise<Health | null> {
   try {
     const response = await fetchImpl(`${record.url}/v1/health`, {
       headers: { authorization: `Bearer ${record.token}` },
@@ -83,12 +84,12 @@ export async function probe(record: RegistryRecord, fetchImpl: typeof fetch = fe
   }
 }
 
-export async function discover(file: string, fetchImpl: typeof fetch = fetch): Promise<Discovery> {
+export async function discover(file: string, fetchImpl: typeof fetch = daemonFetch): Promise<Discovery> {
   const record = readRegistry(file)
   if (!record) return { state: 'absent' }
   if (!processAlive(record.pid)) return { state: 'stale', reason: `pid ${record.pid} is gone` }
   const health = await probe(record, fetchImpl)
-  if (!health) return { state: 'stale', reason: `pid ${record.pid} did not answer on ${record.url}` }
+  if (!health) return { state: 'unreachable', record, reason: `pid ${record.pid} is alive but did not answer on ${record.url}; its discovery file was preserved` }
   return { state: 'running', record, health }
 }
 
@@ -104,9 +105,8 @@ export type StartLockResult = { ok: true } | { ok: false; pid: number | null }
 /**
  * Take the startup lock, or report who holds it.
  *
- * A lock whose owner is dead, or that has been held longer than a start can
- * plausibly take, is taken over: a crash between the spawn and the listen must
- * not require the user to delete a file by hand.
+ * A dead owner's lock can be reclaimed. A live owner keeps the lock regardless
+ * of its age: a failed health check must not create a second database writer.
  */
 export function acquireStartLock(file: string): StartLockResult {
   mkdirSync(path.dirname(file), { recursive: true })
@@ -122,7 +122,7 @@ export function acquireStartLock(file: string): StartLockResult {
     } catch {
       existing = null
     }
-    if (existing && processAlive(existing.pid) && Date.now() - existing.at < START_LOCK_GRACE_MS) {
+    if (existing && processAlive(existing.pid)) {
       return { ok: false, pid: existing.pid }
     }
     write()

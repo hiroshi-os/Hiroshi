@@ -17,6 +17,7 @@ import { localPaths } from '../../src/engine/discovery'
 import { ensureEngine, stopEngine, type AttachResult } from '../../src/engine/supervisor'
 import { PROTOCOL_VERSION, type Health, type RegistryRecord } from '../src/protocol'
 import { startDaemon, until } from './harness'
+import { daemonFetch } from '../src/local-transport'
 
 function tempHome(): string {
   return mkdtempSync(path.join(os.tmpdir(), 'hiroshi-supervisor-'))
@@ -117,7 +118,7 @@ describe('attaching to an engine', () => {
       expect(record.pid).toBe(process.pid)
 
       // It is still there, still answering after the conversation.
-      const health = await fetch(`${fake.url}/v1/health`, {
+      const health = await daemonFetch(`${fake.url}/v1/health`, {
         headers: { authorization: `Bearer ${fake.token}` },
       })
       expect(health.ok).toBe(true)

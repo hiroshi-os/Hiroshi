@@ -103,12 +103,12 @@ describe('the startup lock', () => {
     releaseStartLock(file)
   })
 
-  test('a lock held for too long by a live process is taken over', () => {
+  test('a live owner keeps its lock even after the old startup grace period', () => {
     const file = path.join(temp(), 'engine.lock')
     // Our own pid, but pretending to have been starting for an hour.
     writeFileSync(file, JSON.stringify({ pid: process.pid, at: Date.now() - 3_600_000 }))
 
-    expect(acquireStartLock(file).ok).toBe(true)
+    expect(acquireStartLock(file)).toEqual({ ok: false, pid: process.pid })
     releaseStartLock(file)
   })
 })

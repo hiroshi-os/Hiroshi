@@ -25,6 +25,7 @@ import {
   type OperationRequest,
   type OperationResponse,
 } from '../../engine/src/protocol'
+import { daemonFetch } from '../../engine/src/local-transport'
 
 export interface EngineConnection {
   url: string
@@ -67,7 +68,7 @@ class EngineTransport {
   readonly token: string
   readonly #fetch: typeof fetch
 
-  constructor(connection: EngineConnection, fetchImpl: typeof fetch = fetch) {
+  constructor(connection: EngineConnection, fetchImpl: typeof fetch = daemonFetch) {
     this.url = connection.url.replace(/\/+$/, '')
     this.token = connection.token
     this.#fetch = fetchImpl
@@ -262,7 +263,7 @@ export type EngineClient = EngineTransport & EngineSurface
  * command line) with its request and its answer already typed, and nothing
  * hand written can fall behind the wire.
  */
-export function engineClient(connection: EngineConnection, fetchImpl: typeof fetch = fetch): EngineClient {
+export function engineClient(connection: EngineConnection, fetchImpl: typeof fetch = daemonFetch): EngineClient {
   const transport = new EngineTransport(connection, fetchImpl)
   const surface = {} as EngineSurface
   for (const operation of operations) {
