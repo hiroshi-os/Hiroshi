@@ -1170,11 +1170,14 @@ const Transcript = memo(function Transcript({
   return <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, width: '100%' }}>
       <div
         style={{
-          display: empty ? 'flex' : 'none',
+          display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          flexGrow: 1,
+          flexGrow: empty ? 1 : 0,
+          height: empty ? undefined : 0,
+          opacity: empty ? 1 : 0,
+          overflow: 'hidden',
           minHeight: 0,
           width: '100%',
           gap: 16,
@@ -1193,7 +1196,7 @@ const Transcript = memo(function Transcript({
             whiteSpace: 'nowrap',
           }}
         >
-          {`What should we build in ${project}?`}
+          {empty ? `What should we build in ${project}?` : ''}
         </text>
       </div>
     <virtual-list
@@ -1201,7 +1204,7 @@ const Transcript = memo(function Transcript({
       ref={listRef}
       overdraw={240}
       estimatedItemHeight={220}
-      style={{ display: empty ? 'none' : 'flex', flexGrow: 1, minHeight: 0, width: '100%' }}
+      style={{ flexGrow: empty ? 0 : 1, height: empty ? 0 : undefined, opacity: empty ? 0 : 1, overflow: 'hidden', minHeight: 0, width: '100%' }}
     >
       {includeSafeMdx && (
         <TranscriptRow key="safemdx" first>
