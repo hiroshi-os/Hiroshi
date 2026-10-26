@@ -23,6 +23,8 @@ bunx vitest run titlebar-drag.test.tsx   # one file
 | `engine/test/` | real SQLite, daemon lifetimes, provider fixtures, checkpoints, tools and shell lifecycle |
 | `engine/test/execution.test.ts` | shared admission, cancellation, low RAM, deadlines, duplicate claims and durable UI replay |
 | `engine/test/execution-daemon.test.ts` | HTTP provider → shell tool → response, competing sessions, command restart, deadlines and native process containment |
+| `engine/test/prompt-drafts.test.ts` | durable input, dropped requests/acknowledgements, one CLI execution after restart/retry, concurrent edits and storage failure |
+| `projects.integration.ts` | native task/project draft isolation, window restart, explicit discard, offline input and deliberate retry, in source and packaged windows |
 | `scripts/browser-smoke.ts` | published Wasm renderer, canvas/input readiness and a demo composer reply in Chrome |
 | `scripts/smoke-window.ts` | packaged launcher and `--dev` script startup, OS window visibility, minimize, clean close and sidecar survival |
 

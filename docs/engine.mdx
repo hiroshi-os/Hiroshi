@@ -29,8 +29,14 @@ cockpit (React)  ──HTTP──▶  hiroshi-engine (bun)  ──▶  SQLite (e
 | run | one command: its shell, its output, its exit code, its end |
 | event | the append-only log every projection is built from |
 
-The cockpit keeps no state of its own that the engine does not have. A fresh
-window hydrates from one snapshot and then follows the feed from the
+The engine owns admitted prompts and run state. The cockpit saves unsent input
+and unconfirmed submissions locally in `composer.db`, scoped to task and workspace.
+It commits this input before a prompt RPC and keeps the original idempotency key
+for deliberate retries after a lost acknowledgement. A second window cannot
+overwrite a newer draft revision. A late acknowledgement only clears the revision
+that was sent. Storage failures leave input visible and block submission.
+
+A fresh window hydrates run state from one snapshot and then follows the feed from the
 watermark that snapshot carried, so there is no gap and no double-draw.
 
 ## Durability

@@ -9,6 +9,8 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   test: {
+    // Each file owns a native renderer. Keep GPU contexts and worker RAM bounded.
+    fileParallelism: false,
     include: ['**/*.test.{ts,tsx}'],
     exclude: ['node_modules/**', 'engine/**', 'dist/**'],
   },
