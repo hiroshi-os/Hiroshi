@@ -76,10 +76,12 @@ export class CliEvents {
     if (!object(event)) throw fail('cli_protocol', 'CLI event must be an object')
     if (this.adapter === 'grok') {
       if (event.type === 'text') this.#append(text(event.data))
-      else if (event.type === 'thought') return
+      // Advertised capabilities and intermediate usage snapshots are metadata,
+      // not tool invocations or public assistant text. Use terminal usage once.
+      else if (['thought', 'available_commands', 'usage'].includes(event.type)) return
       else if (event.type === 'end') {
-        if (event.stopReason !== 'EndTurn') throw fail('cli_failed', 'Grok did not finish a response-only turn')
-        this.#id(event.sessionId); this.#finish(this.#output, undefined)
+        if (!['EndTurn', 'end_turn'].includes(event.stopReason)) throw fail('cli_failed', 'Grok did not finish a response-only turn')
+        this.#id(event.sessionId); this.#finish(this.#output, event.usage)
       } else throw fail('cli_protocol', 'Grok emitted an unsupported response-only event')
       return
     }
