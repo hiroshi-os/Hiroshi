@@ -115,6 +115,13 @@ See [development](docs/development.mdx) for integration coverage and resource li
 
 Set `HIROSHI_HOME` to use another directory. It contains `engine.db`, the discovery
 file `engine.json`, the startup lock `engine.lock` and `logs/engine.log`.
+The desktop also keeps unsent drafts and unconfirmed sends in `composer.db`.
+Drafts belong to one task and workspace. Input stays saved until the engine
+acknowledges admission; newer edits remain in the composer. After a connection
+failure, use **Retry saved send** to check the original operation without sending
+it twice. Reopening or reconnecting never automatically submits saved input.
+**Forget saved send** removes the local retry record but cannot recall a prompt
+already admitted by the engine. **Discard draft** explicitly clears unsent text.
 
 The daemon shares one execution budget across sessions: two active operations,
 64 queued operations, a 60-second admission deadline and a two-minute execution

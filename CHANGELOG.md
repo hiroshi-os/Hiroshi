@@ -19,6 +19,21 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.19.0] - Unreleased
+
+### Added
+
+- Save drafts per task and workspace in a local durable outbox before sending.
+  Restore input after task/project switches and window restarts, including when
+  the selected engine cannot start.
+- Show unconfirmed or rejected sends with deliberate retry and forget actions.
+  Retry the original text, model, delivery mode and key so lost acknowledgements
+  cannot execute a prompt twice. Clear input only after durable acknowledgement
+  and preserve newer edits, including edits from another window.
+- Cover offline admission, lost acknowledgements, daemon restart, storage failure,
+  stale-window edits and native draft recovery with integration tests. Run native
+  test files sequentially to bound worker memory and GPU contexts.
+
 ## [0.18.3] - Unreleased
 
 ### Fixed

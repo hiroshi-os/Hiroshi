@@ -7,13 +7,15 @@
  * through here: there is no local run state to fall out of step with.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
 import { readWindowState } from '../shell/state'
+import { createPromptStore } from '../shell/prompt-store'
+import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
   openProject: (cwd: string) => Promise<void>
@@ -35,7 +37,13 @@ export interface EngineHandle {
   /** Run a command in the engine's session for this workspace. */
   exec: (command: string) => void
   /** Admit a prompt to the session's inbox; it is delivered at a boundary. */
-  prompt: (text: string, mode?: DeliveryMode, model?: string) => void
+  prompt: (text: string, mode?: DeliveryMode, model?: string) => Promise<boolean>
+  draft: DraftView
+  editDraft: (text: string) => void
+  retryPrompt: () => void
+  forgetPrompt: () => void
+  discardDraft: () => void
+  reloadDraft: () => void
   /** Stop every run the session is holding, keeping the pending inbox. */
   interrupt: () => void
   cancel: (runID: string) => void
@@ -44,6 +52,7 @@ export interface EngineHandle {
 
 export interface EngineOptions {
   initialSessionID?: string
+  initialWorkspace?: string
   enabled: boolean
   workspace: string
 }
@@ -58,10 +67,15 @@ function describe(error: unknown): string {
   return String(error)
 }
 
-export function useEngine({ enabled, workspace, initialSessionID }: EngineOptions): EngineHandle {
+export function useEngine({ enabled, workspace, initialSessionID, initialWorkspace }: EngineOptions): EngineHandle {
   const [snapshot, setSnapshot] = useState<Snapshot>(initialSnapshot)
   const [attempt, setAttempt] = useState(0)
   const [selected, setSelected] = useState<string | null>(initialSessionID ?? null)
+  // Remembered input scope is a local preference, not invented engine state.
+  // It remains usable when a previously selected engine cannot start.
+  const [draftTarget, setDraftTarget] = useState(() => initialSessionID ? { id: initialSessionID, cwd: initialWorkspace ?? workspace } : null)
+  const knownSessions = useRef(snapshot.sessions)
+  knownSessions.current = snapshot.sessions
   const client = useRef<EngineClient | null>(null)
   const session = useRef<string | null>(null)
   const sessionWorkspace = useRef(workspace)
@@ -133,6 +147,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
           if (stopped || epoch !== generation.current) return
           session.current = chosen.id
           sessionWorkspace.current = detail.session.cwd
+          setDraftTarget({ id: chosen.id, cwd: detail.session.cwd })
           after = detail.seq
           update((current) =>
             hydrate({ ...current, status: 'ready', health: attached.health, sessions, providers, projects, models: providers.models, defaultModel: providers.defaultModel }, detail),
@@ -188,10 +203,12 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     }
   }, [enabled, workspace, attempt, selected])
 
-  const selectSession = useCallback((id: string) => {
+  const selectSession = useCallback((id: string, cwd?: string) => {
     generation.current++
     client.current = null
     session.current = null
+    const target = cwd ?? knownSessions.current.find((row) => row.id === id)?.cwd
+    setDraftTarget(target ? { id, cwd: target } : null)
     setSnapshot((current) => ({ ...initialSnapshot(), sessions: current.sessions, projects: current.projects, status: 'starting' }))
     setSelected(id)
     setAttempt((value) => value + 1)
@@ -200,7 +217,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     if (!client.current) throw new Error('the engine is not connected')
     const epoch = generation.current
     const { session: created } = await client.current.createSession({ cwd: sessionWorkspace.current, title: 'New task' })
-    if (epoch === generation.current) selectSession(created.id)
+    if (epoch === generation.current) selectSession(created.id, created.cwd)
   }, [workspace, selectSession])
 
   const openProject = useCallback(async (cwd: string) => {
@@ -214,7 +231,7 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
         if (saved.cwd === opened.cwd && saved.workspaceIdentity === opened.workspaceIdentity) id = saved.id
       } catch { /* Removed local preference: use the validated project task. */ }
     }
-    if (epoch === generation.current) selectSession(id)
+    if (epoch === generation.current) selectSession(id, opened.cwd)
   }, [selectSession])
   const refreshProjects = useCallback(async () => {
     if (!client.current) throw new Error('The engine is not connected')
@@ -239,18 +256,23 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     })
   }, [])
 
-  const prompt = useCallback((text: string, mode: DeliveryMode = 'queue', model?: string) => {
-    const connection = client.current
-    const sessionID = session.current
-    if (!connection || !sessionID) return
-    const body = text.trim()
-    if (!body) return
-    // One key per send. A retry of the same send is a no-op in the engine.
-    const key = `k_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-    void connection.prompt({ id: sessionID, text: body, mode, key, ...(model ? { model } : {}) }).catch((error) => {
-      setSnapshot((current) => ({ ...current, error: describe(error) }))
-    })
-  }, [])
+  const draftController = useMemo(() => enabled && typeof Bun !== 'undefined' && draftTarget
+    ? new PromptDraftController(createPromptStore(draftTarget)) : null,
+  [enabled, draftTarget?.id, draftTarget?.cwd])
+  useEffect(() => () => draftController?.dispose(), [draftController])
+  const draft = useSyncExternalStore(draftController?.subscribe ?? emptySubscribe, draftController?.getSnapshot ?? emptyDraftView)
+  const editDraft = useCallback((text: string) => draftController?.edit(text), [draftController])
+  const prompt = useCallback(async (text: string, mode: DeliveryMode = 'queue', model?: string) => {
+    if (!draftController) return false
+    // onSubmit carries the latest native textarea value, which can precede a
+    // React render. Persist it synchronously before staging the operation.
+    if (text !== draftController.getSnapshot().text) draftController.edit(text)
+    return draftController.submit(client.current, mode, model)
+  }, [draftController])
+  const retryPrompt = useCallback(() => { void draftController?.retry(client.current) }, [draftController])
+  const forgetPrompt = useCallback(() => draftController?.forget(), [draftController])
+  const discardDraft = useCallback(() => draftController?.discard(), [draftController])
+  const reloadDraft = useCallback(() => draftController?.reload(), [draftController])
 
   const interrupt = useCallback(() => {
     const connection = client.current
@@ -324,5 +346,9 @@ export function useEngine({ enabled, workspace, initialSessionID }: EngineOption
     catch (error) { receiveProviders(await client.current.providers()); setSnapshot((current) => ({ ...current, error: describe(error) })); throw error }
   }, [])
 
-  return { openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
+
+const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }
+const emptyDraftView = () => blankDraft
+const emptySubscribe = () => () => {}

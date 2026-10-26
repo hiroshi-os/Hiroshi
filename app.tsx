@@ -15,6 +15,7 @@ import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } fro
 import { ProviderSettings } from './src/components/ProviderSettings'
 import { ProjectSwitcher } from './src/components/ProjectSwitcher'
 import { CatalogPicker } from './src/components/CatalogPicker'
+import { DraftRecovery } from './src/components/DraftRecovery'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
@@ -3182,7 +3183,7 @@ function SurfacePanel({
 }) {
   const [surfaceMenuOpen, setSurfaceMenuOpen] = useState(false)
   const [termInput, setTermInput] = useState('')
-  const [promptInput, setPromptInput] = useState('')
+  const promptInput = engine.draft.text
   const [promptMode, setPromptMode] = useState<DeliveryMode>('queue')
 
   // Every line the terminal shows is the engine's. A command leaves the window
@@ -3196,9 +3197,8 @@ function SurfacePanel({
 
   const handlePromptSubmit = (val: string) => {
     const text = val.trim()
-    if (!text) return
-    setPromptInput('')
-    engine.prompt(text, promptMode)
+    if (!text || engine.draft.pending || engine.draft.busy || engine.draft.unsaved) return
+    void engine.prompt(val, promptMode)
   }
 
   const engineStatus = engine.snapshot.status
@@ -4012,7 +4012,7 @@ function SurfacePanel({
                     borderWidth: 0,
                     padding: 0,
                   }}
-                  onChange={(e) => setPromptInput(e.value ?? '')}
+                  onChange={(e) => engine.editDraft(e.value ?? '')}
                   onSubmit={(e) => handlePromptSubmit(e.value ?? promptInput)}
                 />
                 <div
@@ -4739,6 +4739,8 @@ function Composer({
   value,
   onChange,
   onSend,
+  sendBlocked = false,
+  draftAvailable = false,
   model,
   models,
   onModelChange,
@@ -4756,6 +4758,8 @@ function Composer({
   value: string
   onChange: (next: string) => void
   onSend: (text: string) => void
+  sendBlocked?: boolean
+  draftAvailable?: boolean
   model: string
   models?: typeof MODELS
   onModelChange: (next: string) => void
@@ -4774,11 +4778,11 @@ function Composer({
     if (id == null) return
     renderer?.focusElement?.(id)
   }, [focusTick, renderer])
-  const ready = value.trim().length > 0 && (!engine || (engine.status === 'ready' && !!engine.sessionID))
+  const ready = value.trim().length > 0 && !sendBlocked && (!engine || draftAvailable)
   const send = (text: string) => {
     const next = text.trim()
-    if (!next || !ready) return
-    onSend(next)
+    if (!next || sendBlocked || (engine && !draftAvailable)) return
+    onSend(text)
   }
   return (
     <div
@@ -4808,7 +4812,7 @@ function Composer({
           paddingBottom: 10,
         }}
       >
-        <textarea
+        {engine && !draftAvailable ? <text style={{ fontSize: 14, color: C.tertiary, paddingLeft: 10 }}>Connecting to this task…</text> : <textarea
           ref={composerRef}
           testId="composer"
           value={value}
@@ -4830,7 +4834,7 @@ function Composer({
           }}
           onChange={(event) => onChange(event.value ?? '')}
           onSubmit={(event) => send(event.value ?? value)}
-        />
+        />}
         <div
           style={{
             display: 'flex',
@@ -5486,10 +5490,11 @@ export function ChatApp({
   const engineView = useEngine({
     enabled: engineEnabled,
     initialSessionID: shellLink?.sessionID ?? initialProject?.sessionID ?? shellInitial?.sessionID,
+    initialWorkspace: initialProject?.cwd,
     workspace: typeof process !== 'undefined' ? process.cwd() : '',
   })
   const activeEngineSession = engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)
-  const actualWorkspace = activeEngineSession?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
+  const actualWorkspace = activeEngineSession?.cwd ?? initialProject?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
   const shownProject = engineView.snapshot.projects.find((item) => item.cwd === actualWorkspace)?.name ?? actualWorkspace
   const previousSession = useRef<string | null>(null)
   const restoringProject = useRef(false)
@@ -5694,17 +5699,19 @@ export function ChatApp({
         {engineEnabled && engineView.snapshot.error && (
           <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
         )}
+        {engineEnabled && <DraftRecovery engine={engineView} />}
         <Composer
           engine={engineEnabled ? engineView.snapshot : undefined}
           deliveryMode={deliveryMode}
           onDeliveryMode={setDeliveryMode}
-          value={draft}
-          onChange={setDraft}
+          value={engineEnabled ? engineView.draft.text : draft}
+          onChange={engineEnabled ? engineView.editDraft : setDraft}
+          sendBlocked={engineEnabled && (!!engineView.draft.pending || engineView.draft.busy || engineView.draft.unsaved)}
+          draftAvailable={!!engineView.draft.scope}
           focusTick={focusTick}
           onSend={(text) => {
             if (engineEnabled) {
-              engineView.prompt(text, deliveryMode, chosenModel)
-              setDraft('')
+              void engineView.prompt(text, deliveryMode, chosenModel)
               setTailTick((value) => value + 1)
               return
             }
