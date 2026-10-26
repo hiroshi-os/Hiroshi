@@ -19,6 +19,16 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.18.3] - Unreleased
+
+### Fixed
+
+- Accept current Grok command-list and usage metadata during response streams
+  and recognize both supported successful turn markers. Keep metadata and
+  private thinking out of conversation history, and reject unsupported activity.
+- Record terminal Grok token usage once, with regression coverage for streamed
+  replies and durable history across daemon restarts.
+
 ## [0.18.2] - Unreleased
 
 ### Fixed

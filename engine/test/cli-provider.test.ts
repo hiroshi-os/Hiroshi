@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CliProvider, agyPolicyReady } from '../src/providers/cli'
+import { CliEvents, CliProvider, agyPolicyReady } from '../src/providers/cli'
 import { ProviderCatalog } from '../src/providers/catalog'
 import { DEFAULT_EXECUTION_LIMITS } from '../src/execution'
 import type { ProviderPart, ProviderRequest } from '../src/provider'
@@ -26,6 +26,50 @@ function configure(home: string, adapter: 'agy-cli' | 'cursor-cli' = 'cursor-cli
   writeFileSync(join(home, 'providers.json'), JSON.stringify({ defaultModel: 'cli/chat', providers: [{ id: 'cli', adapter, command: [process.execPath, fixture], models: [model] }] }))
   writeFileSync(join(home, 'execution.json'), JSON.stringify({ ...limits, maxActive: 1, timeoutMs: 15000 }))
 }
+
+describe('Grok streaming compatibility', () => {
+  for (const stopReason of ['EndTurn', 'end_turn']) test(`${stopReason}: metadata interleaving never enters public output`, () => {
+    let output = ''; const parts: ProviderPart[] = []
+    const events = new CliEvents('grok', (value) => output += value, (part) => parts.push(part))
+    const emit = (event: object) => events.accept(JSON.stringify(event))
+    emit({ type: 'available_commands', tools: ['private-fixture-secret'], commands: [] })
+    emit({ type: 'text', data: 'Hello 漢' })
+    emit({ type: 'thought', data: 'private-fixture-secret' })
+    emit({ type: 'usage', usage: { input_tokens: 99, output_tokens: 99 }, signature: 'private-fixture-secret' })
+    emit({ type: 'available_commands', tools: [], commands: ['private-fixture-secret'] })
+    emit({ type: 'text', data: '🙂' })
+    emit({ type: 'end', stopReason, sessionId: 'grok-session', usage: { input_tokens: 10, output_tokens: 3 } })
+    expect(events.completed).toBe(true)
+    expect(output).toBe('Hello 漢🙂')
+    expect(parts.filter((part) => part.kind === 'usage')).toEqual([{ kind: 'usage', inputTokens: 10, outputTokens: 3 }])
+    expect(JSON.stringify(parts)).not.toContain('private-fixture-secret')
+    expect(parts.some((part) => part.kind === 'tool')).toBe(false)
+    expect(() => emit({ type: 'usage', usage: {} })).toThrow('data after completion')
+  })
+
+  for (const type of ['tool_call', 'tool_result', 'error', 'unknown']) test(`${type}: unrecognized activity fails closed`, () => {
+    const events = new CliEvents('grok', () => {})
+    expect(() => events.accept(JSON.stringify({ type, data: 'private-fixture-secret' }))).toThrow('unsupported response-only event')
+    expect(events.completed).toBe(false)
+  })
+
+  for (const stopReason of ['max_tokens', 'MaxTokens', 'tool_use', 'error', null]) test(`${stopReason}: incomplete turns never succeed`, () => {
+    const events = new CliEvents('grok', () => {})
+    events.accept(JSON.stringify({ type: 'text', data: 'partial' }))
+    expect(() => events.accept(JSON.stringify({ type: 'end', stopReason, sessionId: 'grok-session' }))).toThrow('did not finish')
+    expect(events.completed).toBe(false)
+  })
+
+  test('metadata alone cannot complete a turn and an invalid session cannot succeed', () => {
+    const events = new CliEvents('grok', () => {})
+    events.accept(JSON.stringify({ type: 'usage', usage: {} }))
+    expect(events.completed).toBe(false)
+    expect(() => events.accept(JSON.stringify({ type: 'end', stopReason: 'end_turn', sessionId: 'session' }))).toThrow('final answer')
+    const invalid = new CliEvents('grok', () => {})
+    invalid.accept(JSON.stringify({ type: 'text', data: 'answer' }))
+    expect(() => invalid.accept(JSON.stringify({ type: 'end', stopReason: 'end_turn' }))).toThrow('identifier')
+  })
+})
 
 describe('CLI contract through real executable pipes', () => {
   for (const adapter of ['agy', 'cursor']) test(`${adapter}: stdin, workspace, split UTF-8 and duplicate flush handling`, async () => {

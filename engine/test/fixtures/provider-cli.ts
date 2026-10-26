@@ -30,8 +30,12 @@ if (id === 'pi') {
   if (args[args.indexOf('--tools') + 1] !== '' || args[args.indexOf('--deny') + 1] !== '*' || !args.includes('--no-subagents')) process.exit(25)
   const file = args[args.indexOf('--prompt-file') + 1]!
   if (!readFileSync(file, 'utf8').includes('conversation')) process.exit(26)
-  emit({ type: 'text', data: 'Grok 漢🙂' }); emit({ type: 'thought', data: 'private-fixture-secret' })
-  if (!state.truncated) emit({ type: 'end', stopReason: state.length ? 'MaxTokens' : 'EndTurn', sessionId: 'grok-session' })
+  emit({ type: 'available_commands', tools: ['private-fixture-secret'], commands: [] })
+  emit({ type: 'text', data: 'Grok 漢' }); emit({ type: 'thought', data: 'private-fixture-secret' })
+  emit({ type: 'available_commands', tools: [], commands: ['private-fixture-secret'] })
+  emit({ type: 'text', data: '🙂' })
+  emit({ type: 'usage', usage: { input_tokens: 10, output_tokens: 3 }, signature: 'private-fixture-secret' })
+  if (!state.truncated) emit({ type: 'end', stopReason: state.length ? 'max_tokens' : 'end_turn', sessionId: 'grok-session', usage: { input_tokens: 10, output_tokens: 3 } })
 } else {
   process.env.HIROSHI_CLI_FIXTURE = id
   await import('./cli-response')
