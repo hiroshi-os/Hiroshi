@@ -275,7 +275,7 @@ const ACCESS = [
   {
     id: 'edits',
     label: 'Auto-accept edits',
-    description: 'Auto-approve routine edits, ask before other actions',
+    description: 'Auto-approve edits, ask before other actions',
     icon: 'pencil' as const,
   },
   {
@@ -4433,13 +4433,14 @@ function menuItemStyle(state: { selected: boolean; highlighted: boolean }): Styl
 type MenuRowProps = Props & {
   label: string
   description?: string
+  descriptionSize?: number
   icon?: IconName
   selected: boolean
   hint?: string
 }
 
 const MenuRow = React.forwardRef<PublicInstance, MenuRowProps>(function MenuRow(
-  { label, description, icon, selected, hint, style, ...props },
+  { label, description, descriptionSize = 12.5, icon, selected, hint, style, ...props },
   ref,
 ) {
   return (
@@ -4473,7 +4474,7 @@ const MenuRow = React.forwardRef<PublicInstance, MenuRowProps>(function MenuRow(
           {label}
         </text>
         {description && (
-          <text style={{ fontSize: 12.5, lineHeight: 14, color: C.tertiary, paddingTop: 2 }}>
+          <text style={{ fontSize: descriptionSize, lineHeight: descriptionSize + 1.5, color: C.tertiary, paddingTop: 2 }}>
             {description}
           </text>
         )}
@@ -4493,6 +4494,7 @@ function ChipSelect({
   caret = true,
   accent,
   menuWidth,
+  fixedMenuWidth = false,
   testId,
   disabled = false,
   children,
@@ -4505,6 +4507,7 @@ function ChipSelect({
   caret?: boolean
   accent?: boolean
   menuWidth?: number
+  fixedMenuWidth?: boolean
   testId?: string
   disabled?: boolean
   children: React.ReactNode
@@ -4542,7 +4545,7 @@ function ChipSelect({
           </text>
           {caret && <Icon name="chevronDown" size={10.5} color={C.ghost} />}
         </SelectTrigger>
-        <SelectContent side="top" sideOffset={4} style={{ ...MENU, minWidth: menuWidth ?? 220 }}>
+        <SelectContent side="top" sideOffset={4} style={{ ...MENU, minWidth: menuWidth ?? 220, ...(fixedMenuWidth ? { width: menuWidth ?? 220 } : {}) }}>
           {children}
         </SelectContent>
       </div>
@@ -4610,9 +4613,10 @@ export function AccessPicker({ value, onChange, disabled = false }: { value: str
       onChange={(next) => void change(next)}
       items={ACCESS.map((option) => ({ value: option.id, label: option.label }))}
       icon={selected.icon}
-      label={selected.label}
+      label={busy ? 'Saving…' : selected.label}
       caret={false}
       menuWidth={312}
+      fixedMenuWidth
     >
       {ACCESS.map((option) => (
         <SelectItem
@@ -4626,6 +4630,7 @@ export function AccessPicker({ value, onChange, disabled = false }: { value: str
             <MenuRow
               label={option.label}
               description={option.description}
+              descriptionSize={11.5}
               icon={option.icon}
               selected={state.selected}
             />

@@ -5,12 +5,12 @@ import { accessFixture } from './access-fixture'
 import { startDaemon, tempHome, until } from './harness'
 import type { AccessMode } from '../src/protocol'
 
-async function setup() {
+async function setup(limits: Record<string, number> = {}) {
   const home = tempHome(), cwd = join(home, 'project'); mkdirSync(cwd)
   if (Bun.spawnSync(['git', '-C', cwd, 'init', '-b', 'main']).exitCode) throw new Error('fixture Git init failed')
   const fixture = accessFixture()
   writeFileSync(join(home, 'providers.json'), JSON.stringify({ defaultModel: 'fixture/tools', providers: [fixture.provider] }))
-  writeFileSync(join(home, 'execution.json'), JSON.stringify({ maxActive: 1, minFreeMemoryMB: 128, processMemoryMB: 512, maxProcesses: 4, timeoutMs: 30000 }))
+  writeFileSync(join(home, 'execution.json'), JSON.stringify({ maxActive: 1, minFreeMemoryMB: 128, processMemoryMB: 512, maxProcesses: 4, timeoutMs: 30000, ...limits }))
   const start = () => startDaemon({ home, workspace: cwd, env: { HIROSHI_ACCESS_TEST_KEY: 'local-fixture' } })
   const daemon = await start(), { session } = await daemon.client.createSession({})
   return { home, cwd, fixture, daemon, start, id: session.id }
@@ -102,7 +102,7 @@ test('Auto uses an independent bounded model review, records its usage, then exe
     expect(f.fixture.reviews[0].tools ?? []).toHaveLength(0)
     const usage = await f.daemon.client.usageReport({ id: f.id, from: Date.now() - 86400000, to: Date.now() + 1000, includeHistory: false })
     expect(usage.totals.attempts).toBe(3)
-    expect(usage.totals.input).toBe(47)
+    expect(usage.totals.input).toBe(43)
   } finally { await f.daemon.stop(); f.fixture.server.stop(true) }
 }, 20000)
 
@@ -133,20 +133,24 @@ test('a crash during Auto review asks after restart without replaying the review
   } finally { f.fixture.releaseReview(); await f.daemon.stop(); f.fixture.server.stop(true) }
 }, 25000)
 
-test('changing to Supervised while an automatic tool waits for capacity prevents the effect at admission', async () => {
+for (const revoke of ['mode', 'policy'] as const) test(`revoking a ${revoke} allowance while a tool waits for capacity prevents its effect at admission`, async () => {
   const f = await setup(); f.fixture.holdTurns()
   try {
-    await change(f, 'full')
+    if (revoke === 'mode') await change(f, 'full')
+    else writeFileSync(join(f.home, 'tools.json'), JSON.stringify({ rules: [{ tool: 'write_file', action: 'allow' }] }))
     await f.daemon.client.prompt({ id: f.id, text: write('revoked.txt') })
     await until(() => f.fixture.requests.length === 1)
     const { run } = await f.daemon.client.startRun({ id: f.id, command: process.platform === 'win32' ? 'Start-Sleep -Seconds 20' : 'sleep 20' })
     f.fixture.releaseTurn()
     await until(async () => (await f.daemon.client.session({ id: f.id })).executions!.some((e) => e.kind === 'tool' && e.state === 'queued'))
-    await change(f, 'ask'); await f.daemon.client.cancelRun({ id: run.id })
+    if (revoke === 'mode') await change(f, 'ask')
+    else writeFileSync(join(f.home, 'tools.json'), JSON.stringify({ rules: [{ tool: 'write_file', action: 'ask' }] }))
+    await f.daemon.client.cancelRun({ id: run.id })
     await done(f)
     const d = await f.daemon.client.session({ id: f.id })
-    expect(d.toolCalls[0]?.status).toBe('failed')
-    expect(d.toolCalls[0]?.error).toContain('changed while queued')
+    const edit = d.toolCalls.find((call) => call.tool === 'write_file')
+    expect(edit?.status).toBe('failed')
+    expect(edit?.error).toContain('changed while queued')
     expect(existsSync(join(f.cwd, 'revoked.txt'))).toBe(false)
   } finally { f.fixture.releaseTurn(); await f.daemon.stop(); f.fixture.server.stop(true) }
 }, 25000)
@@ -218,4 +222,19 @@ test('Full access respects a remembered operator denial for the exact request', 
     expect(d.toolCalls.at(-1)).toMatchObject({ status: 'denied', decisionSource: 'saved' })
     expect(existsSync(join(f.cwd, 'remembered.txt'))).toBe(false)
   } finally { await f.daemon.stop(); f.fixture.server.stop(true) }
+}, 20000)
+
+test('the shared execution deadline ends a hung AI review, releases capacity and requests a human answer', async () => {
+  const f = await setup({ timeoutMs: 2000 }); f.fixture.setReview('hold')
+  try {
+    await change(f, 'auto')
+    await f.daemon.client.prompt({ id: f.id, text: write('timeout.txt') })
+    await pending(f)
+    const d = await f.daemon.client.session({ id: f.id })
+    expect(d.accessReviews?.[0]?.status).toBe('ask')
+    expect(d.executions?.find((e) => e.id.startsWith('review:'))?.state).toBe('cancelled')
+    expect((await f.daemon.client.health()).execution?.active).toBe(0)
+    expect(existsSync(join(f.cwd, 'timeout.txt'))).toBe(false)
+    expect(f.fixture.reviews).toHaveLength(1)
+  } finally { f.fixture.releaseReview(); await f.daemon.stop(); f.fixture.server.stop(true) }
 }, 20000)

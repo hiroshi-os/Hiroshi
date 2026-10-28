@@ -103,6 +103,6 @@ export class AccessControls {
       const allow = review.status === 'allow' && review.revision === access.revision && review.inputHash === inputHash && this.store.access(call.sessionID).revision === access.revision
       policy = permissionPolicy(this.home, call.cwd!, call.tool, allow ? 'allow' : 'ask')
     }
-    return { ...policy, revision: access.revision, decisionSource: policy.fromMode ? access.mode === 'auto' && policy.action === 'allow' ? 'reviewer' : `mode:${access.mode}` : policy.source }
+    return { ...policy, revision: access.revision, decisionSource: policy.fromMode ? access.mode === 'auto' && policy.action === 'allow' ? 'reviewer' : `mode:${access.mode}` : 'policy' }
   }
 }

@@ -17,6 +17,19 @@ import type {
 
 let clock = 0
 
+test('permission mode and AI review events are task-scoped and keep reviewer usage out of assistant text', () => {
+  const selected = { ...initialSnapshot(), sessionID: 'ses_one' }
+  expect(apply(selected, event('access.updated', { access: { mode: 'full', revision: 1 } }, { sessionID: 'ses_other' })).access.mode).toBe('ask')
+  const changed = apply(selected, event('access.updated', { access: { mode: 'auto', revision: 1 } }))
+  const review = { toolCallID: 'tool', sessionID: 'ses_one', model: 'provider/model', revision: 1, inputHash: 'hash', at: 1, status: 'running' as const, reason: 'Reviewing' }
+  const running = apply(changed, event('access.reviewed', { review }))
+  const done = apply(running, event('access.reviewed', { review: { ...review, status: 'allow', usage: { inputTokens: 10, outputTokens: 2 } } }))
+  expect(done.access).toEqual({ mode: 'auto', revision: 1 })
+  expect(done.accessReviews).toHaveLength(1)
+  expect(done.accessReviews[0]?.status).toBe('allow')
+  expect(done.transcript).toHaveLength(0)
+})
+
 test('CLI identity events stay task-scoped, advance durably and clear on explicit recovery', () => {
   const binding = { id: 'native-binding', sessionID: 'ses_one', revision: 3, status: 'ready' } as CliConversation
   const selected = { ...initialSnapshot(), sessionID: 'ses_one' }
