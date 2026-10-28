@@ -27,9 +27,9 @@ export function CliConversationStatus({ engine, model }: { engine: EngineHandle;
     finally { pending.current = false; setBusy(false) }
   }
   return <div testId="cli-conversation" style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 28, paddingRight: 28, paddingBottom: 8, flexShrink: 0 }}>
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <text testId="cli-conversation-status" style={{ fontSize: 12, color: needsFresh ? '#d0aa79' : '#999999', flexGrow: 1 }}>{`${name} · ${needsFresh ? 'fresh conversation required' : running ? 'native conversation running' : 'native conversation ready'}`}</text>
-      <Button testId="cli-fresh" disabled={busy || running || engine.snapshot.status !== 'ready'} onClick={() => void replace()} style={{ padding: 6, borderRadius: 5, pointerEvents: 'auto', hover: { backgroundColor: '#303030' } }}>
+    <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <text testId="cli-conversation-status" style={{ fontSize: 12, color: needsFresh ? '#d0aa79' : '#999999', flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0 }}>{`${name} · ${needsFresh ? 'fresh conversation required' : running ? 'native conversation running' : 'native conversation ready'}`}</text>
+      <Button testId="cli-fresh" disabled={busy || running || engine.snapshot.status !== 'ready'} onClick={() => void replace()} style={{ padding: 6, borderRadius: 5, flexShrink: 0, pointerEvents: 'auto', hover: { backgroundColor: '#303030' } }}>
         <text style={{ fontSize: 12, color: '#bbbbbb', whiteSpace: 'nowrap' }}>{busy ? 'Starting…' : 'Start fresh CLI conversation'}</text>
       </Button>
     </div>

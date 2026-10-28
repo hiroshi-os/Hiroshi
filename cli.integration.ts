@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { openWindow, waitUntil, treeText, stopTheDaemon } from './integration'
 import { readRegistry, localPaths } from './src/engine/discovery'
 import { engineClient } from './src/engine/client'
+import { saveWindowState } from './src/shell/state'
 
 const root = mkdtempSync(path.join(tmpdir(), 'hiroshi-cli-window-'))
 const home = path.join(root, 'engine'), cwd = path.join(root, 'project'), native = path.join(root, 'native'), entry = path.join(root, 'agent.ts')
@@ -17,6 +18,7 @@ writeFileSync(entry, `await import(${JSON.stringify(pathToFileURL(path.join(impo
 writeFileSync(path.join(home, 'providers.json'), JSON.stringify({ defaultModel: 'agent/chat', providers: [{ id: 'agent', adapter: 'cursor-cli', command: [process.execPath, entry],
   models: [{ id: 'chat', model: 'fixture-model', label: 'Native fixture', contextWindow: 32768, reservedOutput: 1024 }] }] }))
 writeFileSync(path.join(home, 'execution.json'), JSON.stringify({ maxActive: 1, minFreeMemoryMB: 128, processMemoryMB: 512, maxProcesses: 4, timeoutMs: 30000 }))
+saveWindowState(cwd, { width: 1024, height: 642, x: 60, y: 60, surface: 'terminal', panelOpen: true }, home)
 const env = { HIROSHI_HOME: home, GPUIX_BACKGROUND: '1', HIROSHI_NATIVE_ROOT: native, HIROSHI_CONTINUATION_ADAPTER: 'cursor' }
 const calls = () => readFileSync(path.join(native, 'calls.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message) }
@@ -42,6 +44,9 @@ try {
     await send('a deliberate new prompt after recovery')
     check(calls().length === count, 'blocked composer invoked the CLI')
     writeFileSync(path.join(native, 'control.json'), '{}')
+    await app.getByTestId('terminal-input').waitFor()
+    const button = await app.getByTestId('cli-fresh').bounds(), terminal = await app.getByTestId('terminal-input').bounds()
+    check(button.x + button.width <= terminal.x, 'the recovery control is clipped behind the terminal drawer')
     mkdirSync('screenshots', { recursive: true })
     await app.screenshot({ path: path.resolve('screenshots/windowed-cli-recovery.png') })
     await app.getByTestId('cli-fresh').click()

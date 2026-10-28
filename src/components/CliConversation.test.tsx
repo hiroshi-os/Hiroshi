@@ -52,4 +52,21 @@ import { CliConversationStatus, cliNeedsFresh } from './CliConversation'
     try { await app.getByTestId('cli-fresh').click(); expect(fresh).toBe(0) }
     finally { await app.close() }
   })
+
+  it('keeps deliberate recovery visible and clickable in a narrow pane beside an open drawer', async () => {
+    let recovered = 0
+    const engine = { snapshot: { cliConversation: { id: 'binding', sessionID: 'task', revision: 3, adapter: 'cursor', model: 'agent/chat', status: 'ready' }, status: 'ready', steps: [], toolCalls: [] },
+      freshCliConversation: async () => { recovered++ },
+    } as unknown as EngineHandle
+    const { render, renderer } = createTestRoot({ width: 288, height: 300 })
+    render(<div style={{ width: 288, height: 300, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}><CliConversationStatus engine={engine} model="fixture/tools" /></div>)
+    const app = await connectTest(renderer)
+    try {
+      const bounds = await app.getByTestId('cli-fresh').bounds()
+      expect(bounds.x).toBeGreaterThanOrEqual(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(288)
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(300)
+      await app.getByTestId('cli-fresh').click(); expect(recovered).toBe(1)
+    } finally { await app.close() }
+  })
 })
