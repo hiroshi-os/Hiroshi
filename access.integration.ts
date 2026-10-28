@@ -19,17 +19,31 @@ const check = (value: unknown, message: string) => { if (!value) throw new Error
 try {
   const window = await openWindow(env, cwd)
   let id = ''
+  let stage = 'initial connection'
   try {
     const app = window.app, record = await waitUntil(async () => readRegistry(localPaths(home).registry), 'the isolated daemon')
     const client = engineClient(record)
     await waitUntil(async () => (await app.getByTestId('access-picker').textContent()) === 'Supervised' && !(await app.getByTestId('engine-run-status').textContent()).includes('Connecting') && (await client.listSessions()).sessions.length > 0, 'the default supervised task')
     id = (await client.listSessions()).sessions[0]!.id
     const select = async (mode: AccessMode, label: string) => {
+      stage = `select ${mode}`
       await app.getByTestId('access-picker').click(); await app.getByTestId(`access-${mode}`).waitFor(); await app.getByTestId(`access-${mode}`).click()
       await waitUntil(async () => (await client.session({ id })).access?.mode === mode && (await app.getByTestId('access-picker').textContent()) === label, 'the saved permission mode')
+      // Finish popup dismissal and its focus restoration before typing into
+      // the composer. Saving and feed updates can finish before that frame.
+      await app.clock.pause(); await app.clock.fastForward(320); await app.clock.resume()
     }
-    const send = async (tool: string, input: object) => { await app.getByTestId('composer').fill(JSON.stringify({ tool, input })); await app.getByTestId('composer').press('enter') }
-    const done = async (count: number) => waitUntil(async () => { const d = await client.session({ id }); return d.toolCalls.filter((call) => !!call.resultMessageID).length >= count && d.messages.at(-1)?.role === 'assistant' && d.steps.at(-1)?.status === 'succeeded' }, 'the real tool effect and model continuation')
+    const send = async (tool: string, input: object) => {
+      stage = `submit ${tool} ${JSON.stringify(input)}`
+      const before = (await client.session({ id })).messages.filter((message) => message.role === 'user').length
+      await app.getByTestId('composer').fill(JSON.stringify({ tool, input })); await app.getByTestId('composer').press('enter')
+      await waitUntil(async () => (await client.session({ id })).messages.filter((message) => message.role === 'user').length > before, 'one composer admission')
+    }
+    const done = async (count: number) => {
+      stage = `tool completion ${count}`
+      await waitUntil(async () => { const d = await client.session({ id }); return d.toolCalls.filter((call) => !!call.resultMessageID).length >= count && d.messages.at(-1)?.role === 'assistant' && d.steps.at(-1)?.status === 'succeeded' }, `real tool effect and model continuation ${count}`)
+      console.log(`Permission flow completed action ${count}`)
+    }
     await send('write_file', { path: 'supervised.txt', content: 'must wait' })
     const question = await waitUntil(async () => (await client.session({ id })).permissions.find((item) => item.state === 'pending'), 'a supervised approval question')
     check(!existsSync(path.join(cwd, 'supervised.txt')), 'Supervised wrote a file before approval')
@@ -48,6 +62,16 @@ try {
     mkdirSync('screenshots', { recursive: true })
     await app.screenshot({ path: path.resolve('screenshots/windowed-permission-modes.png') })
     await app.getByTestId('access-full').click()
+  } catch (error) {
+    console.error(`Permission window failed at ${stage}`)
+    mkdirSync('screenshots', { recursive: true })
+    try {
+      writeFileSync('screenshots/permission-failure-tree.json', JSON.stringify(await window.app.call('getTree', {}), null, 2))
+      await window.app.screenshot({ path: path.resolve('screenshots/permission-failure.png') })
+      const record = readRegistry(localPaths(home).registry)
+      if (record && id) writeFileSync('screenshots/permission-failure-state.json', JSON.stringify(await engineClient(record).session({ id }), null, 2))
+    } catch { /* Preserve the original bounded failure. */ }
+    throw error
   } finally { await window.close() }
   const restored = await openWindow(env, cwd)
   try {
