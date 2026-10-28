@@ -63,7 +63,7 @@ function AgentRow({ agent, busy, update }: { agent: AgentInfo; busy: boolean; up
       <Action id="provider-trust-cursor" label={agent.trustWorkspace ? 'Workspace trust enabled · turn off' : 'Allow workspace trust'} disabled={busy} onClick={() => save({ trustWorkspace: !agent.trustWorkspace })} />
     </>}
     <text style={{ fontSize: 11, color: muted }}>{agent.capabilities.responses ? `Responses · cancellation · ${agent.capabilities.instructions === 'supplied-only' ? 'supplied instructions' : 'native and supplied instructions'}` : 'Response capability not verified'}</text>
-    <text style={{ fontSize: 11, color: muted }}>Coding approvals and native conversation continuation are unavailable.</text>
+    <text style={{ fontSize: 11, color: muted }}>{`${agent.capabilities.nativeContinuation ? 'Recorded native conversation continuation' : 'Native continuation not verified'} · Coding approvals are unavailable.`}</text>
     </div>}
     {error && <text testId={`provider-error-${agent.id}`} style={{ fontSize: 12, color: '#F87171' }}>{error}</text>}
   </div>

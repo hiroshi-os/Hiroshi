@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { apply, hydrate, initialSnapshot, type Snapshot } from '../../src/engine/reducer'
 import type {
+  CliConversation,
   EngineEvent,
   EventPayloads,
   EventType,
@@ -15,6 +16,20 @@ import type {
 } from '../src/protocol'
 
 let clock = 0
+
+test('CLI identity events stay task-scoped, advance durably and clear on explicit recovery', () => {
+  const binding = { id: 'native-binding', sessionID: 'ses_one', revision: 3, status: 'ready' } as CliConversation
+  const selected = { ...initialSnapshot(), sessionID: 'ses_one' }
+  const other = event('cli.updated', { conversation: binding }, { sessionID: 'ses_other' })
+  expect(apply(selected, other).cliConversation).toBeNull()
+  const updated = event('cli.updated', { conversation: binding })
+  const bound = apply(selected, updated)
+  expect(bound.cliConversation).toEqual(binding)
+  expect(bound.transcript).toHaveLength(0)
+  const cleared = apply(bound, event('cli.updated', { conversation: null }))
+  expect(cleared.cliConversation).toBeNull()
+  expect(apply(cleared, updated).cliConversation).toBeNull()
+})
 
 /**
  * One event, with its payload checked against the shape module.

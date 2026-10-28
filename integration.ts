@@ -455,11 +455,14 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     check((await app.getByTestId('cli-response-mode').textContent()).includes('response only'), 'CLI coding limits were not visible')
     check((await app.getByTestId('model-picker').textContent()).includes('response only'), 'CLI model capability was not labelled')
     note('the main composer drove a contained CLI process and drew its response-only answer')
+    await waitUntil(async () => (await app.getByTestId('cli-conversation-status').textContent()).includes('native conversation ready'), 'the CLI conversation to settle before a model transition')
 
     // Real tool requests travel through the daemon and the cockpit's gate.
     await app.getByTestId('model-picker').click()
     await app.getByTestId('model-fixture/tools').waitFor()
     await app.getByTestId('model-fixture/tools').click()
+    await app.getByTestId('cli-fresh').click()
+    await waitUntil(async () => (await app.getByTestId('cli-conversation').all()).length === 0, 'the explicit transition out of native CLI history')
     const record = readRegistry(localPaths(home).registry)!
     const client = engineClient(record)
     const pending = async () => {
@@ -553,10 +556,13 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       await sleep(250)
     }
     await surface('files')
-    await app.getByTestId('files-open-approved.txt').waitFor()
-    await app.getByTestId('files-changed-approved.txt').waitFor()
+    // Files loads a directory plus a real Git review through the shared
+    // execution budget. Use the same bounded I/O deadline as other engine
+    // operations, rather than the automation client's five-second default.
+    await app.getByTestId('files-open-approved.txt').waitFor({ timeoutMs: STEP_DEADLINE_MS })
+    await app.getByTestId('files-changed-approved.txt').waitFor({ timeoutMs: STEP_DEADLINE_MS })
     await app.getByTestId('files-open-approved.txt').click()
-    await app.getByTestId('workspace-file-content').waitFor()
+    await app.getByTestId('workspace-file-content').waitFor({ timeoutMs: STEP_DEADLINE_MS })
     const fileBounds = await app.getByTestId('workspace-file-content').bounds()
     check(fileBounds.width > 0 && fileBounds.height > 0, 'the native file viewer has no painted area')
     const currentSession = (await client.listSessions()).sessions[0]!

@@ -68,6 +68,14 @@ jobs:
       - name: Build packaged desktop under resource limits
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","build") -MaxProcesses 3 -MemoryMB 2048 -TimeoutSeconds 120'
 
+      - name: Verify native CLI follow-up and explicit recovery in a source window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:cli") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 120'
+
+      - name: Verify native CLI follow-up and explicit recovery in the packaged window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:cli") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 120'
+        env:
+          HIROSHI_TEST_PACKAGED: ${{ github.workspace }}/dist/hiroshi.exe
+
       - name: Verify usage, daemon access and project menus in a source window
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:settings") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 120'
 

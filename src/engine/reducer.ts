@@ -9,6 +9,7 @@
  */
 
 import type {
+  CliConversation,
   Execution,
   TranscriptEntry,
   Checkpoint,
@@ -47,6 +48,7 @@ export interface OutputState {
 }
 
 export interface Snapshot {
+  cliConversation: CliConversation | null
   executions: Execution[]
   transcript: TranscriptEntry[]
   transcriptSeq: number
@@ -83,6 +85,7 @@ const MEMORY_OUTPUT_LIMIT = 256 * 1024
 
 export function initialSnapshot(): Snapshot {
   return {
+    cliConversation: null,
     executions: [],
     transcript: [],
     transcriptSeq: 0,
@@ -156,6 +159,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   return {
     ...snapshot,
     sessionID: detail.session.id,
+    cliConversation: detail.cliConversation ?? null,
     executions: detail.executions ?? [],
     transcript: detail.transcript ?? [],
     transcriptSeq: detail.seq,
@@ -203,6 +207,7 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
 
 function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
   switch (event.type) {
+    case 'cli.updated': return { ...snapshot, cliConversation: event.data.conversation }
     case 'providers.updated':
       if (snapshot.providers && event.data.providers.revision < snapshot.providers.revision) return snapshot
       return { ...snapshot, providers: event.data.providers, models: event.data.providers.models, defaultModel: event.data.providers.defaultModel }

@@ -1,6 +1,7 @@
 /** Controlled executable, not an adapter mock: uses actual stdin, argv and pipes. */
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 const mode = process.env.HIROSHI_CLI_FIXTURE ?? 'cursor'
 if (process.argv.includes('--force') || process.argv.includes('--dangerously-skip-permissions')) process.exit(19)
 const input = await Bun.stdin.text()
@@ -18,7 +19,8 @@ const emit = async (event: object) => {
   const point = Math.max(1, bytes.indexOf(Buffer.from('漢')) + 1)
   process.stdout.write(bytes.subarray(0, point)); await Bun.sleep(15); process.stdout.write(bytes.subarray(point))
 }
-const session = 'vendor-session-1'
+const resumeFlag = process.argv.includes('--conversation') ? '--conversation' : '--resume'
+const session = process.argv.includes(resumeFlag) ? process.argv[process.argv.indexOf(resumeFlag) + 1]! : `fixture-${randomUUID()}`
 if (mode === 'agy') {
   if (!process.argv.includes('--input-format') || JSON.parse(input).event !== 'user') process.exit(20)
   await emit({ event: 'init', conversation_id: session, init: { permission_mode: 'strict', cwd: process.cwd() } })

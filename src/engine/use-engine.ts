@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState, NetworkSettings, NetworkUpdate, UsageQuery, UsageReport, UsagePricingUpdate } from '../../engine/src/protocol'
+import type { CliConversation, DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState, NetworkSettings, NetworkUpdate, UsageQuery, UsageReport, UsagePricingUpdate } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
@@ -18,6 +18,7 @@ import { createPromptStore } from '../shell/prompt-store'
 import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
+  freshCliConversation: (conversation: CliConversation, key: string) => Promise<void>
   usageReport: (input: UsageQuery) => Promise<UsageReport>
   updateUsagePricing: (input: UsagePricingUpdate) => Promise<void>
   networkSettings: () => Promise<NetworkSettings>
@@ -377,7 +378,11 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current) throw new Error('The engine is not connected')
     await client.current.updateUsagePricing(input)
   }, [])
-  return { usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  const freshCliConversation = useCallback(async (conversation: CliConversation, key: string) => {
+    if (!client.current || session.current !== conversation.sessionID) throw new Error('The selected task changed. Return to the original task before recovering its CLI conversation.')
+    await client.current.freshCliConversation({ id: conversation.sessionID, conversationID: conversation.id, revision: conversation.revision, key })
+  }, [])
+  return { freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }

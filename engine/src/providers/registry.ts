@@ -21,10 +21,10 @@ const empty = (id: AgentID, name: string): AgentInfo => ({ id, name, enabled: tr
   checkedAt: null, auth: 'unknown', status: 'unchecked', detail: 'Not checked. Refresh to inspect this CLI.', models: [],
   capabilities: { responses: false, coding: false, nativeContinuation: false, approvals: false, cancellation: false, instructions: 'unknown' } })
 const required: Record<AgentID, string[]> = {
-  agy: ['--input-format', '--output-format', '--disable-slash-commands'],
-  cursor: ['--print', '--stream-partial-output', '--mode'],
-  pi: ['--mode', '--no-extensions', '--no-mcp', '--no-tools', '--no-session', '--no-approve'],
-  grok: ['--tools', '--deny', '--no-subagents', '--prompt-file', '--output-format'],
+  agy: ['--input-format', '--output-format', '--disable-slash-commands', '--conversation'],
+  cursor: ['--print', '--stream-partial-output', '--mode', '--resume'],
+  pi: ['--mode', '--no-extensions', '--no-mcp', '--no-tools', '--session', '--no-approve'],
+  grok: ['--tools', '--deny', '--no-subagents', '--prompt-file', '--output-format', '--session-id', '--resume'],
 }
 function modelIDs(output: string): { id: string; label: string }[] {
   const models: { id: string; label: string }[] = []
@@ -67,6 +67,7 @@ export class ProviderRegistry {
           source: this.#saved.preferences[row.id]?.command ? 'manual' : 'discovered', checkedAt: typeof row.checkedAt === 'number' && Number.isFinite(row.checkedAt) ? row.checkedAt : null,
           auth: 'unknown', status: 'installed', detail: 'Cached executable check. Refresh to revalidate sign-in and capabilities.',
           capabilities: { ...target.capabilities, responses: row.capabilities?.responses === true, cancellation: row.capabilities?.responses === true,
+            nativeContinuation: row.capabilities?.nativeContinuation === true,
             instructions: row.id === 'pi' ? 'supplied-only' : 'native-and-supplied' },
           models: row.models.filter((model) => model && typeof model.id === 'string' && /^[a-z0-9_.:/-]{1,128}$/i.test(model.id) && typeof model.label === 'string' && model.label.length <= 100)
             .slice(0, 65).map((model) => this.#model(row.id, row.fingerprint!, model.id, model.label)) })
@@ -103,7 +104,7 @@ export class ProviderRegistry {
     for (const row of this.#saved.agents) {
       if (!row.command || !row.fingerprint || !row.capabilities.responses || !row.models.length) continue
       providers.push({ id: `cli_${row.id}`, adapter: `${row.id}-cli`, command: row.command, enabled: row.enabled,
-        unavailable: fingerprint(row.command) !== row.fingerprint || row.auth === 'signed_out', trustWorkspace: this.#saved.preferences[row.id]?.trustWorkspace,
+        unavailable: fingerprint(row.command) !== row.fingerprint || row.auth === 'signed_out', trustWorkspace: this.#saved.preferences[row.id]?.trustWorkspace, cliVersion: row.version,
         models: row.models.map((model) => ({ id: model.catalogID.split('/')[1]!, model: model.id, label: `${row.name}: ${model.label}`,
           contextWindow: 32768, reservedOutput: 1024 })) })
     }
@@ -117,7 +118,7 @@ export class ProviderRegistry {
       const row = this.#saved.agents.find((agent) => agent.models.some((model) => model.catalogID === id))
       if (row?.command && fingerprint(row.command) !== row.fingerprint) throw new ProviderError('cli_unavailable', 'the CLI executable changed or disappeared; refresh Providers before using it')
     }
-    return { ...provider, check, stream: async (request, onText, onPart) => {
+    return { ...provider, check, cliIdentity: provider.cliIdentity ? () => this.#catalog.resolve(id).cliIdentity!() : undefined, stream: async (request, onText, onPart) => {
       check()
       // Settings can change while this request waits for a shared slot.
       // Use the current adapter so revoked workspace trust is respected too.
@@ -206,7 +207,7 @@ export class ProviderRegistry {
       }
       const version = await run([...(id === 'pi' ? safePi : []), '--version'])
       if (!version.code && !version.timedOut) row.version = /\b\d{1,4}\.\d{1,3}\.\d{1,3}(?:-[a-zA-Z0-9.-]{1,64})?\b/.exec(version.out + version.err)?.[0] ?? null
-      row.capabilities = { responses: true, coding: false, nativeContinuation: false, approvals: false, cancellation: true,
+      row.capabilities = { responses: true, coding: false, nativeContinuation: true, approvals: false, cancellation: true,
         instructions: id === 'pi' ? 'supplied-only' : 'native-and-supplied' }
       const models = [this.#model(id, row.fingerprint!, 'default', 'CLI default (availability not inferred)')]
       // Agy models may be a static catalog, not proof of account access. Pi's

@@ -36,12 +36,14 @@ export async function verifyArchiveChecksum(directory: string, version: string, 
 }
 
 /** Extract only the expected payload, then verify every archived byte. */
-export async function extractReleaseArchive(release: string, version: string, target: string, extracted: string): Promise<string> {
+export async function extractReleaseArchive(release: string, version: string, target: string, extracted: string, progress: (stage: string) => void = () => {}): Promise<string> {
   const manifest = readReleaseManifest(release, version, target)
+  progress('checking archive checksum')
   await verifyArchiveChecksum(release, version, target)
   const names = releaseNames(version, target), mac = target.startsWith('darwin-')
   const payloadPath = (file: string) => mac ? `Hiroshi.app/Contents/${file === 'Info.plist' ? file : `MacOS/${file}`}` : file
   const entries = new Set([names.manifest, ...manifest.files.map((file) => payloadPath(file.path))])
+  progress('listing archive entries')
   const listing = Bun.spawnSync(['tar', '-tzf', path.join(release, names.archive)], { windowsHide: true })
   if (listing.exitCode) throw new Error(listing.stderr.toString())
   const seen = new Set<string>()
@@ -52,10 +54,13 @@ export async function extractReleaseArchive(release: string, version: string, ta
   }
   if (seen.size !== entries.size) throw new Error('Archive payload is incomplete')
   mkdirSync(extracted)
+  progress('extracting archive entries')
   const unpack = Bun.spawnSync(['tar', '-xzf', path.join(release, names.archive), '-C', extracted], { windowsHide: true })
   if (unpack.exitCode) throw new Error(unpack.stderr.toString())
+  progress('checking extracted manifest')
   if (await hashFile(path.join(extracted, names.manifest)) !== await hashFile(path.join(release, names.manifest))) throw new Error('Archive manifest does not match release manifest')
   for (const file of manifest.files) {
+    progress(`checking payload: ${file.path}`)
     const destination = path.join(extracted, payloadPath(file.path)), stat = lstatSync(destination)
     if (!stat.isFile() || stat.size !== file.size || await hashFile(destination) !== file.sha256) throw new Error(`Archive payload mismatch: ${file.path}`)
     if (process.platform !== 'win32' && !target.startsWith('win32-') && file.executable && (stat.mode & 0o111) === 0) throw new Error(`Archive lost executable permissions: ${file.path}`)

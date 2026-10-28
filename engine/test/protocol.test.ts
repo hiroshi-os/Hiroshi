@@ -27,6 +27,7 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  freshCliConversation: 'freshCliConversation',
   usageReport: 'usageReport', updateUsagePricing: 'updateUsagePricing', networkSettings: 'networkSettings',
   updateNetwork: 'updateNetwork', networkToken: 'networkToken', rotateNetworkToken: 'rotateNetworkToken',
   providers: 'providers',
@@ -57,6 +58,7 @@ const everyOperation: { [Name in OperationName]: Name } = {
 }
 
 const everyEvent: { [Type in EventType]: Type } = {
+  'cli.updated': 'cli.updated',
   'providers.updated': 'providers.updated',
   'execution.updated': 'execution.updated',
   'session.created': 'session.created',

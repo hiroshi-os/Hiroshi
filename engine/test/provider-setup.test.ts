@@ -48,6 +48,8 @@ test('provider setup discovers only on refresh, persists selection, shares feed 
     const logs = readFileSync(join(home, 'probe-log'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
     expect(logs.every((row) => row.args.includes('--help') || row.args.includes('--version') || row.args.includes('status') || row.args.includes('models'))).toBe(true)
     for (const agent of ['agy', 'cursor', 'pi', 'grok'] as const) {
+      const binding = (await daemon.client.session({ id: session.id })).cliConversation
+      if (binding) await daemon.client.freshCliConversation({ id: session.id, conversationID: binding.id, revision: binding.revision, key: `switch-${agent}` })
       const model = state.agents.find((row) => row.id === agent)!.models.find((model) => model.id === 'default')!
       state = await daemon.client.updateProviders({ revision: state.revision, defaultModel: model.catalogID })
       await daemon.client.prompt({ id: session.id, text: `answer using ${agent}` })
@@ -56,7 +58,7 @@ test('provider setup discovers only on refresh, persists selection, shares feed 
     const current = await daemon.client.session({ id: session.id })
     expect(current.steps.map((step) => step.output)).toEqual(['Hello 漢🙂', 'Hello 漢🙂', 'Pi 漢🙂', 'Grok 漢🙂'])
     expect(current.parts.filter((part) => part.kind === 'cli' && part.phase === 'session')).toHaveLength(4)
-    expect(current.parts.find((part) => part.kind === 'cli' && part.adapter === 'grok' && part.phase === 'session')).toMatchObject({ vendorSessionID: 'grok-session' })
+    expect(current.parts.find((part) => part.kind === 'cli' && part.adapter === 'grok' && part.phase === 'session')).toMatchObject({ vendorSessionID: expect.stringMatching(/^[a-f0-9-]{36}$/) })
     expect(current.parts.some((part) => part.kind === 'usage' && part.inputTokens === 10 && part.outputTokens === 3)).toBe(true)
     expect(JSON.stringify({ parts: current.parts, messages: current.messages })).not.toContain('private-fixture-secret')
     const projected = apply({ ...initialSnapshot(), sessionID: session.id }, { seq: 99999, at: 1, type: 'providers.updated', sessionID: null, runID: null, data: { providers: state } })
@@ -171,7 +173,7 @@ test('a queued request uses current workspace trust rather than the adapter capt
     await until(() => budget.status().active === 1)
     queued = budget.execute({ id: 'queued', sessionID: 'session', kind: 'model' }, new AbortController().signal, async (signal) => {
       await captured.stream({ cwd: home, signal, sessionID: 'session', stepID: 'step', provider: captured.name, model,
-        messages: [], instructions: [], tools: [], reservedOutput: 1024 }, () => {})
+        messages: [{ id: 'prompt', sessionID: 'session', seq: 1, role: 'user', text: 'response-only fixture prompt', at: 1 }], instructions: [], tools: [], reservedOutput: 1024 }, () => {})
     })
     expect(store.executions().find((value) => value.id === 'queued')!.state).toBe('queued')
     registry.update({ revision: state.revision, agent: 'cursor', trustWorkspace: false })
@@ -190,12 +192,12 @@ for (const adapter of ['pi', 'grok'] as const) test(`${adapter}: incomplete, can
   for (const [state, code] of [[{ truncated: true }, 'cli_truncated'], [{ length: true }, 'cli_failed'], [{ auth: false }, 'cli_authentication']] as const) {
     writeFileSync(join(home, 'probe-state'), JSON.stringify(state))
     await expect(cli.stream({ cwd: home, signal: new AbortController().signal, sessionID: 's', stepID: 'step', provider: adapter, model: `${adapter}/chat`,
-      messages: [], instructions: [], tools: [], reservedOutput: 1024 }, () => {})).rejects.toMatchObject({ code })
+      messages: [{ id: 'prompt', sessionID: 's', seq: 1, role: 'user', text: 'response-only fixture prompt', at: 1 }], instructions: [], tools: [], reservedOutput: 1024 }, () => {})).rejects.toMatchObject({ code })
   }
   writeFileSync(join(home, 'probe-state'), JSON.stringify({ hangResponse: true }))
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 300)
   try {
     await expect(cli.stream({ cwd: home, signal: abort.signal, sessionID: 's', stepID: 'step', provider: adapter, model: `${adapter}/chat`,
-      messages: [], instructions: [], tools: [], reservedOutput: 1024 }, () => {})).rejects.toMatchObject({ name: 'AbortError' })
+      messages: [{ id: 'prompt', sessionID: 's', seq: 1, role: 'user', text: 'response-only fixture prompt', at: 1 }], instructions: [], tools: [], reservedOutput: 1024 }, () => {})).rejects.toMatchObject({ name: 'AbortError' })
   } finally { clearTimeout(timer) }
 }, 15000)

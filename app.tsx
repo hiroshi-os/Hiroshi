@@ -16,6 +16,7 @@ import { ProviderSettings } from './src/components/ProviderSettings'
 import { ProjectMenu, ProjectSwitcher } from './src/components/ProjectSwitcher'
 import { CatalogPicker } from './src/components/CatalogPicker'
 import { DraftRecovery } from './src/components/DraftRecovery'
+import { CliConversationStatus, cliNeedsFresh } from './src/components/CliConversation'
 import { NetworkSettings } from './src/components/NetworkSettings'
 import { UsageSettings } from './src/components/UsageSettings'
 import { engineTranscript } from './src/engine/transcript'
@@ -5716,13 +5717,14 @@ export function ChatApp({
           <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
         )}
         {engineEnabled && <DraftRecovery engine={engineView} />}
+        {engineEnabled && <CliConversationStatus key={engineView.snapshot.cliConversation?.id ?? 'no-cli'} engine={engineView} model={chosenModel} />}
         <Composer
           engine={engineEnabled ? engineView.snapshot : undefined}
           deliveryMode={deliveryMode}
           onDeliveryMode={setDeliveryMode}
           value={engineEnabled ? engineView.draft.text : draft}
           onChange={engineEnabled ? engineView.editDraft : setDraft}
-          sendBlocked={engineEnabled && (!!engineView.draft.pending || engineView.draft.busy || engineView.draft.unsaved)}
+          sendBlocked={engineEnabled && (!!engineView.draft.pending || engineView.draft.busy || engineView.draft.unsaved || cliNeedsFresh(engineView.snapshot, chosenModel))}
           draftAvailable={!!engineView.draft.scope}
           focusTick={focusTick}
           onSend={(text) => {

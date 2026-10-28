@@ -91,7 +91,7 @@ describe('CLI contract through real executable pipes', () => {
       expect(output).toBe('Hello 漢🙂')
       expect(parts.filter((part) => part.kind === 'tool')).toHaveLength(0)
       expect(parts.filter((part) => part.kind === 'cli').map((part) => part.phase)).toEqual(['started', 'session', 'completed'])
-      expect(parts.find((part) => part.kind === 'cli' && part.phase === 'session')).toMatchObject({ vendorSessionID: 'vendor-session-1', version: 1 })
+      expect(parts.find((part) => part.kind === 'cli' && part.phase === 'session')).toMatchObject({ vendorSessionID: expect.stringMatching(/^fixture-/), version: 1 })
       expect(parts.find((part) => part.kind === 'usage')).toMatchObject({ inputTokens: 21, outputTokens: 4 })
       expect(JSON.stringify(parts)).not.toContain('private thinking')
       const run = JSON.parse(readFileSync(marker, 'utf8').trim())
@@ -158,7 +158,7 @@ describe('CLI real daemon integration', () => {
       await until(async () => (await daemon.client.session({ id: session.id })).steps[0]?.status === 'succeeded')
       const detail = await daemon.client.session({ id: session.id })
       expect(detail.steps[0]?.output).toBe('Hello 漢🙂')
-      expect(detail.parts.find((part) => part.kind === 'cli' && part.phase === 'session')).toMatchObject({ adapter: 'agy', vendorSessionID: 'vendor-session-1' })
+      expect(detail.parts.find((part) => part.kind === 'cli' && part.phase === 'session')).toMatchObject({ adapter: 'agy', vendorSessionID: expect.stringMatching(/^fixture-/), version: 2 })
     } finally { await daemon.stop() }
   }, 20000)
 
@@ -187,7 +187,8 @@ describe('CLI real daemon integration', () => {
       await daemon.client.prompt({ ...first, text: 'follow up', key: 'follow-up' })
       await until(async () => (await daemon.client.session({ id: session.id })).steps.filter((step) => step.status === 'succeeded').length === 2)
       const runs = readFileSync(marker, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
-      expect(runs).toHaveLength(2); expect(runs[1].input).toContain('first prompt'); expect(runs[1].input).toContain('follow up')
+      expect(runs).toHaveLength(2); expect(runs[1].input).not.toContain('first prompt'); expect(runs[1].input).toContain('follow up')
+      expect(runs[1].args).toContain('--resume')
     } finally { await daemon.stop() }
   }, 30000)
 

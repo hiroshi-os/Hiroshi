@@ -115,9 +115,14 @@ whose effects may have started are never replayed. Queued commands retain their
 original deadline and saved argv, and may start once. Queued tools revalidate
 their pinned definition and current permissions after admission. A queued model
 attempt does not spend another attempt solely because the daemon restarted.
-Protocol 10 separates durable execution admissions from logical step/run rows;
-schema migration 8 adds execution and command-queue storage without deleting
-existing history.
+Protocol 14 adds task-owned CLI conversation events and explicit fresh-session
+recovery. Schema migration 11 adds durable bindings and unique vendor ownership
+without deleting existing history. Older clients refuse the newer protocol;
+restart the daemon deliberately after upgrading when existing work has settled.
+Older stateless CLI transcripts require explicit fresh-conversation recovery
+before admitting another prompt. The fresh action archives its binding and
+retains Hiroshi history; it never replays an interrupted step. See
+[CLI continuation and recovery](providers#capability-evidence).
 
 ## The step
 

@@ -101,7 +101,7 @@ access; “CLI default” explicitly leaves availability unknown. Disabling a CL
 prevents new/queued requests; an already running request can be cancelled in the
 cockpit. Manual HTTP/CLI configuration in `providers.json` remains supported.
 
-`agy-cli`, `cursor-cli`, `pi-cli` and `grok-cli` implement CLI contract version 1: one response-only
+`agy-cli`, `cursor-cli`, `pi-cli` and `grok-cli` implement CLI contract version 2: one response-only
 submission per durable engine step. They use the CLI's own sign-in and do not
 need an API credential in Hiroshi. The following manual configuration is an
 alternative to Settings:
@@ -149,9 +149,13 @@ is tracked in #64. Do not weaken the gate to get a response.
 Prompts and the bounded active conversation/instructions go over stdin, not
 command-line arguments. Grok instead reads a private temporary prompt file,
 removed after exit/cancellation; its path is the only prompt argument. Each
-invocation starts a fresh vendor conversation;
-follow-ups receive Hiroshi's active text history. Vendor identifiers are
-durable diagnostic facts, not an implemented native resume mapping (#63).
+task owns its native conversation. The first invocation receives Hiroshi's
+bounded active history; later turns send every newly delivered user prompt
+exactly once, resuming only that task's recorded vendor ID. Cursor uses
+`--resume`, Agy uses `--conversation`, Grok uses an explicit `--session-id`
+then `--resume`, and Pi uses an engine-owned format-3 `--session` file.
+Hiroshi never selects the last conversation in a repository. Same-folder tasks
+and explicitly replaced conversations retain distinct native identities.
 CLI-managed instructions may also load; scoped instruction equivalence and
 provenance are tracked in #52. Native CLI tools do not become Hiroshi tool
 requests, and no remote tool output is treated as assistant text. Unexpected
@@ -167,24 +171,52 @@ line is limited to 128 KiB, and the assistant answer to 256 KiB. A successful
 terminal result and exit code zero are both required. Unknown stream schemas,
 failed sign-in, missing executables, truncation and nonzero exits produce
 classified failures without copying raw diagnostics into the transcript.
-CLI requests are not automatically retried. A claimed CLI step interrupted by
-restart fails explicitly, including before any stdout, rather than resubmitting
-a possibly accepted request. Cancellation and deadline expiry stop the owned
-process tree; platform containment limits are described in the engine guide.
+CLI requests are not automatically retried. Before submission, Hiroshi durably
+records the adapter contract, executable fingerprint, observed CLI version
+(when available), model/profile references, workspace and conversation identity.
+Changes to those references or instructions, a transcript rewind, missing native
+history, and uncertain exits require **Start fresh CLI conversation** above the
+composer. This explicit action retains old vendor ownership and saved Hiroshi
+history, then releases queued work; it never reruns the interrupted step. Older
+stateless history also requires this transition. `default` remains the CLI's
+own model selection, not a promise of a particular remote model.
+
+A reconnect only observes. On restart, a durably recorded successful CLI exit
+can finish committing its saved answer once without another invocation. Other
+interrupted submissions fail explicitly, including before stdout, and hold
+queued work for recovery. Missing Pi session files are never silently recreated
+on resume. Terminal ID mismatches fail before publishing text; Grok reports its
+ID at the terminal event, so its bound response is buffered until that event.
+Cancellation and deadline expiry stop the owned process tree; platform
+containment limits are described in the engine guide.
 
 ### Capability evidence
 
 | CLI | Response path | Current boundary |
 | :--- | :--- | :--- |
 | Agy | `--input-format stream-json --output-format stream-json --disable-slash-commands` | Installed 1.1.27 metadata and real process fixtures pass; an installed authenticated response was observed in earlier adapter acceptance. Existing always-proceed profiles are blocked; strict permissions and side-effect denials are required. |
-| Cursor Agent | Print-mode NDJSON with partial output, Ask mode | Installed `2026.10.19-6bbf2c4` produced an authenticated streamed answer through the adapter. JSON status provides sign-in evidence. Workspace trust is explicit. |
+| Cursor Agent | Print-mode NDJSON with partial output, Ask mode | Installed `2026.10.19-6bbf2c4` completed an authenticated two-turn nonce-recall check through Hiroshi across a daemon restart, reusing the same explicit vendor ID. JSON status provides sign-in evidence. Workspace trust is explicit. |
 | Pi | JSON session format 3, text deltas, assistant stop and final `agent_settled` | Real executable protocol fixtures pass; no installed live-account acceptance claimed. All tools, extensions, MCP, skills, prompt templates and auto-approval are disabled. Native context files are skipped; Hiroshi supplies instructions. |
-| Grok | `streaming-json` text and successful `EndTurn` | Installed 1.0.70 metadata and real executable protocol fixtures pass; live-account acceptance is not inferred from installation. Empty tool allowlist, deny-all policy, no subagents/web search and one turn. Hook profiles are rejected. |
+| Grok | `streaming-json` text and successful `EndTurn` | Installed 1.0.70 completed an authenticated two-turn nonce-recall check through Hiroshi across a daemon restart, reusing the same explicit vendor ID. Empty tool allowlist, deny-all policy, no subagents/web search and one turn. Hook profiles are rejected. |
 
-All four support streamed text, cancellation and supplied conversation history.
-Coding tools, native continuation (#63) and approval bridging (#64) are unavailable
-for all four. Agy, Cursor and Grok may also load their native instructions; Pi
+All four support cancellation and task-owned native continuation, verified by
+real daemon/process fixtures with restarts, duplicate delivery and crash injection.
+Installed help metadata confirms the Agy, Cursor and Grok resume switches;
+this is not live-account acceptance of every resume path. Coding tools and
+approval bridging (#64) remain unavailable. Agy, Cursor and Grok may also load their native instructions; Pi
 uses supplied instructions only. These are response adapters, not coding agents.
+
+For an opt-in installed-account check, run
+`scripts/smoke-cli-continuation.ts --agent cursor|agy|grok|pi --allow-live`
+through the guarded runner. This performs two response-only submissions in a
+temporary repository, restarts only its owned daemon, and checks nonce recall
+under the same vendor ID. It may incur account charges; it is excluded from the
+default suite and never modifies global permissions to make an agent pass.
+For example, on Windows:
+
+```powershell
+& ./scripts/run-guarded.ps1 -Executable (Get-Command bun).Source -Arguments @('scripts/smoke-cli-continuation.ts','--agent','grok','--allow-live') -MemoryMB 2304 -MaxProcesses 10 -TimeoutSeconds 150
+```
 
 The protocols follow the official [Agy headless guide](https://www.antigravity.google/docs/cli/headless/),
 [Agy permission rules](https://www.antigravity.google/docs/permissions?tab=cli),

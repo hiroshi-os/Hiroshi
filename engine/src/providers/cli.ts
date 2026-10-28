@@ -1,6 +1,9 @@
-/** Contract v1: one bounded response-only submission, never a shell command.
+/** Contract v2: one bounded response-only submission, never a shell command.
  * A CLI owns its auth. Raw diagnostic prose and arbitrary vendor fields are
- * deliberately excluded from durable events. Continuation belongs to #63. */
+ * deliberately excluded from durable events. Native continuation is always
+ * selected by an engine-owned identifier, never a vendor's latest session. */
+import { createHash } from 'node:crypto'
+import { fingerprint } from './discovery'
 import { existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
@@ -16,6 +19,7 @@ export interface CliOptions {
   limits?: ExecutionLimits
   env?: Record<string, string | undefined>
   trustWorkspace?: boolean
+  cliVersion?: string | null
 }
 const MAX_BYTES = 1024 * 1024
 const MAX_LINE = 128 * 1024
@@ -45,19 +49,24 @@ export function agyPolicyReady(env: Record<string, string | undefined>): boolean
 export class CliEvents {
   #session = ''; #initialized = false; #completed = false; #output = ''; #count = 0
   #piFinal: any
-  constructor(readonly adapter: CliAdapter, readonly onText: (value: string) => void, readonly onPart?: (part: ProviderPart) => void, readonly cwd?: string) {}
+  #pendingText = ''
+  constructor(readonly adapter: CliAdapter, readonly onText: (value: string) => void, readonly onPart?: (part: ProviderPart) => void, readonly cwd?: string,
+    readonly options: { expectedID?: string; contractVersion?: 1 | 2; deferUntilIdentified?: boolean } = {}) {}
   get completed() { return this.#completed }
   #id(value: unknown): void {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(value)) throw fail('cli_protocol', 'CLI conversation identifier is missing or invalid')
+    if (this.options.expectedID && value !== this.options.expectedID) throw fail('cli_identity_mismatch', 'CLI did not resume the recorded conversation; no replacement session was accepted')
     if (this.#session && this.#session !== value) throw fail('cli_protocol', 'CLI conversation identity changed during a response')
     if (!this.#session) {
       this.#session = value
-      this.onPart?.({ kind: 'cli', version: 1, adapter: this.adapter, phase: 'session', vendorSessionID: value, text: 'Response-only CLI session' })
+      this.onPart?.({ kind: 'cli', version: this.options.contractVersion ?? 1, adapter: this.adapter, phase: 'session', vendorSessionID: value, text: 'Response-only CLI session' })
+      if (this.#pendingText) { this.onText(this.#pendingText); this.#pendingText = '' }
     }
   }
   #append(value: string) {
     if (Buffer.byteLength(this.#output) + Buffer.byteLength(value) > 256 * 1024) throw fail('cli_output_limit', 'CLI assistant output exceeded its limit')
-    this.#output += value; if (value) this.onText(value)
+    this.#output += value
+    if (value) { if (this.options.deferUntilIdentified && !this.#session) this.#pendingText += value; else this.onText(value) }
   }
   #finish(value: unknown, usage: any) {
     const answer = text(value)
@@ -163,7 +172,7 @@ export class CliEvents {
       if (!keys.length || keys.some((key) => !['readToolCall', 'lsToolCall', 'grepToolCall', 'globToolCall', 'semanticSearchToolCall'].includes(key))) {
         throw fail('cli_capability', 'CLI emitted an unsupported tool in response-only mode')
       }
-    } else if (type !== 'user') throw fail('cli_protocol', 'CLI event type is not supported by contract version 1')
+    } else if (type !== 'user') throw fail('cli_protocol', 'CLI event type is not supported by the response-only contract')
   }
 }
 
@@ -172,6 +181,12 @@ export class CliProvider implements Provider {
   readonly name: string; readonly model: string; readonly context: CliOptions['context']
   constructor(readonly options: CliOptions) {
     this.name = options.name; this.model = options.model; this.context = options.context
+  }
+  cliIdentity = () => {
+    const executable = fingerprint(this.options.command)
+    if (!executable) throw fail('cli_unavailable', 'The CLI executable is missing or unsupported; refresh Providers.')
+    return { adapter: this.options.adapter, contractVersion: 2, fingerprint: executable, cliVersion: this.options.cliVersion ?? null,
+      vendorModel: this.options.providerModel, profileRef: createHash('sha256').update(JSON.stringify({ mode: 'response-only', contract: 2, trustWorkspace: !!this.options.trustWorkspace })).digest('hex') }
   }
   check = () => {
     if (this.options.adapter === 'agy' && !agyPolicyReady(this.options.env ?? process.env)) {
@@ -182,6 +197,8 @@ export class CliProvider implements Provider {
     this.check(); request.signal.throwIfAborted()
     if (!request.cwd || !isAbsolute(request.cwd)) throw fail('cli_workspace', 'CLI requests require the admitted workspace path')
     const adapter = this.options.adapter
+    const continuation = request.continuation
+    if (continuation && this.cliIdentity().fingerprint !== continuation.fingerprint) throw fail('cli_upgrade', 'The CLI changed after admission. Refresh and start a fresh CLI conversation.')
     const env = Object.fromEntries(Object.entries(this.options.env ?? process.env).filter(([key]) => !['BUN_OPTIONS', 'NODE_OPTIONS'].includes(key.toUpperCase())))
     env.NO_OPEN_BROWSER = '1'
     const home = (process.platform === 'win32' ? env.USERPROFILE : env.HOME) || homedir()
@@ -190,15 +207,21 @@ export class CliProvider implements Provider {
       (adapter === 'grok' && [join(request.cwd, '.grok', 'hooks.json'), join(home, '.grok', 'hooks.json')].some(existsSync))) {
       throw fail('cli_capability', 'CLI hooks are unavailable in response-only mode; use a workspace/profile without startup hooks')
     }
+    const messages = continuation?.resume ? request.messages.filter((item) => item.role === 'user') : request.messages
+    if (!messages.length) throw fail('cli_no_prompt', 'There are no new prompts for this native CLI conversation.')
     const prompt = 'Answer using the conversation below. This is a response-only turn: do not edit files, run commands, delegate or invoke external tools.\n' +
-      JSON.stringify({ instructions: request.instructions, conversation: request.messages.map(({ role, text }) => ({ role, text })) })
+      JSON.stringify({ instructions: request.instructions, conversation: messages.map(({ role, text }) => ({ role, text })) })
     const input = adapter === 'agy' ? JSON.stringify({ event: 'user', message: { content: prompt } }) + '\n' : prompt + '\n'
     if (Buffer.byteLength(input) > 256 * 1024) throw fail('context_overflow', 'CLI input exceeds the bounded stdin limit')
     const flags = adapter === 'agy'
       ? ['--input-format', 'stream-json', '--output-format', 'stream-json', '--disable-slash-commands', '--print-timeout', '120s']
-      : adapter === 'pi' ? ['--mode', 'json', '--print', '--no-session', '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-approve', '--no-context-files']
+      : adapter === 'pi' ? ['--mode', 'json', '--print', ...(continuation?.sessionFile ? ['--session', continuation.sessionFile] : ['--no-session']), '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-approve', '--no-context-files']
       : adapter === 'grok' ? ['--output-format', 'streaming-json', '--tools', '', '--deny', '*', '--no-subagents', '--disable-web-search', '--max-turns', '1', '--permission-mode', 'plan', '--cwd', request.cwd]
       : ['--print', '--output-format', 'stream-json', '--stream-partial-output', '--mode', 'ask']
+    if (continuation?.vendorSessionID) {
+      if (adapter === 'grok') flags.push(continuation.resume ? '--resume' : '--session-id', continuation.vendorSessionID)
+      else if (continuation.resume && adapter !== 'pi') flags.push(adapter === 'agy' ? '--conversation' : '--resume', continuation.vendorSessionID)
+    }
     if (adapter === 'cursor' && this.options.trustWorkspace) flags.push('--trust')
     if (this.options.providerModel !== 'default') flags.push('--model', this.options.providerModel)
     let promptDirectory: string | undefined, promptFile: string | undefined
@@ -207,7 +230,8 @@ export class CliProvider implements Provider {
       promptDirectory = mkdtempSync(join(tmpdir(), 'hiroshi-cli-prompt-')); promptFile = join(promptDirectory, 'prompt.txt')
       try { writeFileSync(promptFile, prompt, { flag: 'wx', mode: 0o600 }); flags.push('--prompt-file', promptFile) } catch (error) { cleanPrompt(); throw fail('cli_start', 'Could not prepare the private Grok prompt file') }
     }
-    try { onPart?.({ kind: 'cli', version: 1, adapter, phase: 'started', text: 'CLI response only; coding actions and native session continuation are unavailable' }) }
+    const version = continuation ? 2 : 1
+    try { onPart?.({ kind: 'cli', version, adapter, phase: 'started', text: continuation?.resume ? 'Resuming the recorded response-only CLI conversation' : continuation ? 'Starting an isolated response-only CLI conversation from Hiroshi history' : 'Stateless response-only CLI submission' }) }
     catch (error) { cleanPrompt(); throw error }
     let proc: ReturnType<typeof spawnOwned>
     try { proc = spawnOwned({ cmd: [...this.options.command, ...flags], cwd: request.cwd, input, env, limits: this.options.limits }) }
@@ -223,7 +247,8 @@ export class CliProvider implements Provider {
     if (request.signal.aborted) abort()
     let timedOut = false
     const timer = setTimeout(() => { timedOut = true; abort() }, this.options.limits?.timeoutMs ?? DEFAULT_EXECUTION_LIMITS.timeoutMs)
-    const events = new CliEvents(adapter, onText, onPart, request.cwd)
+    const events = new CliEvents(adapter, onText, onPart, request.cwd, { expectedID: continuation?.vendorSessionID ?? undefined, contractVersion: version,
+      deferUntilIdentified: adapter === 'grok' && !!continuation })
     let bytes = 0, diagnostics = ''
     const read = async (stream: ReadableStream<Uint8Array>, stdout: boolean) => {
       const reader = stream.getReader(), decoder = new TextDecoder('utf-8', { fatal: true })
@@ -256,6 +281,8 @@ export class CliProvider implements Provider {
       request.signal.throwIfAborted()
       if (timedOut) throw fail('cli_timeout', 'CLI response deadline exceeded; its process tree was stopped')
       if (code !== 0) {
+        const missing = continuation?.resume && /(?:session|conversation|chat).{0,60}(?:not found|missing|expired|does not exist)|(?:unknown|invalid).{0,20}(?:session|conversation|chat)/i.test(diagnostics)
+        if (missing) throw fail('cli_session_missing', 'The recorded vendor conversation is missing or expired. It was not recreated or retried; start a fresh CLI conversation deliberately.')
         const trust = /workspace trust required/i.test(diagnostics)
         const auth = /auth|sign.?in|log.?in|credential|unauthorized/i.test(diagnostics)
         throw fail(code === 127 ? 'cli_start' : trust ? 'cli_workspace_trust' : auth ? 'cli_authentication' : 'cli_exit',
@@ -263,7 +290,7 @@ export class CliProvider implements Provider {
             : auth ? 'CLI authentication failed; sign in with its own CLI and retry deliberately' : 'CLI exited unsuccessfully; check model access and supported CLI version')
       }
       if (!events.completed) throw fail('cli_truncated', 'CLI exited without a successful terminal result; the submission was not retried')
-      onPart?.({ kind: 'cli', version: 1, adapter, phase: 'completed', text: 'CLI response completed' })
+      onPart?.({ kind: 'cli', version, adapter, phase: 'completed', text: 'CLI response completed' })
     } catch (error) {
       if (timedOut) throw fail('cli_timeout', 'CLI response deadline exceeded; its process tree was stopped')
       if (error instanceof ProviderError || request.signal.aborted) throw error

@@ -31,6 +31,7 @@ import { registerBuiltins } from './tools/builtins'
 import { Tools } from './tools/tools'
 import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { ProviderRegistry } from './providers/registry'
+import { CliConversations } from './cli-conversations'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import { daemonFetch } from './local-transport'
@@ -168,10 +169,12 @@ async function serve(flags: Flags): Promise<number> {
   const registry = new ToolRegistry()
   registerBuiltins(registry, paths.home, budget.limits)
   const tools = new Tools(store, registry, paths.home, budget)
+  const cliConversations = new CliConversations(store, paths.home, (model) => catalog.resolve(model))
   const steps = new Steps(store, log, {
+    cliConversations,
     budget,
     tools,
-    blocked: (id) => checkpoints.blocked(id),
+    blocked: (id) => checkpoints.blocked(id) || cliConversations.blocked(id),
     selectProvider: (model) => catalog.resolve(model),
     context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
     provider: catalog.resolve(),
@@ -204,6 +207,7 @@ async function serve(flags: Flags): Promise<number> {
   checkpoints.recover()
   tools.recover()
   budget.reconcile()
+  cliConversations.reconcile()
   steps.resume()
 
   // Only now may delivery start work. A prompt delivered before this line
@@ -213,12 +217,13 @@ async function serve(flags: Flags): Promise<number> {
   inbox.onDelivered = (sessionID) => {
     steps.start(sessionID)
   }
-  inbox.busy = (sessionID) => steps.busy(sessionID) || checkpoints.blocked(sessionID)
+  inbox.busy = (sessionID) => steps.busy(sessionID) || checkpoints.blocked(sessionID) || cliConversations.blocked(sessionID)
   tools.onIdle = (sessionID) => {
     steps.start(sessionID)
     void inbox.deliver(sessionID)
   }
   steps.onEnd = (sessionID) => {
+    try { cliConversations.reconcile(sessionID) } catch { log.error('CLI conversation state could not be finalized; further native work remains blocked.') }
     void inbox.deliver(sessionID)
   }
   // Settlement is a boundary of its own: prompts admitted before the crash get
@@ -265,6 +270,8 @@ async function serve(flags: Flags): Promise<number> {
 
   server = startServer(
     {
+      cliConversations,
+      onCliFresh: (id) => { void inbox.deliver(id) },
       store,
       budget,
       home: paths.home,
