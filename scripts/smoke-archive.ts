@@ -9,7 +9,7 @@ const target = `${process.platform}-${process.arch}`
 const home = mkdtempSync(path.join(os.tmpdir(), 'hiroshi-archive-'))
 try {
   console.log(`[archive smoke] extracting and verifying ${target}`)
-  const binaryDirectory = await extractReleaseArchive(path.resolve('dist/release'), version, target, path.join(home, 'extracted'))
+  const binaryDirectory = await extractReleaseArchive(path.resolve('dist/release'), version, target, path.join(home, 'extracted'), (stage) => console.log(`[archive smoke] ${stage}`))
   await smokePackaged(binaryDirectory)
   console.log(`Extracted release archive verified: ${releaseNames(version, target).archive}`)
 } finally {
