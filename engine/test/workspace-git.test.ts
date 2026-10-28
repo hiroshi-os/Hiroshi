@@ -8,7 +8,7 @@ function repository(home: string) {
   const cwd = join(home, 'repo'); mkdirSync(cwd)
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' }
   const git = (...args: string[]) => {
-    const result = Bun.spawnSync(['git', '-C', cwd, ...args], { cwd, env, timeout: 8000, windowsHide: true })
+    const result = Bun.spawnSync(['git', '-C', cwd, ...(args[0] === 'init' ? [] : [`--git-dir=${join(cwd, '.git')}`, `--work-tree=${cwd}`]), ...args], { cwd, env, timeout: 8000, windowsHide: true })
     if (result.exitCode) throw new Error(`git ${args.join(' ')}: ${result.stderr.toString()}`)
     return result.stdout.toString().trim()
   }
@@ -116,5 +116,22 @@ test('changing a checkout blocks its old native CLI continuation before a new ta
     expect((await daemon.client.session({ id: next.id })).cliConversation).toBeNull()
     await daemon.client.prompt({ id: next.id, text: 'fresh branch context' })
     await until(async () => (await daemon.client.session({ id: next.id })).cliConversation?.status === 'ready', 15000)
+  } finally { await daemon.stop() }
+}, 45000)
+
+test('queued prompts held behind an interrupted native conversation prevent changing its checkout', async () => {
+  const home = tempHome(), { cwd } = repository(home)
+  writeFileSync(join(home, 'providers.json'), JSON.stringify({ defaultModel: 'cli/chat', providers: [{ id: 'cli', adapter: 'cursor-cli', command: [process.execPath, join(import.meta.dir, 'fixtures/cli-response.ts')], models: [{ id: 'chat', model: 'default', label: 'Fixture', contextWindow: 32768, reservedOutput: 1024 }] }] }))
+  const daemon = await startDaemon({ home, env: { HIROSHI_CLI_FIXTURE: 'hang' } })
+  try {
+    const { session } = await daemon.client.openProject({ cwd })
+    await daemon.client.prompt({ id: session.id, text: 'hold this conversation' })
+    await until(async () => (await daemon.client.session({ id: session.id })).cliConversation?.status === 'running', 15000)
+    await daemon.client.prompt({ id: session.id, text: 'queued for the original checkout', mode: 'queue' })
+    await daemon.client.interrupt({ id: session.id, reason: 'test queued checkout protection' })
+    await until(async () => (await daemon.client.session({ id: session.id })).cliConversation?.status === 'blocked', 15000)
+    expect((await daemon.client.session({ id: session.id })).inbox.some((item) => item.state === 'pending')).toBe(true)
+    const view = await daemon.client.workspaceGit({ id: session.id })
+    await expect(daemon.client.changeWorkspaceGit({ id: session.id, action: 'create', name: 'must-wait', revision: view.revision })).rejects.toMatchObject({ code: 'workspace_busy' })
   } finally { await daemon.stop() }
 }, 45000)

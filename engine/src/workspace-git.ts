@@ -1,6 +1,6 @@
 /** Bounded, argument-only Git navigation. Never discard or carry dirty files. */
 import { createHash } from 'node:crypto'
-import { mkdir, realpath } from 'node:fs/promises'
+import { mkdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { git } from './workspace'
 import { conflict, invalid } from './errors'
@@ -11,16 +11,20 @@ async function checked(cwd: string, args: string[]) {
   if (result.code !== 0 || result.truncated) throw invalid('workspace_git', result.truncated ? 'Git exceeded its time or output limit. Refresh the workspace.' : result.stderr.toString().trim().slice(0, 500) || 'Git could not complete this action.')
   return result.stdout.toString()
 }
+async function sameDirectory(a: string, b: string) {
+  try { const [left, right] = await Promise.all([stat(a, { bigint: true }), stat(b, { bigint: true })]); return left.dev === right.dev && left.ino === right.ino && left.birthtimeNs === right.birthtimeNs }
+  catch { return false }
+}
 export async function workspaceGit(cwd: string): Promise<WorkspaceGit> {
   const root = await git(cwd, ['rev-parse', '--show-toplevel'])
   const empty: WorkspaceGit = { available: false, reason: 'Open a Git repository root to select branches and worktrees.', root: cwd, local: cwd, current: '', head: '', revision: '', dirty: false, branches: [], worktrees: [] }
   if (root.code !== 0) return empty
-  if (root.truncated || await realpath(root.stdout.toString().trim()) !== await realpath(cwd)) return empty
+  if (root.truncated || !await sameDirectory(root.stdout.toString().trim(), cwd)) return empty
   const trees = await checked(cwd, ['worktree', 'list', '--porcelain', '-z'])
   const worktrees = await Promise.all(trees.split('\0\0').filter(Boolean).map(async (record) => {
     const fields = record.split('\0')
     const directory = fields.find((f) => f.startsWith('worktree '))?.slice(9) ?? ''
-    return { cwd: directory ? await realpath(directory).catch(() => directory) : '', branch: fields.find((f) => f.startsWith('branch refs/heads/'))?.slice(18) ?? '', locked: fields.some((f) => f.startsWith('locked')), prunable: fields.some((f) => f.startsWith('prunable')) }
+    return { cwd: directory ? await sameDirectory(directory, cwd) ? cwd : await realpath(directory).catch(() => directory) : '', branch: fields.find((f) => f.startsWith('branch refs/heads/'))?.slice(18) ?? '', locked: fields.some((f) => f.startsWith('locked')), prunable: fields.some((f) => f.startsWith('prunable')) }
   })).then((items) => items.filter((item) => item.cwd))
   const current = (await git(cwd, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.toString().trim()
   const head = (await git(cwd, ['rev-parse', '--verify', 'HEAD'])).stdout.toString().trim()

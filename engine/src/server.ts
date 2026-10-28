@@ -127,7 +127,7 @@ export function startServer(
   let gitChanging = false
   const assertNotChanging = () => { if (gitChanging) throw conflict('workspace_busy', 'Wait for the Git workspace change to finish.') }
   const assertGitIdle = () => {
-    if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'Finish active work before changing Git workspaces.')
+    if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id) || store.inbox(candidate.id, 'pending').length > 0)) throw conflict('workspace_busy', 'Finish active and queued work before changing Git workspaces.')
     for (const candidate of store.sessions()) options.checkpoints?.assertReady(candidate.id)
   }
   let network: NetworkAccess | undefined
