@@ -24,10 +24,20 @@ const env = { HIROSHI_HOME: home, HIROSHI_USAGE_HOME: history, GPUIX_BACKGROUND:
 mkdirSync('screenshots', { recursive: true })
 const suffix = process.env.HIROSHI_TEST_PACKAGED ? 'packaged' : 'source'
 let window: Awaited<ReturnType<typeof openWindow>> | undefined
+let stage = 'window startup', credentialVisible = false
 try {
   window = await openWindow(env, workspace)
   const app = window.app
   const scroll = async (y: number) => { const node = await app.getByTestId('settings-content').element(); await app.call('scrollTo', { elementId: node.id, x: 0, y }) }
+  const show = async (id: string) => {
+    stage = id
+    await app.getByTestId(id).waitFor()
+    const viewport = await app.getByTestId('settings-content').element(), frame = await app.getByTestId('settings-content').bounds(), target = await app.getByTestId(id).bounds()
+    const offset = (await app.call('getScrollOffset', { elementId: viewport.id })).offset ?? [0, 0]
+    await scroll(offset[1] + frame.y + frame.height / 2 - target.y - target.height / 2)
+    await waitUntil(async () => { const bounds = await app.getByTestId(id).bounds(); return bounds.y >= frame.y && bounds.y + bounds.height <= frame.y + frame.height }, `${id} inside the settings viewport`, 3000)
+  }
+  const click = async (id: string) => { await show(id); await app.getByTestId(id).click() }
   const record = await waitUntil(async () => readRegistry(localPaths(home).registry), 'settings daemon discovery')
   const client = engineClient(record)
   const health = await client.health()
@@ -53,22 +63,22 @@ try {
   await app.getByTestId('settings-section-usage').waitFor(); await app.getByTestId('settings-section-usage').click()
   await waitUntil(async () => (await app.getByTestId('usage-coverage').textContent()).includes('Updated'), 'history coverage')
   check((await app.getByTestId('usage-total-cost').textContent()) === '—', 'Unknown costs were fabricated')
-  await app.getByTestId('usage-row-Codex::test-model').click()
+  await click('usage-row-Codex::test-model')
   await app.getByTestId('usage-pricing').waitFor()
-  await scroll(-550)
   for (const [key, value] of [['input', '1'], ['cachedInput', '.1'], ['cacheWrite', '0'], ['output', '2']]) {
+    await show(`usage-rate-${key}`)
     await app.getByTestId(`usage-rate-${key}`).fill(value!)
   }
   await app.screenshot({ path: path.resolve(`screenshots/settings-rates-${suffix}.png`) })
-  await app.getByTestId('usage-rates-save').click()
+  await click('usage-rates-save')
   await waitUntil(async () => (await client.usageReport({ id: original.id, from: Date.now() - 86400000, to: Date.now() + 1000, includeHistory: true })).totals.costUSD === .23, 'the persisted explicit rate estimate')
   await scroll(0)
   await waitUntil(async () => (await app.getByTestId('usage-total-cost').textContent()) === '$0.23', 'the rendered usage total')
-  await app.getByTestId('usage-period-months').click(); await app.getByTestId('usage-period-projects').click(); await app.getByTestId('usage-period-days').click()
-  await app.getByTestId('usage-metric-cost').click()
-  await app.getByTestId('usage-chart').hover(); await app.getByTestId('usage-chart-tooltip').waitFor()
+  await click('usage-period-months'); await click('usage-period-projects'); await click('usage-period-days')
+  await click('usage-metric-cost')
+  await show('usage-chart'); await app.getByTestId('usage-chart').hover(); await app.getByTestId('usage-chart-tooltip').waitFor()
   await app.screenshot({ path: path.resolve(`screenshots/settings-usage-${suffix}.png`) })
-  await app.getByTestId('usage-range').click(); await app.getByTestId('usage-range-7').waitFor(); await app.getByTestId('usage-range-7').click()
+  await click('usage-range'); await app.getByTestId('usage-range-7').waitFor(); await app.getByTestId('usage-range-7').click()
   await waitUntil(async () => (await app.getByTestId('usage-refresh').textContent()) === 'Refresh' &&
     (await app.getByTestId('usage-range').textContent()) === 'Last 7 days', 'the date window refresh')
 
@@ -76,24 +86,27 @@ try {
   await waitUntil(async () => (await app.getByTestId('network-status').textContent()).includes('Local only'), 'local-only listener state')
   const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('fixture') })
   const port = reservation.port!; reservation.stop(true)
-  await app.getByTestId('network-port').fill(String(port)); await app.getByTestId('network-origins').fill('http://localhost:3001')
-  await app.getByTestId('network-toggle').click()
+  await show('network-port'); await app.getByTestId('network-port').fill(String(port)); await show('network-origins'); await app.getByTestId('network-origins').fill('http://localhost:3001')
+  await click('network-toggle')
   await waitUntil(async () => (await app.getByTestId('network-status').textContent()).includes('Exposed'), 'the exposed listener')
   const settings = await client.networkSettings()
   check(settings.active && settings.port === port && settings.origins[0] === 'http://localhost:3001', 'Listener fields did not persist')
   const previous = (await client.networkToken()).token
   const endpoint = `http://127.0.0.1:${port}/v1/health`
   check((await daemonFetch(endpoint, { headers: { authorization: `Bearer ${previous}` } })).status === 200, 'Network credential could not access engine')
-  await app.getByTestId('network-show-token').click()
+  credentialVisible = true
+  await click('network-show-token')
   await waitUntil(async () => (await app.getByTestId('network-show-token').textContent()) === 'Hide', 'deliberate token reveal')
+  await waitUntil(async () => (await app.getByTestId('network-apply').textContent()) === 'Apply', 'reveal controls to settle')
   // Never capture a revealed credential in screenshots or error output.
-  await app.getByTestId('network-rotate').click()
+  await click('network-rotate')
   await waitUntil(async () => (await client.networkSettings()).revision > settings.revision, 'network token rotation')
   await waitUntil(async () => (await app.getByTestId('network-show-token').textContent()) === 'Show', 'the regenerated token to be masked')
+  credentialVisible = false
   await waitUntil(async () => (await app.getByTestId('network-apply').textContent()) === 'Apply', 'rotation controls to settle')
   check((await daemonFetch(endpoint, { headers: { authorization: `Bearer ${previous}` } })).status === 401, 'Rotated credential still works')
   await app.screenshot({ path: path.resolve(`screenshots/settings-daemon-${suffix}.png`) })
-  await app.getByTestId('network-toggle').click()
+  await click('network-toggle')
   try { await waitUntil(async () => !(await client.networkSettings()).active, 'network exposure to be disabled', 5000) }
   catch (error) {
     console.error('Listener state after disable:', await client.networkSettings())
@@ -104,7 +117,14 @@ try {
   check((await client.health()).pid === health.pid, 'Changing network settings restarted the engine')
   console.log('Settings window passed: project/scratch isolation, history-backed analytics, explicit rates, filters, listener lifecycle and token rotation.')
 } catch (error) {
-  if (window) console.error(window.output())
+  console.error(`Settings flow failed at ${stage}`)
+  if (window) {
+    console.error(window.output())
+    if (!credentialVisible) {
+      await window.app.screenshot({ path: path.resolve(`screenshots/settings-failure-${suffix}.png`) })
+      writeFileSync(`screenshots/settings-failure-${suffix}.json`, JSON.stringify({ stage, tree: await window.app.call('getTree', {}) }, null, 2))
+    }
+  }
   throw error
 } finally {
   if (window) await window.close()
