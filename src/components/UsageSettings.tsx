@@ -30,6 +30,9 @@ export function UsageSettings({ engine }: { engine: EngineHandle }) {
   }, [engine.usageReport, days, history])
   useEffect(() => { void refresh(); return () => { epoch.current++ } }, [refresh])
   const totals = report?.totals
+  const share = (row: UsageGroup) => metric === 'cost'
+    ? row.costUSD === null || !totals?.costUSD ? undefined : row.costUSD / totals.costUSD
+    : !totals?.tokens ? undefined : row.tokens / totals.tokens
   const segments = <T extends string>(name: string, values: [T, string][], value: T, choose: (value: T) => void, unavailable: T[] = []) => <div style={{ display: 'flex', flexDirection: 'row', borderWidth: 1, borderColor: '#393939', borderRadius: 6 }}>
     {values.map(([id, label]) => <Button key={id} testId={`usage-${name}-${id}`} disabled={busy || unavailable.includes(id)} onClick={() => choose(id)} style={{ padding: 7, borderRadius: 5, backgroundColor: value === id ? '#303030' : '#00000000' }}><text style={{ fontSize: 12, color: value === id ? text : muted }}>{label}</text></Button>)}
   </div>
@@ -73,7 +76,7 @@ export function UsageSettings({ engine }: { engine: EngineHandle }) {
         <text style={{ fontSize: 12, color: muted }}>{totals ? `${percent(totals.providerPricedTokens + totals.estimatedPricedTokens, totals.tokens)} of observed tokens priced` : 'Waiting for the engine'}</text>
         {report?.providers.slice(0, 8).map((row, index) => <div key={row.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}><text style={{ fontSize: 13, color: text }}>{row.label}</text><text style={{ fontSize: 12, color: text }}>{metric === 'cost' ? dollars(row.costUSD) : number(row.tokens)}</text></div>
-          <div style={{ height: 3, backgroundColor: border, borderRadius: 2 }}><div style={{ height: 3, borderRadius: 2, width: `${Math.max(0, Math.min(100, 100 * row.tokens / (totals?.tokens || 1)))}%`, backgroundColor: index ? '#df805d' : '#dddddd' }} /></div>
+          <div style={{ height: 3, backgroundColor: border, borderRadius: 2 }}><div style={{ height: 3, borderRadius: 2, width: `${Math.max(0, Math.min(100, 100 * (share(row) ?? 0)))}%`, backgroundColor: index ? '#df805d' : '#dddddd' }} /></div>
         </div>)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flexGrow: 1 }}>
@@ -110,7 +113,7 @@ export function UsageSettings({ engine }: { engine: EngineHandle }) {
         <div style={{ display: 'flex', flexDirection: 'row', paddingBottom: 6 }}><text style={{ flexGrow: 1, fontSize: 12, color: muted }}>{breakdown === 'models' ? 'Model' : 'Day'}</text><text style={{ width: 80, fontSize: 12, color: muted }}>Cost</text><text style={{ width: 65, fontSize: 12, color: muted }}>Share</text><text style={{ width: 75, fontSize: 12, color: muted }}>Tokens</text></div>
         <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 260, overflowY: 'scroll' }}>
           {report?.[breakdown].slice(0, 100).map((row) => <Button key={row.id} testId={`usage-row-${row.id}`} disabled={breakdown !== 'models' || busy} onClick={() => openRates(row.id)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderColor: border, pointerEvents: 'auto', hover: { backgroundColor: '#252525' } }}>
-            <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: text, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.label}</text><text style={{ width: 80, fontSize: 12, color: text }}>{dollars(row.costUSD)}</text><text style={{ width: 65, fontSize: 12, color: muted }}>{percent(row.tokens, totals?.tokens ?? 0)}</text><text style={{ width: 75, fontSize: 12, color: muted }}>{number(row.tokens)}</text>
+            <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: text, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.label}</text><text style={{ width: 80, fontSize: 12, color: text }}>{dollars(row.costUSD)}</text><text style={{ width: 65, fontSize: 12, color: muted }}>{share(row) === undefined ? '—' : `${(100 * share(row)!).toFixed(1)}%`}</text><text style={{ width: 75, fontSize: 12, color: muted }}>{number(row.tokens)}</text>
           </Button>)}
         </div>
       </div>

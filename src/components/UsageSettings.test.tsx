@@ -18,14 +18,20 @@ import { UsageSettings } from './UsageSettings'
         ...input, generatedAt: Date.now(), pricing: saved, pricingRevision: revision, scannedRecords: 1, sources: [], warnings: [] }
     }, updateUsagePricing: async (input: any) => { saved = { [input.model]: input.rate }; revision++ },
     } as unknown as EngineHandle
-    const { render, renderer } = createTestRoot({ width: 1180, height: 820 })
-    render(<div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}><div style={{ flexShrink: 0 }}><UsageSettings engine={engine} /></div></div>)
+    const { render, renderer } = createTestRoot({ width: 1024, height: 642 })
+    render(<div testId="usage-test-viewport" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}><div style={{ flexShrink: 0 }}><UsageSettings engine={engine} /></div></div>)
     const app = await connectTest(renderer)
     let stage = 'initial report'
     const click = async (id: string) => {
       stage = id
       const node = await app.getByTestId(id).waitFor({ timeoutMs: 2000 })
-      renderer.scrollIntoView(node.id); renderer.flush()
+      const viewport = await app.getByTestId('usage-test-viewport').element()
+      const bounds = await app.getByTestId(id).bounds(), frame = await app.getByTestId('usage-test-viewport').bounds()
+      const offset = renderer.getScrollOffset(viewport.id) ?? [0, 0]
+      renderer.scrollTo(viewport.id, 0, offset[1] + frame.y + frame.height / 2 - bounds.y - bounds.height / 2)
+      renderer.flush()
+      const painted = await app.getByTestId(id).bounds()
+      if (painted.y < frame.y || painted.y + painted.height > frame.y + frame.height) throw new Error(`Control is outside the native viewport: ${JSON.stringify({ id, painted, frame })}`)
       await app.getByTestId(id).click()
     }
     try {
