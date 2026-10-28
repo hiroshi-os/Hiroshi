@@ -280,6 +280,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
   git(['add', '.']); git(['commit', '-m', 'initial fixture'])
   const window = await openWindow({
     HIROSHI_HOME: home,
+    HIROSHI_USAGE_HOME: path.join(home, 'external-history'),
     HIROSHI_TOOL_FIXTURE_KEY: 'local-window-fixture',
     // Do not take the keyboard away from whoever is sitting at the machine.
     GPUIX_BACKGROUND: '1',
@@ -629,9 +630,11 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       await waitUntil(async () => (await app.getByTestId('model-picker').textContent()).includes('Local echo') &&
         (await twin.app.getByTestId('model-picker').textContent()).includes('Local echo'), 'both open composers to receive the shared default change')
       await twin.app.getByTestId('run-usage-open').click()
-      await twin.app.getByTestId('engine-usage').waitFor()
-      const usage = await twin.app.getByTestId('engine-usage').textContent()
-      check(usage.includes('reported input tokens') && usage.includes('Cost: not reported'), 'Usage did not draw durable provider counts')
+      await twin.app.getByTestId('usage-settings').waitFor()
+      await waitUntil(async () => (await twin.app.getByTestId('usage-coverage').textContent()).includes('Updated'), 'durable usage analytics to load')
+      const usage = await twin.app.getByTestId('usage-settings').textContent()
+      check(usage.includes('Processed tokens') &&
+        (await twin.app.getByTestId('usage-total-cost').textContent()) === '—', 'Usage did not draw durable unpriced provider counts')
       await twin.app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-usage.png') })
       await app.screenshot({ path: path.join(process.cwd(), 'screenshots', 'windowed-cockpit.png') })
       note('two real windows agree on engine state; Usage shows provider counts')

@@ -48,6 +48,27 @@ function options(baseURL: string) {
 }
 
 describe('provider adapters over HTTP', () => {
+  test('HTTP adapters preserve cache and reasoning counts without adding subsets twice', async () => {
+    for (const adapter of ['openai', 'anthropic'] as const) {
+      const events = adapter === 'openai'
+        ? [{ type: 'response.completed', response: { usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 80 }, output_tokens: 10, output_tokens_details: { reasoning_tokens: 4 } } } }]
+        : [{ type: 'message_start', message: { usage: { input_tokens: 20, cache_read_input_tokens: 70, cache_creation_input_tokens: 10, output_tokens: 0 } } },
+          { type: 'message_delta', usage: { output_tokens: 10 } }, { type: 'message_stop' }]
+      const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(events.map(frame).join(''), { headers: { 'content-type': 'text/event-stream' } }) })
+      try {
+        const config = options(server.url.href.replace(/\/$/, ''))
+        const provider = adapter === 'openai' ? new OpenAIProvider(config) : new AnthropicProvider(config)
+        const parts: ProviderPart[] = []
+        await provider.stream(request(), () => {}, (part) => parts.push(part))
+        const usage = parts.filter((part) => part.kind === 'usage')
+        expect(usage[0]).toMatchObject(adapter === 'openai'
+          ? { inputTokens: 100, cachedInputTokens: 80, outputTokens: 10, reasoningTokens: 4 }
+          : { inputTokens: 100, cachedInputTokens: 70, cacheWriteTokens: 10 })
+        expect(usage.at(-1)).toMatchObject({ outputTokens: 10 })
+      } finally { server.stop(true) }
+    }
+  })
+
   for (const [adapter, events] of [['openai', openAIEvents], ['anthropic', anthropicEvents]] as const) {
     test(`${adapter} normalizes fragmented UTF-8 SSE, instructions, reasoning and tool calls`, async () => {
       let body: any

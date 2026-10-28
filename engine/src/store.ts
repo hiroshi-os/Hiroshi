@@ -257,12 +257,13 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   { id: 9, name: 'workspace-identity', sql: 'alter table session add column workspace_identity text;' },
+  { id: 10, name: 'scratch-tasks', sql: 'alter table session add column projectless integer not null default 0;' },
 ]
 
 type Row = Record<string, any>
 
 const SESSION_SELECT = `
-  select s.id, s.title, s.cwd, s.workspace_identity, s.created_at, s.updated_at,
+  select s.id, s.title, s.cwd, s.workspace_identity, s.projectless, s.created_at, s.updated_at,
     (select count(*) from run r where r.session_id = s.id)                              as runs,
     (select count(*) from run r where r.session_id = s.id and r.status = 'running')    as running,
     (select max(r.started_at) from run r where r.session_id = s.id)                    as last_run_at
@@ -273,6 +274,7 @@ function toSession(row: Row): Session {
     id: row.id,
     title: row.title,
     cwd: row.cwd,
+    ...(row.projectless ? { projectless: true } : {}),
     ...(row.workspace_identity ? { workspaceIdentity: row.workspace_identity } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -540,13 +542,14 @@ export class Store {
   // -- sessions ------------------------------------------------------------
 
   createSession(session: Omit<Session, 'runs' | 'running' | 'lastRunAt'>): void {
-    this.#db.run('insert into session (id, title, cwd, created_at, updated_at, workspace_identity) values (?, ?, ?, ?, ?, ?)', [
+    this.#db.run('insert into session (id, title, cwd, created_at, updated_at, workspace_identity, projectless) values (?, ?, ?, ?, ?, ?, ?)', [
       session.id,
       session.title,
       session.cwd,
       session.createdAt,
       session.updatedAt,
       session.workspaceIdentity ?? null,
+      session.projectless ? 1 : 0,
     ])
   }
 
@@ -620,6 +623,22 @@ export class Store {
   stepParts(sessionID: string): StepPart[] {
     return (this.#db.query('select data from step_part where session_id = ? order by ordinal').all(sessionID) as Row[])
       .map((row) => JSON.parse(row.data) as StepPart)
+  }
+
+  /** Usage-only projection: never read assistant text, reasoning or tool data. */
+  usageRows(from: number, to: number): { stepID: string; sessionID: string; cwd: string; projectless: number; provider: string; model: string; attempts: number; at: number; data: string | null }[] {
+    const rows = this.#db.query(`select st.id stepID, st.session_id sessionID, s.cwd, s.projectless, st.provider, st.model,
+      st.attempt attempts, st.started_at at, p.data from step st join session s on s.id = st.session_id
+      left join step_part p on p.step_id = st.id and json_extract(p.data, '$.kind') = 'usage'
+      where st.started_at >= ? and st.started_at < ? order by st.started_at, p.ordinal limit 200001`).all(from, to) as ReturnType<Store['usageRows']>
+    if (rows.length > 200000) throw new Error('This usage window has too many records. Choose a shorter date range.')
+    return rows
+  }
+  vendorSessions(): Set<string> {
+    const rows = this.#db.query(`select distinct json_extract(data, '$.vendorSessionID') id from step_part
+      where json_extract(data, '$.kind') = 'cli' and json_extract(data, '$.phase') = 'session' limit 100001`).all() as { id: string | null }[]
+    if (rows.length > 100000) throw new Error('The agent-session history is too large to import safely.')
+    return new Set(rows.flatMap((row) => typeof row.id === 'string' ? [row.id] : []))
   }
 
   insertCompaction(value: Compaction): void {

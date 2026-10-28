@@ -34,7 +34,8 @@ export class AnthropicProvider implements Provider {
         const input = tokenCount(usage.input_tokens)
         const cacheRead = tokenCount(usage.cache_read_input_tokens) ?? 0
         const cacheWrite = tokenCount(usage.cache_creation_input_tokens) ?? 0
-        onPart?.({ kind: 'usage', inputTokens: input === undefined ? undefined : input + cacheRead + cacheWrite, outputTokens: tokenCount(usage.output_tokens) })
+        onPart?.({ kind: 'usage', inputTokens: input === undefined ? undefined : input + cacheRead + cacheWrite, outputTokens: tokenCount(usage.output_tokens),
+          ...(input === undefined ? {} : { cachedInputTokens: cacheRead, cacheWriteTokens: cacheWrite }) })
       }
       if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
         thinking.set(event.index, { thinking: event.content_block.thinking ?? '', signature: '' })

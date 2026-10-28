@@ -19,6 +19,24 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
+## [0.20.0] - Unreleased
+
+### Added
+
+- Usage analytics across Hiroshi tasks with UTC date windows, daily/monthly/project
+  charts, cache and reasoning metrics, model/day breakdowns, and explicit model
+  rates. Preserve unknown costs and distinguish reported costs from estimates.
+- Bounded, read-only import of available agent usage histories, excluding sessions
+  already recorded through Hiroshi. Show missing, unsupported and partial coverage.
+- Opt-in daemon network access with a separate credential, exact browser origins,
+  persistent port settings, token reveal/copy/rotation and local-only administration.
+  Listener changes leave the private engine and running tasks alive.
+- Searchable project menus in the greeting and footer, plus isolated managed scratch
+  tasks for work without a project. Retain task/draft and unavailable-folder recovery.
+- Real daemon and native integration coverage for accounting, import edge cases,
+  network security and persistence, scratch isolation and complete settings flows in
+  source and packaged windows, with bounded process and RAM usage.
+
 ## [0.19.0] - Unreleased
 
 ### Added

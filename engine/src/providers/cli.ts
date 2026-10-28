@@ -65,7 +65,11 @@ export class CliEvents {
     this.#append(answer.slice(this.#output.length))
     if (usage && object(usage)) {
       const count = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : undefined
-      this.onPart?.({ kind: 'usage', inputTokens: count(usage.input_tokens), outputTokens: count(usage.output_tokens) })
+      this.onPart?.({ kind: 'usage', inputTokens: count(usage.input_tokens), outputTokens: count(usage.output_tokens),
+        ...(usage.cached_input_tokens === undefined ? {} : { cachedInputTokens: count(usage.cached_input_tokens) }),
+        ...(usage.cache_write_input_tokens === undefined ? {} : { cacheWriteTokens: count(usage.cache_write_input_tokens) }),
+        ...(usage.reasoning_output_tokens === undefined ? {} : { reasoningTokens: count(usage.reasoning_output_tokens) }),
+        ...(typeof usage.cost_usd === 'number' && Number.isFinite(usage.cost_usd) && usage.cost_usd >= 0 ? { costUSD: usage.cost_usd } : {}) })
     }
     this.#completed = true
   }
@@ -81,7 +85,7 @@ export class CliEvents {
       else if (['thought', 'available_commands', 'usage'].includes(event.type)) return
       else if (event.type === 'end') {
         if (!['EndTurn', 'end_turn'].includes(event.stopReason)) throw fail('cli_failed', 'Grok did not finish a response-only turn')
-        this.#id(event.sessionId); this.#finish(this.#output, event.usage)
+        this.#id(event.sessionId); this.#finish(this.#output, { ...event.usage, cost_usd: event.total_cost_usd })
       } else throw fail('cli_protocol', 'Grok emitted an unsupported response-only event')
       return
     }

@@ -10,7 +10,9 @@
  * something to show, and it is never derived again.
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { currentEngineHome } from './home'
 import path from 'node:path'
 
 import { invalid, notFound } from './errors'
@@ -38,12 +40,14 @@ export class Sessions {
   readonly #log: Logger
   readonly #defaultCwd: string
   readonly #inbox: Inbox
+  readonly #scratchRoot: string
 
-  constructor(store: Store, log: Logger, defaults: { cwd: string; inbox?: Inbox }) {
+  constructor(store: Store, log: Logger, defaults: { cwd: string; inbox?: Inbox; home?: string }) {
     this.#store = store
     this.#log = log.child('sessions')
     this.#defaultCwd = defaults.cwd
     this.#inbox = defaults.inbox ?? new Inbox(store, log)
+    this.#scratchRoot = path.join(defaults.home ?? currentEngineHome(), 'workspaces', 'scratch')
     for (const session of store.sessions()) {
       if (session.workspaceIdentity) continue
       try {
@@ -59,8 +63,14 @@ export class Sessions {
   }
 
   create(input: CreateSessionRequest = {}): Session {
+    if (input.projectless !== undefined && typeof input.projectless !== 'boolean') throw invalid('projectless', 'projectless must be a boolean')
+    let requested = input.cwd || this.#defaultCwd
+    if (input.projectless) {
+      requested = path.join(this.#scratchRoot, randomUUID())
+      mkdirSync(requested, { recursive: true, mode: 0o700 })
+    }
     let observed: ReturnType<typeof directory>
-    try { observed = directory(path.resolve(input.cwd || this.#defaultCwd)) }
+    try { observed = directory(path.resolve(requested)) }
     catch { throw invalid('bad_working_directory', 'Choose an existing folder that you can read.') }
     const workspaceIdentity = observed.identity
     // Windows can report both a DOS short path and a long path for one folder.
@@ -77,7 +87,7 @@ export class Sessions {
     const at = Date.now()
     const id = newSessionID()
     const title = input.title?.trim() || DEFAULT_TITLE
-    const session = { id, title, cwd, workspaceIdentity, createdAt: at, updatedAt: at }
+    const session = { id, title, cwd, workspaceIdentity, createdAt: at, updatedAt: at, ...(input.projectless ? { projectless: true } : {}) }
 
     this.#store.record({
       type: 'session.created',
@@ -98,6 +108,7 @@ export class Sessions {
   projects() {
     const seen = new Set<string>()
     return this.list().filter((session) => {
+      if (session.projectless) return false
       const key = `${session.cwd}\0${session.workspaceIdentity ?? ''}`
       if (seen.has(key)) return false
       seen.add(key); return true

@@ -60,7 +60,11 @@ export class OpenAIProvider implements Provider {
           break
         case 'response.completed':
           if (calls.size) throw new ProviderError('provider_protocol', 'the provider completed with unfinished tool arguments')
-          if (event.response?.usage) onPart?.({ kind: 'usage', inputTokens: tokenCount(event.response.usage.input_tokens), outputTokens: tokenCount(event.response.usage.output_tokens) })
+          if (event.response?.usage) {
+            const usage = event.response.usage
+            onPart?.({ kind: 'usage', inputTokens: tokenCount(usage.input_tokens), outputTokens: tokenCount(usage.output_tokens),
+              cachedInputTokens: tokenCount(usage.input_tokens_details?.cached_tokens), reasoningTokens: tokenCount(usage.output_tokens_details?.reasoning_tokens) })
+          }
           completed = true
           break
         case 'response.failed':

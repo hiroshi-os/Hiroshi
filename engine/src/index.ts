@@ -157,7 +157,7 @@ async function serve(flags: Flags): Promise<number> {
   const workspace = stringFlag(flags, 'workspace') || process.cwd()
   const checkpoints = new Checkpoints(store, paths.home)
   const inbox = new Inbox(store, log)
-  const sessions = new Sessions(store, log, { cwd: workspace, inbox })
+  const sessions = new Sessions(store, log, { cwd: workspace, inbox, home: paths.home })
   // A run ending is the engine's safe boundary: the inbox reads the database
   // after `run.ended` is committed and delivers only when nothing is running.
   const runs = new Runs(store, log, { budget, onIdle: (sessionID) => void inbox.deliver(sessionID) })
@@ -267,6 +267,7 @@ async function serve(flags: Flags): Promise<number> {
     {
       store,
       budget,
+      home: paths.home,
       runs,
       sessions,
       steps,

@@ -28,6 +28,15 @@ function configure(home: string, adapter: 'agy-cli' | 'cursor-cli' = 'cursor-cli
 }
 
 describe('Grok streaming compatibility', () => {
+  test('terminal usage keeps cache, reasoning and explicit zero cost', () => {
+    const parts: ProviderPart[] = []
+    const events = new CliEvents('grok', () => {}, (part) => parts.push(part))
+    events.accept(JSON.stringify({ type: 'text', data: 'usage fixture answer' }))
+    events.accept(JSON.stringify({ type: 'end', stopReason: 'EndTurn', sessionId: 'usage-session', total_cost_usd: 0,
+      usage: { input_tokens: 100, cached_input_tokens: 80, cache_write_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 4 } }))
+    expect(parts.find((part) => part.kind === 'usage')).toMatchObject({ inputTokens: 100, cachedInputTokens: 80, cacheWriteTokens: 0, outputTokens: 10, reasoningTokens: 4, costUSD: 0 })
+  })
+
   for (const stopReason of ['EndTurn', 'end_turn']) test(`${stopReason}: metadata interleaving never enters public output`, () => {
     let output = ''; const parts: ProviderPart[] = []
     const events = new CliEvents('grok', (value) => output += value, (part) => parts.push(part))

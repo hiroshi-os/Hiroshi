@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState } from '../../engine/src/protocol'
+import type { DeliveryMode, WorkspaceDirectory, WorkspaceFile, WorkspaceReview, BrowserPage, OperationRequest, ProviderUpdate, ProviderState, NetworkSettings, NetworkUpdate, UsageQuery, UsageReport, UsagePricingUpdate } from '../../engine/src/protocol'
 import { EngineRequestError, engineClient, type EngineClient } from './client'
 import { apply, hydrate, initialSnapshot, type Snapshot } from './reducer'
 import { ensureEngine, stopEngine } from './supervisor'
@@ -18,13 +18,19 @@ import { createPromptStore } from '../shell/prompt-store'
 import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
+  usageReport: (input: UsageQuery) => Promise<UsageReport>
+  updateUsagePricing: (input: UsagePricingUpdate) => Promise<void>
+  networkSettings: () => Promise<NetworkSettings>
+  updateNetwork: (input: NetworkUpdate) => Promise<NetworkSettings>
+  networkToken: () => Promise<string>
+  rotateNetworkToken: (revision: number) => Promise<NetworkSettings>
   openProject: (cwd: string) => Promise<void>
   refreshProjects: () => Promise<void>
   refreshProviders: () => Promise<void>
   cancelProviderRefresh: () => Promise<void>
   updateProviders: (input: Omit<ProviderUpdate, 'revision'>) => Promise<void>
   selectSession: (id: string) => void
-  newSession: () => Promise<void>
+  newSession: (projectless?: boolean) => Promise<void>
   workspaceList: (path?: string) => Promise<WorkspaceDirectory>
   workspaceFile: (path: string) => Promise<WorkspaceFile>
   workspaceReview: (base?: string) => Promise<WorkspaceReview>
@@ -213,10 +219,11 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     setSelected(id)
     setAttempt((value) => value + 1)
   }, [])
-  const newSession = useCallback(async () => {
+  const newSession = useCallback(async (projectless?: boolean) => {
     if (!client.current) throw new Error('the engine is not connected')
     const epoch = generation.current
-    const { session: created } = await client.current.createSession({ cwd: sessionWorkspace.current, title: 'New task' })
+    const scratch = projectless ?? knownSessions.current.find((row) => row.id === session.current)?.projectless ?? false
+    const { session: created } = await client.current.createSession({ ...(scratch ? { projectless: true } : { cwd: sessionWorkspace.current }), title: 'New task' })
     if (epoch === generation.current) selectSession(created.id, created.cwd)
   }, [workspace, selectSession])
 
@@ -346,7 +353,31 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     catch (error) { receiveProviders(await client.current.providers()); setSnapshot((current) => ({ ...current, error: describe(error) })); throw error }
   }, [])
 
-  return { openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  const networkSettings = useCallback(async () => {
+    if (!client.current) throw new Error('The engine is not connected')
+    return client.current.networkSettings()
+  }, [])
+  const updateNetwork = useCallback(async (input: NetworkUpdate) => {
+    if (!client.current) throw new Error('The engine is not connected')
+    return client.current.updateNetwork(input)
+  }, [])
+  const networkToken = useCallback(async () => {
+    if (!client.current) throw new Error('The engine is not connected')
+    return (await client.current.networkToken()).token
+  }, [])
+  const rotateNetworkToken = useCallback(async (revision: number) => {
+    if (!client.current) throw new Error('The engine is not connected')
+    return client.current.rotateNetworkToken({ revision })
+  }, [])
+  const usageReport = useCallback(async (input: UsageQuery) => {
+    if (!client.current || !session.current) throw new Error('The engine is not connected')
+    return client.current.usageReport({ ...input, id: session.current })
+  }, [])
+  const updateUsagePricing = useCallback(async (input: UsagePricingUpdate) => {
+    if (!client.current) throw new Error('The engine is not connected')
+    await client.current.updateUsagePricing(input)
+  }, [])
+  return { usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }

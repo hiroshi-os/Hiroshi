@@ -25,6 +25,9 @@ bunx vitest run titlebar-drag.test.tsx   # one file
 | `engine/test/execution-daemon.test.ts` | HTTP provider → shell tool → response, competing sessions, command restart, deadlines and native process containment |
 | `engine/test/prompt-drafts.test.ts` | durable input, dropped requests/acknowledgements, one CLI execution after restart/retry, concurrent edits and storage failure |
 | `projects.integration.ts` | native task/project draft isolation, window restart, explicit discard, offline input and deliberate retry, in source and packaged windows |
+| `settings.integration.ts` | imported usage/rates, date filters/charts, scratch/project menus, network opt-in and token rotation in source and packaged windows |
+| `engine/test/usage.test.ts` | durable attempt accounting, retries, cache/rate estimates, history snapshot/fork deduplication, partial files and persisted pricing |
+| `engine/test/network-access.test.ts` | real network listener auth/CORS, local-only administration, token/connection rotation, port-conflict rollback and restart |
 | `scripts/browser-smoke.ts` | published Wasm renderer, canvas/input readiness and a demo composer reply in Chrome |
 | `scripts/smoke-window.ts` | packaged launcher and `--dev` script startup, OS window visibility, minimize, clean close and sidecar survival |
 

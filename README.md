@@ -25,8 +25,13 @@ The [workspace surfaces](docs/surfaces.mdx) connect to the engine: Terminal show
 commands and model shell calls; Files reads the workspace; Review and commit/push
 use Git; Browser reads HTTP/HTTPS pages with link navigation (without JavaScript). The main composer streams answers from the selected
 engine model, and shows Send, Queue or Steer from engine state. Run phase and
-turn count live in the header; the Usage screen reads durable provider token
-counts and marks missing cost data as unreported. OpenAI Responses and Anthropic Messages adapters use local
+turn count live in the header; Usage shows durable token counts, cache details,
+date-filtered charts and reported or explicitly estimated costs. Available local
+agent history can be included read-only; unsupported or partial histories remain
+visible in coverage. Project menus switch folders or create isolated scratch tasks.
+Daemon settings offer opt-in network access with separate credentials and exact
+browser origins. See [settings and usage](docs/settings-delivery.md).
+OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
 demonstrations. Providers settings discover Agy, Cursor Agent, Pi and Grok CLIs
@@ -80,6 +85,8 @@ bun run engine:status
 | `bun run test:engine` | Test the engine with SQLite and real daemon processes |
 | `bun run test` | Test the UI through the native GPUIX test renderer |
 | `bun run test:integration` | Drive a real desktop window and its engine |
+| `bun run test:projects` | Verify project, draft and task recovery in real windows |
+| `bun run test:settings` | Verify analytics, scratch tasks and daemon access in a real window |
 | `bun run screenshot` | Capture desktop UI screenshots |
 | `bun run build` | Compile the cockpit and engine sidecar into `dist/` |
 | `bun run test:archive` | Verify and test an extracted archive after building and packaging |
