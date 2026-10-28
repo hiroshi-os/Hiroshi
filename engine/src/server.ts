@@ -30,8 +30,12 @@ import type { Tools } from './tools/tools'
 import type { Store } from './store'
 import { ExecutionError, type ExecutionBudget } from './execution'
 import { randomUUID } from 'node:crypto'
+import { NetworkAccess } from './network-access'
+import { UsageService } from './usage'
+import { homedir } from 'node:os'
 
 export interface ServerOptions {
+  home?: string
   budget?: ExecutionBudget
   store: Store
   runs: Runs
@@ -114,6 +118,8 @@ export function startServer(
   const { store, runs, sessions, steps, log } = options
   // One subscription to the store, one encoding per event, one queue per client.
   const hub = new Feed(store)
+  let network: NetworkAccess | undefined
+  const usage = options.home ? new UsageService(options.home, store, process.env.HIROSHI_USAGE_HOME || homedir()) : undefined
 
   const maintenance = <T>(sessionID: string, signal: AbortSignal, effect: () => Promise<T>): Promise<T> => options.budget
     ? options.budget.execute({ id: `maintenance_${randomUUID()}`, sessionID, kind: 'maintenance' }, signal, effect) : effect()
@@ -161,6 +167,27 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'usageReport': {
+        if (!usage) throw notFound('usage reporting')
+        if (!store.session(params.id!)) throw notFound('session')
+        const input = await body<OperationRequest<'usageReport'>>(request)
+        return json(await maintenance(params.id!, request.signal, () => usage.report(input, request.signal)), status)
+      }
+      case 'updateUsagePricing':
+        if (!usage) throw notFound('usage reporting')
+        return json(usage.updatePricing(await body<OperationRequest<'updateUsagePricing'>>(request)), status)
+      case 'networkSettings':
+        if (!network) throw notFound('network settings')
+        return json(network.snapshot(), status)
+      case 'networkToken':
+        if (!network) throw notFound('network settings')
+        return json({ token: network.token() }, status)
+      case 'rotateNetworkToken':
+        if (!network) throw notFound('network settings')
+        return json(network.rotate((await body<{ revision: number }>(request)).revision), status)
+      case 'updateNetwork':
+        if (!network) throw notFound('network settings')
+        return json(network.update(await body<OperationRequest<'updateNetwork'>>(request)), status)
       case 'projects': return json({ projects: sessions.projects() }, status)
       case 'openProject': {
         const input = await body<OperationRequest<'openProject'>>(request)
@@ -291,11 +318,7 @@ export function startServer(
     return unhandled(operation.name)
   }
 
-  const server = Bun.serve({
-    hostname: listen.hostname,
-    port: listen.port,
-    development: false,
-    fetch: async (request) => {
+  const dispatch = async (request: Request) => {
       try {
         return await handle(request)
       } catch (error) {
@@ -309,8 +332,9 @@ export function startServer(
         })
         return failure('internal', 'the engine failed to handle the request', 500)
       }
-    },
-  })
+  }
+  const server = Bun.serve({ hostname: listen.hostname, port: listen.port, development: false, fetch: dispatch })
+  if (options.home) network = new NetworkAccess(options.home, dispatch, options.token)
 
   const host = listen.hostname === '0.0.0.0' || listen.hostname === '::' ? '127.0.0.1' : listen.hostname
   const port = server.port ?? listen.port
@@ -319,6 +343,7 @@ export function startServer(
     url: `http://${host}:${port}`,
     port,
     stop: () => {
+      network?.close()
       hub.close()
       server.stop(true)
     },

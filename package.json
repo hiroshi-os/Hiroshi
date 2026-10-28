@@ -1,6 +1,6 @@
 {
   "name": "hiroshi",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",
@@ -17,6 +17,7 @@
     "test:engine": "bun test engine",
     "test:integration": "bun integration.ts",
     "test:projects": "bun projects.integration.ts",
+    "test:settings": "bun settings.integration.ts",
     "engine": "bun engine/src/index.ts",
     "engine:status": "bun engine/src/index.ts status",
     "typecheck": "tsc --noEmit"

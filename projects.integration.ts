@@ -34,6 +34,8 @@ try {
     const first = (await client.listSessions()).sessions.find((item) => item.cwd === alpha)!
     const switchProject = async (cwd: string) => {
       await app.getByTestId('open-project').click()
+      await app.getByTestId('open-project-new').waitFor(); await app.getByTestId('open-project-new').click()
+      await app.getByTestId('project-path').waitFor()
       await app.getByTestId('project-path').fill(cwd)
       await app.getByTestId('project-open-path').click()
       await waitUntil(async () => (await app.getByTestId('engine-workspace').textContent()) === cwd &&
@@ -46,6 +48,8 @@ try {
     }
     await send('window-alpha-task')
     await app.getByTestId('open-project').click()
+    await app.getByTestId('open-project-new').waitFor(); await app.getByTestId('open-project-new').click()
+    await app.getByTestId('project-path').waitFor()
     await app.getByTestId('project-path').fill(path.join(root, 'missing'))
     await app.getByTestId('project-open-path').click()
     await app.getByTestId('project-error').waitFor()
@@ -74,6 +78,8 @@ try {
     await waitUntil(async () => (await treeText(app)).includes('The local provider received: window-beta-task'), 'beta history to return')
     check(!(await treeText(app)).includes('window-alpha-task'), 'alpha history remained after reopening beta')
     await app.getByTestId('open-project').click()
+    await app.getByTestId('open-project-new').waitFor(); await app.getByTestId('open-project-new').click()
+    await app.getByTestId('project-path').waitFor()
     mkdirSync('screenshots', { recursive: true })
     await app.screenshot({ path: path.resolve('screenshots/windowed-projects.png') })
     await app.getByTestId('project-dialog-cancel').click()
@@ -140,6 +146,8 @@ try {
     await missing.app.getByTestId('project-unavailable').waitFor()
     check((await treeText(missing.app)).includes('window-beta-task'), 'unavailable project history was lost')
     await missing.app.getByTestId('open-project').click()
+    await missing.app.getByTestId('open-project-new').waitFor(); await missing.app.getByTestId('open-project-new').click()
+    await missing.app.getByTestId('project-path').waitFor()
     await missing.app.getByTestId('project-path').fill(alpha)
     await missing.app.getByTestId('project-open-path').click()
     await waitUntil(async () => (await missing.app.getByTestId('engine-workspace').textContent()) === alpha, 'opening a readable project from unavailable history')

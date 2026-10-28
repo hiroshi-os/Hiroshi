@@ -27,6 +27,8 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
+  usageReport: 'usageReport', updateUsagePricing: 'updateUsagePricing', networkSettings: 'networkSettings',
+  updateNetwork: 'updateNetwork', networkToken: 'networkToken', rotateNetworkToken: 'rotateNetworkToken',
   providers: 'providers',
   projects: 'projects',
   openProject: 'openProject',

@@ -13,9 +13,11 @@
 
 import { FilesSurface, ReviewSurface, BrowserSurface, WorkspaceCommitModal } from './src/components/WorkspaceSurfaces'
 import { ProviderSettings } from './src/components/ProviderSettings'
-import { ProjectSwitcher } from './src/components/ProjectSwitcher'
+import { ProjectMenu, ProjectSwitcher } from './src/components/ProjectSwitcher'
 import { CatalogPicker } from './src/components/CatalogPicker'
 import { DraftRecovery } from './src/components/DraftRecovery'
+import { NetworkSettings } from './src/components/NetworkSettings'
+import { UsageSettings } from './src/components/UsageSettings'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
@@ -1156,6 +1158,7 @@ const Transcript = memo(function Transcript({
   listRef,
   onRetry,
   project = 'kale',
+  projectPicker,
   testId,
   showActions = true,
 }: {
@@ -1164,6 +1167,7 @@ const Transcript = memo(function Transcript({
   listRef?: React.Ref<PublicInstance>
   onRetry?: () => void
   project?: string
+  projectPicker?: React.ReactNode
   testId?: string
   showActions?: boolean
 }) {
@@ -1191,7 +1195,11 @@ const Transcript = memo(function Transcript({
           style={{ width: 34, height: 34, color: '#E2795B' }}
           source='<svg viewBox="0 0 24 24" fill="none" stroke="#E2795B" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="3.34" y1="7" x2="20.66" y2="17"/><line x1="3.34" y1="17" x2="20.66" y2="7"/></svg>'
         />
-        <text
+        {projectPicker ? <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+          <text style={{ fontSize: 21, fontWeight: 500, color: C.text, whiteSpace: 'nowrap', marginRight: 5 }}>What should we build in</text>
+          {projectPicker}
+          <text style={{ fontSize: 21, fontWeight: 500, color: C.text }}>?</text>
+        </div> : <text
           style={{
             fontSize: 21,
             fontWeight: 500,
@@ -1199,8 +1207,8 @@ const Transcript = memo(function Transcript({
             whiteSpace: 'nowrap',
           }}
         >
-          {empty ? `What should we build in ${project}?` : ''}
-        </text>
+          {empty ? project ? `What should we build in ${project}?` : 'What should we build?' : ''}
+        </text>}
       </div>
     <virtual-list
       testId={testId}
@@ -1625,8 +1633,8 @@ function DaemonPanel({
 
       <text style={{ fontSize: 13, lineHeight: 19, color: C.secondary, maxWidth: 620 }}>
         The daemon is its own process. A run keeps going when this window closes, and a second window
-        attaches to the same runs. It listens on loopback only, and every request carries the token
-        from its discovery file.
+        attaches to the same runs. The private connection stays on loopback and uses the discovery
+        token. Optional network access has a separate listener and credential.
       </text>
     </div>
   )
@@ -1842,6 +1850,7 @@ function SettingsView({
 
         {/* Content Body */}
         <div
+          testId="settings-content"
           style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1860,7 +1869,7 @@ function SettingsView({
                 display: 'flex',
                 flexDirection: 'column',
                 width: '100%',
-                maxWidth: activeSection === 'providers' ? 760 : 720,
+                maxWidth: activeSection === 'providers' ? 760 : activeSection === 'usage' ? 1100 : activeSection === 'daemon' ? 820 : 720,
                 gap: 14,
               }}
             >
@@ -2165,7 +2174,7 @@ function SettingsView({
               {activeSection === 'providers' && <ProviderSettings engine={providerEngine} />}
 
               {/* SECTION: USAGE */}
-              {activeSection === 'usage' && engine && <EngineUsage snapshot={engine} />}
+              {activeSection === 'usage' && providerEngine && <UsageSettings engine={providerEngine} />}
               {activeSection === 'usage' && !engine && (
                 <>
                   {/* Usage Top bar */}
@@ -2481,7 +2490,10 @@ function SettingsView({
                     Daemon
                   </text>
 
-                  <DaemonPanel engine={engine} onRestart={onRestartEngine} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    <NetworkSettings engine={providerEngine} />
+                    <DaemonPanel engine={engine} onRestart={onRestartEngine} />
+                  </div>
                 </>
               )}
             </div>
@@ -5495,7 +5507,7 @@ export function ChatApp({
   })
   const activeEngineSession = engineView.snapshot.sessions.find((s) => s.id === engineView.snapshot.sessionID)
   const actualWorkspace = activeEngineSession?.cwd ?? initialProject?.cwd ?? (typeof process !== 'undefined' ? process.cwd() : '')
-  const shownProject = engineView.snapshot.projects.find((item) => item.cwd === actualWorkspace)?.name ?? actualWorkspace
+  const shownProject = activeEngineSession?.projectless ? '' : engineView.snapshot.projects.find((item) => item.cwd === actualWorkspace)?.name ?? actualWorkspace
   const previousSession = useRef<string | null>(null)
   const restoringProject = useRef(false)
   const previousWorkspace = useRef<string | null>(null)
@@ -5545,9 +5557,12 @@ export function ChatApp({
   }))
   const [engineModel, setEngineModel] = useState<string | null>(null)
   const chosenModel = engineEnabled ? engineModel ?? engineView.snapshot.defaultModel : model
-  const shownTurns = engineEnabled ? engineTranscript(engineView.snapshot) : turns
+  const shownTurns = useMemo(() => engineEnabled ? engineTranscript(engineView.snapshot) : turns, [engineEnabled, engineView.snapshot, turns])
+  const greetingPicker = useMemo(() => engineEnabled && !activeEngineSession?.projectless
+    ? <ProjectMenu engine={engineView} cwd={actualWorkspace} greeting triggerId="greeting-project" onNewProject={() => setProjectDialog(true)} /> : undefined,
+  [engineEnabled, engineView.snapshot, actualWorkspace])
   const runView = cockpit(engineView.snapshot)
-  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => s.cwd === actualWorkspace && s.workspaceIdentity === activeEngineSession?.workspaceIdentity).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.cwd, time: s.running ? 'running' : '', turns: [] }))
+  const engineConversations: Conversation[] = engineView.snapshot.sessions.filter((s) => activeEngineSession?.projectless ? s.projectless : s.cwd === actualWorkspace && s.workspaceIdentity === activeEngineSession?.workspaceIdentity).map((s) => ({ id: s.id, title: s.title, group: 'Today', project: s.projectless ? 'No project' : s.cwd, time: s.running ? 'running' : '', turns: [] }))
   const latestEngineOutput = engineView.snapshot.steps.at(-1)?.output
   useEffect(() => {
     if (!engineEnabled || shownTurns.length === 0) return
@@ -5686,6 +5701,7 @@ export function ChatApp({
           listRef={listRef}
           onRetry={engineEnabled ? undefined : onRetry}
           project={engineEnabled ? shownProject : projectLabel}
+          projectPicker={greetingPicker}
         />
         {engineEnabled && (
           <CheckpointHistory key={engineView.snapshot.sessionID} checkpoints={engineView.snapshot.checkpoints} rewinds={engineView.snapshot.rewinds}

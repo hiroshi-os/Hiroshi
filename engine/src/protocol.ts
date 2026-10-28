@@ -26,7 +26,7 @@ export const ENGINE_NAME = 'hiroshi-engine'
 export const PROTOCOL_VERSION = 13
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.19.0'
+export const ENGINE_VERSION = '0.20.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -81,7 +81,7 @@ export type StepPart = {
   attempt?: number
 } & (
   | { kind: 'cli'; version: 1; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
-  | { kind: 'usage'; inputTokens?: number; outputTokens?: number }
+  | ({ kind: 'usage' } & UsageCounters)
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
@@ -135,7 +135,33 @@ export interface Health {
   lastSeq: number
 }
 
+export interface NetworkUpdate { revision: number; enabled: boolean; port: number; origins: string[] }
+export interface NetworkSettings extends NetworkUpdate { active: boolean; urls: string[]; error: string | null; transport: string }
+
+export interface UsageCounters {
+  inputTokens?: number; outputTokens?: number; cachedInputTokens?: number
+  cacheWriteTokens?: number; reasoningTokens?: number; costUSD?: number
+}
+export interface UsageRate { input: number; cachedInput: number; cacheWrite: number; output: number }
+export interface UsageTotals {
+  input: number; cachedInput: number; cacheWrites: number; uncachedInput: number; unclassifiedInput: number; output: number; reasoning: number; tokens: number
+  attempts: number; reportedAttempts: number; cacheReportedAttempts: number; activeDays: number
+  costUSD: number | null; providerCostUSD: number; estimatedCostUSD: number; cacheSavingsUSD: number | null
+  providerPricedTokens: number; estimatedPricedTokens: number; unpricedTokens: number
+}
+export interface UsageGroup extends UsageTotals { id: string; label: string }
+export interface UsageSource { name: string; status: 'included' | 'missing' | 'unsupported' | 'partial'; files: number; records: number; skipped: number; detail: string }
+export interface UsageQuery { from: number; to: number; includeHistory: boolean }
+export interface UsageReport {
+  from: number; to: number; generatedAt: number; totals: UsageTotals
+  days: UsageGroup[]; months: UsageGroup[]; projects: UsageGroup[]; providers: UsageGroup[]; models: UsageGroup[]
+  sources: UsageSource[]; warnings: string[]; pricing: Record<string, UsageRate>; pricingRevision: number; scannedRecords: number
+}
+export interface UsagePricingUpdate { revision: number; model: string; rate: UsageRate | null }
+
 export interface Session {
+  /** An isolated engine-owned workspace, excluded from the project list. */
+  projectless?: boolean
   id: string
   title: string
   cwd: string
@@ -540,6 +566,7 @@ export interface RunDetail {
 }
 
 export interface CreateSessionRequest {
+  projectless?: boolean
   /** Attach to the latest session for this workspace, creating it only if absent. */
   reuseWorkspace?: boolean
   title?: string
@@ -600,6 +627,12 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  usageReport: { request: SessionRef & UsageQuery; response: UsageReport }
+  updateUsagePricing: { request: UsagePricingUpdate; response: { revision: number } }
+  networkSettings: { request: NoInput; response: NetworkSettings }
+  updateNetwork: { request: NetworkUpdate; response: NetworkSettings }
+  networkToken: { request: NoInput; response: { token: string } }
+  rotateNetworkToken: { request: { revision: number }; response: NetworkSettings }
   projects: { request: NoInput; response: { projects: ProjectInfo[] } }
   openProject: { request: { cwd: string }; response: { session: Session } }
   providers: { request: NoInput; response: ProviderState }
@@ -650,6 +683,12 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'usageReport', method: 'POST', path: '/v1/sessions/:id/usage' },
+  { name: 'updateUsagePricing', method: 'POST', path: '/v1/usage/pricing' },
+  { name: 'networkSettings', method: 'GET', path: '/v1/network' },
+  { name: 'updateNetwork', method: 'POST', path: '/v1/network/settings' },
+  { name: 'networkToken', method: 'POST', path: '/v1/network/token' },
+  { name: 'rotateNetworkToken', method: 'POST', path: '/v1/network/rotate' },
   { name: 'projects', method: 'GET', path: '/v1/projects' },
   { name: 'openProject', method: 'POST', path: '/v1/projects/open' },
   { name: 'providers', method: 'GET', path: '/v1/providers' },
