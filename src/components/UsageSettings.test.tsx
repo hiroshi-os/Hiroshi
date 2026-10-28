@@ -17,32 +17,40 @@ import { UsageSettings } from './UsageSettings'
         ...input, generatedAt: Date.now(), pricing: saved, pricingRevision: revision, scannedRecords: 1, sources: [], warnings: [] }
     }, updateUsagePricing: async (input: any) => { saved = { [input.model]: input.rate }; revision++ },
     } as unknown as EngineHandle
-    const { render, renderer } = createTestRoot({ width: 1180, height: 1500 })
-    render(<UsageSettings engine={engine} />)
+    const { render, renderer } = createTestRoot({ width: 1180, height: 820 })
+    render(<div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'scroll' }}><div style={{ flexShrink: 0 }}><UsageSettings engine={engine} /></div></div>)
     const app = await connectTest(renderer)
+    let stage = 'initial report'
+    const click = async (id: string) => {
+      stage = id
+      const node = await app.getByTestId(id).waitFor({ timeoutMs: 2000 })
+      renderer.scrollIntoView(node.id); renderer.flush()
+      await app.getByTestId(id).click()
+    }
     try {
       await expect.poll(() => calls).toBe(1)
       await expect.poll(async () => app.getByTestId('usage-refresh').textContent()).toBe('Refresh')
       await app.getByTestId('usage-row-api::model').waitFor()
       expect(await app.getByTestId('usage-total-cost').textContent()).toBe('—')
-      await app.getByTestId('usage-period-months').click()
-      await app.getByTestId('usage-period-projects').click()
-      await app.getByText('By project tokens').waitFor()
-      await app.getByTestId('usage-row-api::model').click()
-      await app.getByTestId('usage-rate-input').waitFor()
+      await click('usage-period-months')
+      await click('usage-period-projects')
+      await app.getByText('By project tokens').waitFor({ timeoutMs: 2000 })
+      await click('usage-row-api::model')
+      await app.getByTestId('usage-rate-input').waitFor({ timeoutMs: 2000 })
       for (const [key, value] of [['input', '2'], ['cachedInput', '.2'], ['cacheWrite', '2'], ['output', '3']]) await app.getByTestId(`usage-rate-${key}`).fill(value!)
-      await app.getByTestId('usage-rates-save').click()
+      await click('usage-rates-save')
       await expect.poll(() => revision).toBe(1)
       await expect.poll(async () => app.getByTestId('usage-total-cost').textContent()).toBe('$0.00')
       expect(saved['api::model']).toMatchObject({ input: 2, cachedInput: .2, output: 3 })
-      await app.getByTestId('usage-range').click(); await app.getByTestId('usage-range-7').waitFor(); await app.getByTestId('usage-range-7').click()
+      await click('usage-range'); await app.getByTestId('usage-range-7').waitFor(); await app.getByTestId('usage-range-7').click()
       await expect.poll(() => requests.length).toBe(3)
       await expect.poll(async () => app.getByTestId('usage-refresh').textContent()).toBe('Refresh')
       expect((requests.at(-1) as any).to - (requests.at(-1) as any).from).toBe(7 * 86400000)
-      await app.getByTestId('usage-history-toggle').click()
+      await click('usage-history-toggle')
       await expect.poll(() => (requests.at(-1) as any).includeHistory).toBe(false)
-    } finally { await app.close() }
-  })
+    } catch (error) { throw new Error(`Usage controls failed at ${stage}`, { cause: error }) }
+    finally { await app.close() }
+  }, 10000)
   it('shows an unavailable report as an error instead of a fabricated zero', async () => {
     const engine = { usageReport: async () => { throw new Error('Engine disconnected') } } as unknown as EngineHandle
     const { render, renderer } = createTestRoot({ width: 1180, height: 820 })
