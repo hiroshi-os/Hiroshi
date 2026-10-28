@@ -19,7 +19,16 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.21.0] - Unreleased
+## [0.22.0] - Unreleased
+
+### Added
+
+- Task-scoped Supervised, Auto-accept edits, Auto and Full access controls with
+  durable selection, policy precedence and execution-time revocation checks.
+- Bounded AI review of routine workspace file actions, durable decision evidence
+  and usage accounting. Failed/interrupted reviews request operator approval.
+
+## [0.21.0]
 
 ### Added
 

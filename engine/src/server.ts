@@ -33,9 +33,11 @@ import { randomUUID } from 'node:crypto'
 import { NetworkAccess } from './network-access'
 import { UsageService } from './usage'
 import type { CliConversations } from './cli-conversations'
+import type { AccessControls } from './tools/access'
 import { homedir } from 'node:os'
 
 export interface ServerOptions {
+  access?: AccessControls
   cliConversations?: CliConversations
   onCliFresh?: (sessionID: string) => void
   home?: string
@@ -277,6 +279,10 @@ export function startServer(
       case 'session':
         return json(sessions.detail(params.id), status)
 
+      case 'updateAccess': {
+        if (!options.access) throw notFound('permission mode service')
+        return json(options.access.update(params.id!, await body<OperationRequest<'updateAccess'>>(request)), status)
+      }
       case 'freshCliConversation': {
         if (!options.cliConversations) throw notFound('CLI conversation service')
         if (steps.busy(params.id!)) throw conflict('cli_busy', 'Wait for the current task to settle before replacing its CLI conversation.')

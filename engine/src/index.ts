@@ -29,6 +29,7 @@ import { Steps } from './steps'
 import { ToolRegistry } from './tools/registry'
 import { registerBuiltins } from './tools/builtins'
 import { Tools } from './tools/tools'
+import { AccessControls } from './tools/access'
 import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { ProviderRegistry } from './providers/registry'
 import { CliConversations } from './cli-conversations'
@@ -168,7 +169,9 @@ async function serve(flags: Flags): Promise<number> {
     new LocalProvider({ delayMs: Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0 }))
   const registry = new ToolRegistry()
   registerBuiltins(registry, paths.home, budget.limits)
-  const tools = new Tools(store, registry, paths.home, budget)
+  const access = new AccessControls(store, paths.home, budget, (model) => catalog.resolve(model))
+  access.recover()
+  const tools = new Tools(store, registry, paths.home, budget, access)
   const cliConversations = new CliConversations(store, paths.home, (model) => catalog.resolve(model))
   const steps = new Steps(store, log, {
     cliConversations,
@@ -270,6 +273,7 @@ async function serve(flags: Flags): Promise<number> {
 
   server = startServer(
     {
+      access,
       cliConversations,
       onCliFresh: (id) => { void inbox.deliver(id) },
       store,

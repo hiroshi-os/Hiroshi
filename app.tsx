@@ -269,25 +269,25 @@ const ACCESS = [
   {
     id: 'ask',
     label: 'Supervised',
-    description: 'Ask before every tool call',
+    description: 'Ask before commands and file changes',
     icon: 'lock' as const,
   },
   {
     id: 'edits',
     label: 'Auto-accept edits',
-    description: 'Edit files without asking',
+    description: 'Auto-approve edits, ask before other actions',
     icon: 'pencil' as const,
   },
   {
     id: 'auto',
     label: 'Auto',
-    description: 'Run most tools without asking',
+    description: 'An AI reviewer approves routine actions; risky ones still ask',
     icon: 'sparkle' as const,
   },
   {
     id: 'full',
     label: 'Full access',
-    description: 'No permission prompts',
+    description: 'Allow commands and edits without prompts',
     icon: 'lockOpen' as const,
   },
 ]
@@ -4433,13 +4433,14 @@ function menuItemStyle(state: { selected: boolean; highlighted: boolean }): Styl
 type MenuRowProps = Props & {
   label: string
   description?: string
+  descriptionSize?: number
   icon?: IconName
   selected: boolean
   hint?: string
 }
 
 const MenuRow = React.forwardRef<PublicInstance, MenuRowProps>(function MenuRow(
-  { label, description, icon, selected, hint, style, ...props },
+  { label, description, descriptionSize = 12.5, icon, selected, hint, style, ...props },
   ref,
 ) {
   return (
@@ -4473,7 +4474,7 @@ const MenuRow = React.forwardRef<PublicInstance, MenuRowProps>(function MenuRow(
           {label}
         </text>
         {description && (
-          <text style={{ fontSize: 12.5, lineHeight: 14, color: C.tertiary, paddingTop: 2 }}>
+          <text style={{ fontSize: descriptionSize, lineHeight: descriptionSize + 1.5, color: C.tertiary, paddingTop: 2 }}>
             {description}
           </text>
         )}
@@ -4493,7 +4494,9 @@ function ChipSelect({
   caret = true,
   accent,
   menuWidth,
+  fixedMenuWidth = false,
   testId,
+  disabled = false,
   children,
 }: {
   value: string
@@ -4504,11 +4507,13 @@ function ChipSelect({
   caret?: boolean
   accent?: boolean
   menuWidth?: number
+  fixedMenuWidth?: boolean
   testId?: string
+  disabled?: boolean
   children: React.ReactNode
 }) {
   return (
-    <Select items={items} value={value} onValueChange={onChange} style={{ flexShrink: 0 }}>
+    <Select disabled={disabled} items={items} value={value} onValueChange={onChange} style={{ flexShrink: 0 }}>
       <div style={{ position: 'relative', display: 'flex' }}>
         <SelectTrigger
           testId={testId}
@@ -4540,7 +4545,7 @@ function ChipSelect({
           </text>
           {caret && <Icon name="chevronDown" size={10.5} color={C.ghost} />}
         </SelectTrigger>
-        <SelectContent side="top" sideOffset={4} style={{ ...MENU, minWidth: menuWidth ?? 220 }}>
+        <SelectContent side="top" sideOffset={4} style={{ ...MENU, minWidth: menuWidth ?? 220, ...(fixedMenuWidth ? { width: menuWidth ?? 220 } : {}) }}>
           {children}
         </SelectContent>
       </div>
@@ -4589,17 +4594,29 @@ function ReasoningPicker({ value, onChange }: { value: string; onChange: (next: 
   )
 }
 
-function AccessPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
-  const selected = ACCESS.find((option) => option.id === value) ?? ACCESS[3]
+export function AccessPicker({ value, onChange, disabled = false }: { value: string; onChange: (next: string) => void | Promise<void>; disabled?: boolean }) {
+  const selected = ACCESS.find((option) => option.id === value) ?? ACCESS[0]
+  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const pending = useRef(false)
+  const change = async (next: string) => {
+    if (pending.current || disabled) return
+    pending.current = true; setBusy(true); setError('')
+    try { await onChange(next) } catch (error) { setError(error instanceof Error ? error.message : 'Could not save permission mode') }
+    finally { pending.current = false; setBusy(false) }
+  }
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 288 }}>
     <ChipSelect
+      testId="access-picker"
+      disabled={disabled || busy}
       value={value}
-      onChange={onChange}
+      onChange={(next) => void change(next)}
       items={ACCESS.map((option) => ({ value: option.id, label: option.label }))}
       icon={selected.icon}
-      label={selected.label}
+      label={busy ? 'Saving…' : selected.label}
       caret={false}
-      menuWidth={288}
+      menuWidth={312}
+      fixedMenuWidth
     >
       {ACCESS.map((option) => (
         <SelectItem
@@ -4613,6 +4630,7 @@ function AccessPicker({ value, onChange }: { value: string; onChange: (next: str
             <MenuRow
               label={option.label}
               description={option.description}
+              descriptionSize={11.5}
               icon={option.icon}
               selected={state.selected}
             />
@@ -4620,6 +4638,8 @@ function AccessPicker({ value, onChange }: { value: string; onChange: (next: str
         </SelectItem>
       ))}
     </ChipSelect>
+    {error && <text testId="access-error" style={{ fontSize: 11, color: '#f87171' }}>{error}</text>}
+    </div>
   )
 }
 
@@ -4779,7 +4799,7 @@ function Composer({
   reasoning: string
   onReasoningChange: (next: string) => void
   access: string
-  onAccessChange: (next: string) => void
+  onAccessChange: (next: string) => void | Promise<void>
   mode: 'build' | 'plan'
   onModeChange: (next: 'build' | 'plan') => void
   focusTick: number
@@ -4855,13 +4875,14 @@ function Composer({
             alignItems: 'center',
             gap: 4,
             marginTop: 8,
+            flexWrap: 'wrap',
             paddingLeft: 10,
             paddingRight: 10,
           }}
         >
           <ModelPicker value={model} onChange={onModelChange} models={models} />
           {!engine && <ReasoningPicker value={reasoning} onChange={onReasoningChange} />}
-          {!engine && <AccessPicker value={access} onChange={onAccessChange} />}
+          <AccessPicker key={engine?.sessionID ?? 'demo'} value={access} onChange={onAccessChange} disabled={!!engine && engine.status !== 'ready'} />
           {!engine && <ModeToggle value={mode} onChange={onModeChange} />}
           {engine && <ComposerDelivery snapshot={engine} mode={deliveryMode} onMode={onDeliveryMode ?? (() => {})} />}
           <div style={{ flexGrow: 1 }} />
@@ -5711,7 +5732,7 @@ export function ChatApp({
         )}
         {engineEnabled && (
           <ToolActivity key={`tools:${engineView.snapshot.sessionID}`} permissions={engineView.snapshot.permissions} calls={engineView.snapshot.toolCalls.filter((call) => !call.messageID || !engineView.snapshot.activeMessageIDs || engineView.snapshot.activeMessageIDs.includes(call.messageID))}
-            onAnswer={engineView.answerPermission} onOutput={engineView.toolOutput} />
+            reviews={engineView.snapshot.accessReviews} onAnswer={engineView.answerPermission} onOutput={engineView.toolOutput} />
         )}
         {engineEnabled && engineView.snapshot.error && (
           <text testId="engine-transcript-error" style={{ fontSize: 12, color: '#F87171', padding: 12 }}>{engineView.snapshot.error}</text>
@@ -5759,8 +5780,13 @@ export function ChatApp({
           }}
           reasoning={reasoning}
           onReasoningChange={setReasoning}
-          access={access}
-          onAccessChange={setAccess}
+          access={engineEnabled ? engineView.snapshot.access.mode : access}
+          onAccessChange={(next) => {
+            if (!engineEnabled) { setAccess(next); return }
+            const id = engineView.snapshot.sessionID
+            if (!id) return Promise.reject(new Error('Connect the engine before changing permissions'))
+            return engineView.updateAccess(id, next as import('./engine/src/protocol').AccessMode, engineView.snapshot.access.revision)
+          }}
           mode={mode}
           onModeChange={setMode}
         />

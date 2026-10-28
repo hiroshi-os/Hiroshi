@@ -117,6 +117,14 @@ export class UsageService {
       for (const key of keys) { const value = key === 'costUSD' ? money(part[key]) : count(part[key]); if (value !== undefined) record[key] = value }
     }
     const imported = input.includeHistory ? await importUsageHistory(input.from, input.to, this.store.vendorSessions(), signal, this.historyHome) : { records: [], sources: [] }
+    const reviews = this.store.accessUsageRows(input.from, input.to)
+    if (reviews.length > 100000) throw invalid('usage_window', 'Too many AI reviews in this date range. Choose a shorter window.')
+    for (const row of reviews) {
+      const review = JSON.parse(row.data) as import('./protocol').AccessReview
+      const record: UsageRecord = { id: `review:${review.toolCallID}`, at: review.at, provider: review.model.split('/')[0]!, model: review.model, project: row.projectless ? 'No project' : row.cwd }
+      for (const key of keys) { const value = key === 'costUSD' ? money(review.usage?.[key]) : count(review.usage?.[key]); if (value !== undefined) record[key] = value }
+      attempts.set(record.id, record)
+    }
     const records = [...attempts.values(), ...imported.records]
     const summary = aggregateUsage(records, saved.rates)
     const trimmed = summary.models.length > 100 || summary.projects.length > 100 || summary.providers.length > 100
@@ -128,7 +136,7 @@ export class UsageService {
       if (!present.has(id)) present.set(id, { ...zero(), id, label: id, costUSD: 0 })
     }
     summary.days = [...present.values()].sort((a, b) => a.id.localeCompare(b.id))
-    return { ...summary, from: input.from, to: input.to, generatedAt: Date.now(), pricing: saved.rates, pricingRevision: saved.revision, scannedRecords: rows.length,
+    return { ...summary, from: input.from, to: input.to, generatedAt: Date.now(), pricing: saved.rates, pricingRevision: saved.revision, scannedRecords: rows.length + reviews.length,
       sources: [{ name: 'Hiroshi', status: 'included', files: 1, records: attempts.size, skipped: 0, detail: 'Durable attempts across all tasks, attributed to the start of each call.' }, ...imported.sources],
       warnings: ['UTC dates. Input includes cache reads/writes; output includes reasoning, so these are never added twice.',
         'Configured rates are estimates, not invoices. Unreported cache is priced at the input rate; missing costs stay unpriced.',

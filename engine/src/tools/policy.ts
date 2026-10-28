@@ -27,8 +27,8 @@ export function readToolPolicy(file: string): ToolPolicy {
 /** Last matching rule wins inside each source. Repository policy can lower
  * permission, never grant more than the user's gate. Files are re-read before
  * every claim, including after an approval was answered. */
-export function permissionPolicy(home: string, cwd: string, tool: string): {
-  action: PermissionAction; source: 'user' | 'repository'; alwaysAsk: boolean
+export function permissionPolicy(home: string, cwd: string, tool: string, fallback: PermissionAction = 'ask'): {
+  action: PermissionAction; source: 'user' | 'repository'; alwaysAsk: boolean; fromMode: boolean
 } {
   const user = readToolPolicy(join(home, 'tools.json'))
   const repository = readToolPolicy(join(cwd, '.hiroshi', 'tools.json'))
@@ -38,8 +38,9 @@ export function permissionPolicy(home: string, cwd: string, tool: string): {
     return action
   }
   const local = match(repository, 'allow')
-  if (local === 'deny') return { action: 'deny', source: 'repository', alwaysAsk: false }
-  const action = match(user, 'ask')
+  if (local === 'deny') return { action: 'deny', source: 'repository', alwaysAsk: false, fromMode: false }
+  const action = match(user, fallback)
   const alwaysAsk = user.alwaysAsk === true || repository.alwaysAsk === true
-  return { action: action !== 'deny' && (alwaysAsk || local === 'ask') ? 'ask' : action, source: 'user', alwaysAsk }
+  return { action: action !== 'deny' && (alwaysAsk || local === 'ask') ? 'ask' : action, source: 'user', alwaysAsk,
+    fromMode: !alwaysAsk && local !== 'ask' && !(user.rules ?? []).some((rule) => rule.tool === '*' || rule.tool === tool) }
 }
