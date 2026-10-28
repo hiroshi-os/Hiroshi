@@ -48,7 +48,10 @@ export async function changeWorkspaceGit(cwd: string, home: string, input: { act
     // of unrelated folders. Git owns creation of the final directory.
     const parent = path.join(home, 'workspaces', 'git')
     await mkdir(parent, { recursive: true })
-    const target = path.join(parent, crypto.randomUUID())
+    const slot = path.join(parent, crypto.randomUUID())
+    await mkdir(slot)
+    // Keep the visible project name while isolating each checkout's path.
+    const target = path.join(slot, path.basename(state.local) || 'workspace')
     assertIdle()
     await checked(cwd, ['-c', 'core.hooksPath=', 'worktree', 'add', '-b', input.name, '--', target, state.head])
     return target

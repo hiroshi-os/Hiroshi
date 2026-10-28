@@ -6,12 +6,14 @@ import { workspaceGit } from '../src/workspace-git'
 
 function repository(home: string) {
   const cwd = join(home, 'repo'); mkdirSync(cwd)
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' }
   const git = (...args: string[]) => {
-    const result = Bun.spawnSync(['git', '-C', cwd, ...args], { timeout: 8000, windowsHide: true })
-    if (result.exitCode) throw new Error(result.stderr.toString())
+    const result = Bun.spawnSync(['git', '-C', cwd, ...args], { cwd, env, timeout: 8000, windowsHide: true })
+    if (result.exitCode) throw new Error(`git ${args.join(' ')}: ${result.stderr.toString()}`)
     return result.stdout.toString().trim()
   }
   git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@local'); git('config', 'commit.gpgsign', 'false')
+  git('config', 'core.autocrlf', 'false')
   writeFileSync(join(cwd, 'file.txt'), 'committed\n'); git('add', '.'); git('commit', '-m', 'initial')
   return { cwd: realpathSync(cwd), git }
 }

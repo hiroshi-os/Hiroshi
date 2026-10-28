@@ -9,11 +9,12 @@ import { engineClient } from './src/engine/client'
 const root = mkdtempSync(path.join(tmpdir(), 'hiroshi-git-window-')), home = path.join(root, 'engine'), cwd = path.join(root, 'repo')
 mkdirSync(home); mkdirSync(cwd)
 const git = (...args: string[]) => {
-  const result = Bun.spawnSync(['git', '-C', cwd, ...args], { timeout: 8000, windowsHide: true })
+  const result = Bun.spawnSync(['git', '-C', cwd, ...args], { cwd, timeout: 8000, windowsHide: true })
   if (result.exitCode) throw new Error(result.stderr.toString())
   return result.stdout.toString().trim()
 }
 git('init', '-b', 'main'); git('config', 'user.name', 'Window test'); git('config', 'user.email', 'window@local'); git('config', 'commit.gpgsign', 'false')
+git('config', 'core.autocrlf', 'false')
 writeFileSync(path.join(cwd, 'file.txt'), 'committed file\n'); git('add', '.'); git('commit', '-m', 'initial'); git('branch', 'available')
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message) }
 try {
