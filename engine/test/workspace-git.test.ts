@@ -98,3 +98,21 @@ test('Git navigation refuses a nested directory instead of silently acting on it
   try { const nested = join(cwd, 'nested'); mkdirSync(nested); expect((await workspaceGit(nested)).available).toBe(false) }
   finally { rmSync(home, { recursive: true, force: true }) }
 })
+
+test('changing a checkout blocks its old native CLI continuation before a new task can run', async () => {
+  const home = tempHome(), { cwd } = repository(home)
+  writeFileSync(join(home, 'providers.json'), JSON.stringify({ defaultModel: 'cli/chat', providers: [{ id: 'cli', adapter: 'cursor-cli', command: [process.execPath, join(import.meta.dir, 'fixtures/cli-response.ts')], models: [{ id: 'chat', model: 'default', label: 'Fixture', contextWindow: 32768, reservedOutput: 1024 }] }] }))
+  const daemon = await startDaemon({ home })
+  try {
+    const { session } = await daemon.client.openProject({ cwd })
+    await daemon.client.prompt({ id: session.id, text: 'before branch change' })
+    await until(async () => (await daemon.client.session({ id: session.id })).cliConversation?.status === 'ready', 15000)
+    const view = await daemon.client.workspaceGit({ id: session.id })
+    const { session: next } = await daemon.client.changeWorkspaceGit({ id: session.id, action: 'create', name: 'fresh-context', revision: view.revision })
+    expect((await daemon.client.session({ id: session.id })).cliConversation?.status).toBe('blocked')
+    await expect(daemon.client.prompt({ id: session.id, text: 'must not resume' })).rejects.toMatchObject({ code: 'cli_recovery_required' })
+    expect((await daemon.client.session({ id: next.id })).cliConversation).toBeNull()
+    await daemon.client.prompt({ id: next.id, text: 'fresh branch context' })
+    await until(async () => (await daemon.client.session({ id: next.id })).cliConversation?.status === 'ready', 15000)
+  } finally { await daemon.stop() }
+}, 45000)

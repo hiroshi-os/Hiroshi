@@ -56,8 +56,8 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
   const disabled = busy || loading || !ready
   const creation = <>
     <div style={{ ...row, padding: 4 }}><Symbol kind="plus" /><text style={{ ...text, fontWeight: 600 }}>{form === 'worktree' ? 'Create a new worktree' : 'Create and checkout new branch'}</text></div>
-    <input testId="git-new-name" autoFocus value={name} placeholder="New branch name" disabled={disabled} onChange={(e) => setName(e.value ?? '')}
-      onKeyDown={key} onSubmit={() => { if (!disabled && name.trim() && form) change(form, name.trim()) }}
+    <input testId="git-new-name" autoFocus value={name} placeholder="New branch name" onChange={(e) => { if (!disabled) setName(e.value ?? '') }}
+      onKeyDown={(event) => { if (disabled) { event.preventDefault(); event.stopPropagation() } else key(event) }} onSubmit={() => { if (!disabled && name.trim() && form) change(form, name.trim()) }}
       style={{ height: 35, padding: 9, borderWidth: 1, borderColor: '#3a3a3a', borderRadius: 9, backgroundColor: '#191919', color: '#dddddd', fontSize: 12 }} />
     <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>{busy ? 'Creating workspace…' : form === 'worktree' ? 'Starts from the current commit in a separate folder.' : 'Press Return to create · Esc to cancel'}</text>
   </>
