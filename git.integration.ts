@@ -23,6 +23,7 @@ try {
     const app = window.app
     await waitUntil(async () => (await app.getByTestId('git-branch').textContent()) === 'main', 'the actual Git branch')
     const client = engineClient((await waitUntil(async () => readRegistry(localPaths(home).registry), 'the daemon registry')))
+    mkdirSync('screenshots', { recursive: true })
     const original = (await client.listSessions()).sessions.find((s) => s.cwd === cwd)!
     const settle = async () => { await app.clock.pause(); await app.clock.fastForward(320); await app.clock.resume() }
     const open = async (kind: 'branch' | 'workspace') => {
@@ -30,7 +31,8 @@ try {
       await waitUntil(async () => !(await treeText(app)).includes('Reading Git workspace'), 'the menu Git refresh to settle')
     }
     stage = 'branch search and checkout'
-    await open('branch'); await app.getByTestId('git-branch-search').waitFor(); await app.getByTestId('git-branch-search').fill('available')
+    await open('branch'); await app.screenshot({ path: path.resolve('screenshots/windowed-git-branches.png') })
+    await app.getByTestId('git-branch-search').waitFor(); await app.getByTestId('git-branch-search').fill('available')
     await app.getByTestId('git-branch-search').press('enter')
     await waitUntil(async () => (await app.getByTestId('git-branch').textContent()) === 'available', 'checkout from the real menu')
     check(git('branch', '--show-current') === 'available', 'The menu did not change Git HEAD')
@@ -38,7 +40,8 @@ try {
     await settle()
     stage = 'inline branch creation'
     await open('branch'); await app.getByTestId('git-create-branch').waitFor(); await app.getByTestId('git-create-branch').click()
-    await app.getByTestId('git-new-name').waitFor(); await app.getByTestId('git-new-name').fill('created-in-window'); await app.getByTestId('git-new-name').press('enter')
+    await app.getByTestId('git-new-name').waitFor(); await app.screenshot({ path: path.resolve('screenshots/windowed-git-create.png') })
+    await app.getByTestId('git-new-name').fill('created-in-window'); await app.getByTestId('git-new-name').press('enter')
     await waitUntil(async () => (await app.getByTestId('git-branch').textContent()) === 'created-in-window', 'inline branch creation')
     check(git('branch', '--show-current') === 'created-in-window', 'Inline creation did not switch branches')
     await settle()
