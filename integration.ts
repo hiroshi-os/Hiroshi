@@ -455,11 +455,14 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     check((await app.getByTestId('cli-response-mode').textContent()).includes('response only'), 'CLI coding limits were not visible')
     check((await app.getByTestId('model-picker').textContent()).includes('response only'), 'CLI model capability was not labelled')
     note('the main composer drove a contained CLI process and drew its response-only answer')
+    await waitUntil(async () => (await app.getByTestId('cli-conversation-status').textContent()).includes('native conversation ready'), 'the CLI conversation to settle before a model transition')
 
     // Real tool requests travel through the daemon and the cockpit's gate.
     await app.getByTestId('model-picker').click()
     await app.getByTestId('model-fixture/tools').waitFor()
     await app.getByTestId('model-fixture/tools').click()
+    await app.getByTestId('cli-fresh').click()
+    await waitUntil(async () => (await app.getByTestId('cli-conversation').all()).length === 0, 'the explicit transition out of native CLI history')
     const record = readRegistry(localPaths(home).registry)!
     const client = engineClient(record)
     const pending = async () => {

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { startDaemon, tempHome, until } from './harness'
@@ -18,7 +18,7 @@ function fixture(adapter: AgentID = 'cursor') {
   const policy = join(home, '.gemini', 'antigravity-cli'); mkdirSync(policy, { recursive: true })
   writeFileSync(join(policy, 'settings.json'), JSON.stringify({ toolPermission: 'strict', permissions: { deny: ['write_file(*)', 'command(*)', 'unsandboxed(*)', 'mcp(*)', 'execute_url(*)'] } }))
   const env = { HOME: home, USERPROFILE: home, HIROSHI_NATIVE_ROOT: native, HIROSHI_CONTINUATION_ADAPTER: adapter }
-  return { home, workspace, native, entry, env,
+  return { home, workspace: realpathSync(workspace), native, entry, env,
     calls: () => readFileSync(join(native, 'calls.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line)),
     control: (value: object) => writeFileSync(join(native, 'control.json'), JSON.stringify(value)),
     start: () => startDaemon({ home, workspace, env }) }
