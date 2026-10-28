@@ -3,7 +3,7 @@ import { Button, Select, SelectContent, SelectTrigger, useGpuix, type PublicInst
 import type { EngineHandle } from '../engine/use-engine'
 import type { WorkspaceGit } from '../../engine/src/protocol'
 
-const row = { display: 'flex' as const, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, padding: 8, borderRadius: 6, flexShrink: 0, hover: { backgroundColor: '#303030' } }
+const row = { display: 'flex' as const, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, padding: 8, borderRadius: 6, flexShrink: 0, pointerEvents: 'auto' as const, cursor: 'pointer' as const, hover: { backgroundColor: '#303030' } }
 const text = { fontSize: 12, color: '#dddddd', whiteSpace: 'nowrap' as const }
 const paths = { branch: 'M5 2v8a3 3 0 0 0 6 0V7M11 4v1', laptop: 'M3 3h10v8H3zM1 13h14', plus: 'M8 3v10M3 8h10', check: 'm3 8 3 3 7-7' }
 function Symbol({ kind }: { kind: keyof typeof paths }) { return <svg style={{ width: 13, height: 13, flexShrink: 0 }} source={`<svg viewBox="0 0 16 16" fill="none" stroke="#999999" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[kind]}"/></svg>`} /> }

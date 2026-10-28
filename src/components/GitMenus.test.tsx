@@ -15,7 +15,9 @@ async function setup(change: EngineHandle['changeWorkspaceGit'] = async () => {}
     changeWorkspaceGit: change, openProject: async (cwd: string) => { opened.push(cwd) } } as unknown as EngineHandle
   const { render, renderer } = createTestRoot({ width: 850, height: 650 })
   render(<div style={{ width: 850, height: 650, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 30 }}><GitMenus engine={engine} cwd="/repo" /></div>)
-  return connectTest(renderer)
+  const app = await connectTest(renderer)
+  await expect.poll(() => app.getByTestId('git-branch').textContent()).toBe('main')
+  return app
 }
 ;(hasNativeTestRenderer ? describe : describe.skip)('Git menus', () => {
   it('searches real branches, submits the available branch with its observed revision, and cancels creation', async () => {
