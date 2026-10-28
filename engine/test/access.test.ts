@@ -100,6 +100,7 @@ test('Auto uses an independent bounded model review, records its usage, then exe
     expect(existsSync(join(f.cwd, 'auto.txt'))).toBe(true)
     expect(f.fixture.reviews).toHaveLength(1)
     expect(f.fixture.reviews[0].tools ?? []).toHaveLength(0)
+    expect(f.fixture.reviews[0].max_output_tokens).toBe(1024)
     const usage = await f.daemon.client.usageReport({ id: f.id, from: Date.now() - 86400000, to: Date.now() + 1000, includeHistory: false })
     expect(usage.totals.attempts).toBe(3)
     expect(usage.totals.input).toBe(43)

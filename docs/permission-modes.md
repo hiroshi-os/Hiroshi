@@ -27,7 +27,8 @@ internals, instruction files, credential/key files and escaping symlinks require
 operator approval. Full access retains the tool's own workspace checks and all
 process, memory, cancellation and deadline limits.
 
-Auto reviews use a separate request with no tools and at most 128 output tokens,
+Auto reviews use a separate request with no tools and at most 1,024 output tokens
+(or the selected model's lower output budget),
 a 2 KiB response limit, and a 20-second deadline inside the shared governor.
 They can incur model charges; reported review usage is included in Usage. The
 request and file contents are untrusted data. Malformed output, tool requests,
