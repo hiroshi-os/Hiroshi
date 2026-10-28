@@ -9,7 +9,7 @@ import type { ExecutionBudget } from '../execution'
 import { canonical, digest, type RegisteredTool } from './registry'
 import { permissionPolicy } from './policy'
 
-const sensitive = (parts: string[]) => parts.some((part) => part === '..' || part.startsWith('.') || /^(agents\.md|claude\.md|credentials.*|secrets?.*|.*\.(pem|key|p12|pfx))$/.test(part))
+const sensitive = (parts: string[]) => parts.some((part) => part === '..' || part.startsWith('.') || /^(agents\.md|claude\.md|credentials.*|secrets?.*|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|authorized_keys|known_hosts|.*\.(pem|key|p12|pfx))$/.test(part))
 
 export class AccessControls {
   readonly #reviews = new Map<string, { sessionID: string; controller: AbortController }>()

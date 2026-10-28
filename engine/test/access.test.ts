@@ -164,9 +164,14 @@ test('Auto never delegates commands or instruction-file changes to the AI review
     const question = await pending(f)
     expect(f.fixture.reviews).toHaveLength(0)
     await f.daemon.client.answerPermission({ id: question.id, decision: 'deny', remember: false }); await done(f)
-    await f.daemon.client.prompt({ id: f.id, text: write('AGENTS.md') }); await pending(f)
-    expect(f.fixture.reviews).toHaveLength(0)
-    expect(existsSync(join(f.cwd, 'AGENTS.md'))).toBe(false)
+    let completed = 1
+    for (const file of ['AGENTS.md', 'id_ed25519']) {
+      await f.daemon.client.prompt({ id: f.id, text: write(file) })
+      const edit = await pending(f)
+      expect(f.fixture.reviews).toHaveLength(0)
+      expect(existsSync(join(f.cwd, file))).toBe(false)
+      await f.daemon.client.answerPermission({ id: edit.id, decision: 'deny', remember: false }); await done(f, ++completed)
+    }
   } finally { await f.daemon.stop(); f.fixture.server.stop(true) }
 }, 20000)
 
