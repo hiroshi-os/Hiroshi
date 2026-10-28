@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Dialog, DialogPortal, Select, SelectContent, SelectTrigger, useGpuix, useWindowSize, type PublicInstance } from '@gpuix/react'
 import type { EngineHandle } from '../engine/use-engine'
+import { GitMenus } from './GitMenus'
+
+function ProjectIcon({ clear = false }: { clear?: boolean }) {
+  return <svg style={{ width: 13, height: 13, flexShrink: 0 }} source={`<svg viewBox="0 0 16 16" fill="none" stroke="#999999" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="${clear ? 'm4 4 8 8M4 12l8-8' : 'M2 5V3h5l2 2h5v8H2zM2 7h12'}"/></svg>`} />
+}
 
 export function ProjectMenu({ engine, cwd, onNewProject, triggerId = 'open-project', greeting = false }: {
   engine: Pick<EngineHandle, 'snapshot' | 'openProject' | 'refreshProjects' | 'newSession' | 'selectSession'>
@@ -29,7 +34,8 @@ export function ProjectMenu({ engine, cwd, onNewProject, triggerId = 'open-proje
     setOpen(next)
     if (next) { setQuery(''); setActiveID(null); setError(''); void engine.refreshProjects().catch(() => {}) }
   }}>
-    <SelectTrigger ref={trigger} testId={triggerId} style={{ padding: greeting ? 0 : 7, borderRadius: 5, cursor: 'pointer', hover: { backgroundColor: '#292929' } }}>
+    <SelectTrigger ref={trigger} testId={triggerId} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, padding: greeting ? 0 : 7, borderRadius: 5, cursor: 'pointer', hover: { backgroundColor: '#292929' } }}>
+      {!greeting && <ProjectIcon />}
       <text style={{ fontSize: greeting ? 21 : 12, fontWeight: greeting ? 500 : 400, color: '#dddddd', whiteSpace: 'nowrap', ...(greeting ? { borderBottomWidth: 1, borderColor: '#666666' } : {}) }}>{name}</text>
     </SelectTrigger>
     <SelectContent ref={menu} testId={`${triggerId}-menu`} side={greeting ? 'bottom' : 'top'} sideOffset={8} style={{ width: 300, padding: 8, borderRadius: 13, backgroundColor: '#222222', borderWidth: 1, borderColor: '#3a3a3a', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -56,8 +62,8 @@ export function ProjectMenu({ engine, cwd, onNewProject, triggerId = 'open-proje
         {!engine.snapshot.projects.some((item) => `${item.name} ${item.cwd}`.toLowerCase().includes(query.trim().toLowerCase())) && <text style={{ fontSize: 12, color: '#999999', padding: 9 }}>No matching projects</text>}
       </div>
       <div style={{ height: 1, backgroundColor: '#363636', marginTop: 3, marginBottom: 3 }} />
-      <Button testId={`${triggerId}-new`} disabled={busy} onClick={() => { setOpen(false); onNewProject() }} style={row}><text style={{ fontSize: 13, color: '#dddddd' }}>New project…</text></Button>
-      <Button testId={`${triggerId}-none`} disabled={busy} onClick={() => void run(() => engine.newSession(true))} style={row}><text style={{ fontSize: 13, color: '#dddddd' }}>Don't work in a project</text></Button>
+      <Button testId={`${triggerId}-new`} disabled={busy} onClick={() => { setOpen(false); onNewProject() }} style={{ ...row, justifyContent: 'flex-start', gap: 8 }}><ProjectIcon /><text style={{ fontSize: 13, color: '#dddddd' }}>New project…</text></Button>
+      <Button testId={`${triggerId}-none`} disabled={busy} onClick={() => void run(() => engine.newSession(true))} style={{ ...row, justifyContent: 'flex-start', gap: 8 }}><ProjectIcon clear /><text style={{ fontSize: 13, color: '#dddddd' }}>Don't work in a project</text></Button>
       {error && <text testId={`${triggerId}-error`} style={{ fontSize: 12, color: '#F87171', padding: 6 }}>{error}</text>}
     </SelectContent>
   </Select>
@@ -83,6 +89,7 @@ export function ProjectSwitcher({ engine, cwd, open, onOpen, onClose }: { engine
   return <>
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: 8, gap: 10, flexShrink: 0 }}>
       <ProjectMenu engine={engine} cwd={cwd} onNewProject={() => { setError(''); onOpen() }} />
+      <GitMenus engine={engine} cwd={cwd} />
       <text testId="engine-workspace" style={{ fontSize: 11, color: '#929292', flexGrow: 1, minWidth: 0 }}>{cwd}</text>
     </div>
     {current?.detail && <text testId="project-unavailable" style={{ fontSize: 12, color: '#F3BC84', padding: 8 }}>{current.detail}</text>}

@@ -40,6 +40,8 @@ const everyOperation: { [Name in OperationName]: Name } = {
   workspaceList: 'workspaceList',
   workspaceFile: 'workspaceFile',
   workspaceReview: 'workspaceReview',
+  workspaceGit: 'workspaceGit',
+  changeWorkspaceGit: 'changeWorkspaceGit',
   workspaceCommit: 'workspaceCommit',
   browse: 'browse',
   rewind: 'rewind',

@@ -19,7 +19,16 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.22.0] - Unreleased
+## [0.23.0] - Unreleased
+
+### Added
+
+- Connected Local/worktree and searchable branch menus with inline branch
+  creation, real isolated Git worktrees and fresh task history after checkout.
+- Dirty-file, stale-ref, occupied-branch and active-work protection; prior
+  native CLI conversations require explicit recovery after changing a checkout.
+
+## [0.22.0]
 
 ### Added
 
