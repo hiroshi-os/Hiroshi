@@ -17,6 +17,7 @@ import { mkdirSync } from 'node:fs'
 import { replayTranscript } from './cockpit'
 
 import type {
+  AccessSettings, AccessReview,
   CliConversation,
   Execution,
   Compaction,
@@ -265,6 +266,10 @@ const MIGRATIONS: Migration[] = [
     create unique index cli_current on cli_conversation(session_id) where active = 1;
     create unique index cli_vendor_owner on cli_conversation(adapter, vendor_id) where vendor_id is not null;
     create unique index cli_reset on cli_conversation(session_id, reset_key) where reset_key is not null;
+  ` },
+  { id: 12, name: 'task-access', sql: `
+    create table task_access (session_id text primary key references session(id), mode text not null, revision integer not null);
+    create table access_review (call_id text primary key references tool_call(id), session_id text not null references session(id), data text not null);
   ` },
 ]
 
@@ -633,6 +638,22 @@ export class Store {
       .map((row) => JSON.parse(row.data) as StepPart)
   }
 
+  access(sessionID: string): AccessSettings {
+    const row = this.#db.query('select mode, revision from task_access where session_id = ?').get(sessionID) as AccessSettings | null
+    return row ?? { mode: 'ask', revision: 0 }
+  }
+  putAccess(sessionID: string, access: AccessSettings) {
+    this.#db.run('insert into task_access values (?, ?, ?) on conflict(session_id) do update set mode = excluded.mode, revision = excluded.revision', [sessionID, access.mode, access.revision])
+  }
+  accessReviews(sessionID: string): AccessReview[] {
+    return (this.#db.query('select data from access_review where session_id = ?').all(sessionID) as Row[]).map((row) => JSON.parse(row.data))
+  }
+  putAccessReview(review: AccessReview) {
+    this.#db.run('insert into access_review values (?, ?, ?) on conflict(call_id) do update set data = excluded.data', [review.toolCallID, review.sessionID, JSON.stringify(review)])
+  }
+  accessUsageRows(from: number, to: number): { data: string; cwd: string; projectless: number }[] {
+    return this.#db.query(`select r.data, s.cwd, s.projectless from access_review r join session s on s.id = r.session_id where json_extract(r.data, '$.at') >= ? and json_extract(r.data, '$.at') < ? limit 100001`).all(from, to) as { data: string; cwd: string; projectless: number }[]
+  }
   cliConversation(sessionID: string): CliConversation | null {
     const row = this.#db.query('select data from cli_conversation where session_id = ? and active = 1').get(sessionID) as Row | null
     return row ? JSON.parse(row.data) : null
@@ -665,7 +686,9 @@ export class Store {
     const rows = this.#db.query(`select distinct json_extract(data, '$.vendorSessionID') id from step_part
       where json_extract(data, '$.kind') = 'cli' and json_extract(data, '$.phase') = 'session' limit 100001`).all() as { id: string | null }[]
     if (rows.length > 100000) throw new Error('The agent-session history is too large to import safely.')
-    return new Set(rows.flatMap((row) => typeof row.id === 'string' ? [row.id] : []))
+    const reviews = this.#db.query("select json_extract(data, '$.vendorSessionID') id from access_review where json_extract(data, '$.vendorSessionID') is not null limit 100001").all() as { id: string }[]
+    if (reviews.length > 100000) throw new Error('The reviewer-session history is too large to import safely.')
+    return new Set([...rows.flatMap((row) => typeof row.id === 'string' ? [row.id] : []), ...reviews.map((row) => row.id)])
   }
 
   insertCompaction(value: Compaction): void {
@@ -1085,6 +1108,7 @@ export class Store {
       const session = this.session(sessionID)
       if (!session) return null
       return {
+        access: this.access(sessionID), accessReviews: this.accessReviews(sessionID),
         cliConversation: this.cliConversation(sessionID),
         executions: this.executions(sessionID),
         session,

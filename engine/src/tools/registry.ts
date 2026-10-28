@@ -11,11 +11,13 @@ export interface ToolContext {
 }
 
 export interface Tool extends ToolDefinition {
+  accessKind?: 'read' | 'edit' | 'command'
   version: string
   run: (input: any, context: ToolContext) => Promise<unknown>
 }
 
 export interface RegisteredTool {
+  accessKind?: Tool['accessKind']
   definition: ToolDefinition
   revision: string
   input: ValidateFunction
@@ -59,9 +61,9 @@ export class ToolRegistry {
     const output = this.#ajv.compile(definition.outputSchema)
     freeze(definition)
     const generation = (this.#generations.get(tool.name) ?? 0) + 1
-    const revision = digest(canonical(definition) + tool.version + tool.run.toString() + generation)
+    const revision = digest(canonical(definition) + tool.version + tool.run.toString() + generation + (tool.accessKind ?? 'unknown'))
     this.#generations.set(tool.name, generation)
-    this.#entries.set(tool.name, Object.freeze({ definition, revision, input, output, run: tool.run }))
+    this.#entries.set(tool.name, Object.freeze({ definition, revision, input, output, run: tool.run, accessKind: tool.accessKind }))
   }
 
   get(name: string): RegisteredTool | undefined { return this.#entries.get(name) }

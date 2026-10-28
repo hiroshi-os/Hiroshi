@@ -40,6 +40,8 @@ response-only answers using their own sign-in, with task-owned native history
 and deliberate recovery after an interruption. Coding approvals remain separate
 work. See [provider configuration](docs/providers.mdx) and
 [tools and permissions](docs/tools.mdx), and [checkpoints](docs/checkpoints.mdx).
+The composer provides task-scoped [permission modes](docs/permission-modes.md),
+including bounded AI review for routine Hiroshi-owned file actions.
 
 Follow progress in [Usable agents and bounded orchestration](https://github.com/hiroshi-os/Hiroshi/milestone/2).
 See [the engine documentation](docs/engine.mdx) for its architecture and guarantees.

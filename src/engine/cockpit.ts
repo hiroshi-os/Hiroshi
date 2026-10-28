@@ -41,5 +41,12 @@ export function usage(snapshot: Snapshot) {
     row.output += attempt.output ?? 0
     if (attempt.input !== undefined && attempt.output !== undefined) row.reported++
   }
+  for (const review of snapshot.accessReviews) {
+    const row = models.get(review.model) ?? { model: review.model, calls: 0, input: 0, output: 0, reported: 0 }
+    row.calls++
+    row.input += review.usage?.inputTokens ?? 0; row.output += review.usage?.outputTokens ?? 0
+    if (review.usage?.inputTokens !== undefined && review.usage?.outputTokens !== undefined) row.reported++
+    models.set(review.model, row)
+  }
   return [...models.values()]
 }

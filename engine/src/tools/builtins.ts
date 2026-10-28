@@ -30,14 +30,14 @@ const fileInput = { type: 'object', properties: { path: { type: 'string', minLen
 const fileOutput = { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'], additionalProperties: false }
 
 export function registerBuiltins(registry: ToolRegistry, home?: string, limits?: ExecutionLimits): void {
-  registry.register({ name: 'list_files', version: '1', description: 'List a workspace directory using the same tree as the Files surface.',
+  registry.register({ name: 'list_files', accessKind: 'read', version: '1', description: 'List a workspace directory using the same tree as the Files surface.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', maxLength: 4096 } }, additionalProperties: false },
     outputSchema: { type: 'object', properties: { path: { type: 'string' }, truncated: { type: 'boolean' }, entries: { type: 'array', items: {
       type: 'object', properties: { path: { type: 'string' }, name: { type: 'string' }, kind: { type: 'string', enum: ['file', 'directory', 'symlink'] }, bytes: { type: 'integer', minimum: 0 } },
       required: ['path', 'name', 'kind', 'bytes'], additionalProperties: false } } }, required: ['path', 'truncated', 'entries'], additionalProperties: false },
     async run(input, context) { context.signal.throwIfAborted(); return new WorkspaceFiles(context.cwd, home).list(input.path ?? '') },
   })
-  registry.register({ name: 'read_file', version: '1', description: 'Read a UTF-8 file inside the workspace.',
+  registry.register({ name: 'read_file', accessKind: 'read', version: '1', description: 'Read a UTF-8 file inside the workspace.',
     inputSchema: fileInput, outputSchema: fileOutput,
     async run(input, context) {
       context.signal.throwIfAborted()
@@ -47,7 +47,7 @@ export function registerBuiltins(registry: ToolRegistry, home?: string, limits?:
       return { path: input.path, content: await readFile(file, { encoding: 'utf8', signal: context.signal }) }
     },
   })
-  registry.register({ name: 'write_file', version: '1', description: 'Create or replace a UTF-8 file inside the workspace. Its parent directory must exist.',
+  registry.register({ name: 'write_file', accessKind: 'edit', version: '1', description: 'Create or replace a UTF-8 file inside the workspace. Its parent directory must exist.',
     inputSchema: { ...fileInput, properties: { ...fileInput.properties, content: { type: 'string', maxLength: 16 * 1024 * 1024 } }, required: ['path', 'content'] },
     outputSchema: { type: 'object', properties: { path: { type: 'string' }, bytes: { type: 'integer', minimum: 0 } }, required: ['path', 'bytes'], additionalProperties: false },
     async run(input, context) {
@@ -62,7 +62,7 @@ export function registerBuiltins(registry: ToolRegistry, home?: string, limits?:
       } finally { await unlink(temporary).catch(() => {}) }
     },
   })
-  registry.register({ name: 'shell', version: '1', description: 'Run a shell command in the workspace with your account permissions. This can modify files and access the network.',
+  registry.register({ name: 'shell', accessKind: 'command', version: '1', description: 'Run a shell command in the workspace with your account permissions. This can modify files and access the network.',
     inputSchema: { type: 'object', properties: { command: { type: 'string', minLength: 1, maxLength: 16384 }, timeoutMs: { type: 'integer', minimum: 1, maximum: 120000 } }, required: ['command'], additionalProperties: false },
     outputSchema: { type: 'object', properties: { stdout: { type: 'string' }, stderr: { type: 'string' }, exitCode: { type: 'integer' } }, required: ['stdout', 'stderr', 'exitCode'], additionalProperties: false },
     async run(input, context) {

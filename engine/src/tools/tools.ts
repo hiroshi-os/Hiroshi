@@ -9,6 +9,7 @@ import { canonical, digest, type ToolRegistry } from './registry'
 import { permissionPolicy } from './policy'
 import { ExecutionBudget } from '../execution'
 import { assertWorkspace } from '../projects'
+import type { AccessControls } from './access'
 
 const PREVIEW_BYTES = 16 * 1024
 
@@ -19,7 +20,7 @@ export class Tools {
   blocked: ((sessionID: string) => boolean) | null = null
   onIdle: ((sessionID: string) => void) | null = null
 
-  constructor(readonly store: Store, readonly registry: ToolRegistry, readonly home: string, readonly budget?: ExecutionBudget) {}
+  constructor(readonly store: Store, readonly registry: ToolRegistry, readonly home: string, readonly budget?: ExecutionBudget, readonly access?: AccessControls) {}
 
   busy(sessionID: string): boolean {
     return [...this.#active.keys()].some((id) => this.store.toolCall(id)?.sessionID === sessionID) || this.store.toolCalls(sessionID).some((call) => call.callID !== undefined && !call.resultMessageID)
@@ -149,8 +150,19 @@ export class Tools {
         this.#finish(call, 'failed', 'tool input or workspace is invalid; it was not executed')
         continue
       }
-      let policy: ReturnType<typeof permissionPolicy>
-      try { policy = permissionPolicy(this.home, call.cwd!, call.tool) } catch {
+      if (this.store.savedPermission(this.#scope(call))?.decision === 'deny') {
+        this.#finish({ ...call, decisionSource: 'saved' }, 'denied', 'this exact request was previously declined')
+        continue
+      }
+      let policy: ReturnType<typeof permissionPolicy> & { revision?: number; decisionSource?: string }
+      try {
+        const reviewing = new AbortController()
+        this.#active.set(call.id, reviewing)
+        try { policy = this.access ? await this.access.decide(call, entry, input, reviewing.signal) : permissionPolicy(this.home, call.cwd!, call.tool) }
+        finally { this.#active.delete(call.id) }
+        if (this.#stopping) return
+        if (this.store.toolCall(call.id)?.resultMessageID) continue
+      } catch {
         this.#finish({ ...call, decisionSource: 'policy' }, 'denied', 'invalid tool policy; execution is blocked')
         continue
       }
@@ -168,7 +180,7 @@ export class Tools {
       const declined = this.store.toolCalls(sessionID).some((other) => other.id !== call.id && other.status === 'denied' &&
         this.store.step(other.stepID ?? '')?.messageID === turn && this.#scope(other) === this.#scope(call))
       if (declined) { this.#finish({ ...call, decisionSource: 'turn' }, 'denied', 'this exact request was already denied for this turn'); continue }
-      let source = 'policy'
+      let source = policy.decisionSource ?? 'policy'
       if (policy.action === 'ask') {
         const permission = this.#permission(call.id)
         const saved = !policy.alwaysAsk ? this.store.savedPermission(this.#scope(call)) : null
@@ -199,10 +211,11 @@ export class Tools {
           assertWorkspace(this.store, sessionID)
           if (this.store.toolCall(call.id)?.resultMessageID) throw new Error('this tool call already ended')
           // Waiting for capacity must not preserve a revoked policy or stale tool.
-          const currentPolicy = permissionPolicy(this.home, call.cwd!, call.tool)
+          const currentPolicy = this.access ? this.access.current(call, entry, input) : permissionPolicy(this.home, call.cwd!, call.tool)
           if (this.registry.get(call.tool)?.revision !== call.revision || currentPolicy.action === 'deny' ||
+            (this.access && this.store.access(sessionID).revision !== policy.revision) ||
             realpathSync(call.cwd!) !== call.cwd || (currentPolicy.action === 'ask' &&
-              (source === 'policy' || (currentPolicy.alwaysAsk && source === 'saved')))) throw new Error('tool definition or permission policy changed while queued; it was not executed')
+              (source === 'policy' || source.startsWith('mode:') || source === 'reviewer' || (currentPolicy.alwaysAsk && source === 'saved')))) throw new Error('tool definition or permission policy changed while queued; it was not executed')
           this.#update(running) // Claim commits after admission, before the effect.
           return entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal })
         }

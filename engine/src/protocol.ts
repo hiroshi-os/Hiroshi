@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 14
+export const PROTOCOL_VERSION = 15
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.21.0'
+export const ENGINE_VERSION = '0.22.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -278,6 +278,13 @@ export interface ToolDefinition {
   outputSchema: Record<string, unknown>
 }
 
+export type AccessMode = 'ask' | 'edits' | 'auto' | 'full'
+export interface AccessSettings { mode: AccessMode; revision: number }
+export interface AccessReview {
+  toolCallID: string; sessionID: string; revision: number; inputHash: string; model: string
+  usage?: UsageCounters; vendorSessionID?: string
+  status: 'running' | 'allow' | 'ask'; reason: string; at: number
+}
 export type PermissionAction = 'allow' | 'ask' | 'deny'
 
 export interface Permission {
@@ -487,6 +494,8 @@ export interface ToolCall {
  * here; nothing else in the protocol has to learn about it.
  */
 export interface EventPayloads {
+  'access.updated': { access: AccessSettings }
+  'access.reviewed': { review: AccessReview }
   'cli.updated': { conversation: CliConversation | null }
   'providers.updated': { providers: ProviderState }
   'execution.updated': { execution: Execution }
@@ -540,6 +549,8 @@ export type EngineEvent = {
 
 /** A session and everything the engine has committed about it. */
 export interface SessionDetail {
+  access?: AccessSettings
+  accessReviews?: AccessReview[]
   cliConversation?: CliConversation | null
   executions?: Execution[]
   /** Ordered from the durable event log, including retries and boundaries. */
@@ -641,6 +652,7 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  updateAccess: { request: SessionRef & AccessSettings; response: AccessSettings }
   usageReport: { request: SessionRef & UsageQuery; response: UsageReport }
   updateUsagePricing: { request: UsagePricingUpdate; response: { revision: number } }
   networkSettings: { request: NoInput; response: NetworkSettings }
@@ -698,6 +710,7 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'updateAccess', method: 'POST', path: '/v1/sessions/:id/access' },
   { name: 'usageReport', method: 'POST', path: '/v1/sessions/:id/usage' },
   { name: 'updateUsagePricing', method: 'POST', path: '/v1/usage/pricing' },
   { name: 'networkSettings', method: 'GET', path: '/v1/network' },

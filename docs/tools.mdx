@@ -10,11 +10,24 @@ messages retain both provider call ids and engine tool ids.
 
 ## Answer in the cockpit
 
-Tools ask by default. The cockpit shows the name, description, workspace and
+The composer offers **Supervised**, **Auto-accept edits**, **Auto** and **Full access**.
+The choice is saved per task and synchronized between windows. Supervised is the
+default. Auto-accept edits permits bounded ordinary edits; Auto obtains an
+independent model review of routine file actions; Full access removes the
+default question for tools. Explicit user/repository policies still apply in
+every mode. Auto reviews have their own usage records and fall back to a human
+question on failure. Commands and protected paths always ask in Auto.
+
+The cockpit shows the name, description, workspace and
 complete input, with **Allow**, **Deny** and **Remember this exact request**.
 A pending question pauses the turn and survives closing the window or restarting
 the daemon. An answer travels through the typed protocol and resumes the turn.
 The interrupt control cancels a pending question or a running tool turn.
+Changing a mode does not answer an outstanding question. Permission changes
+cancel an active AI review and are rechecked before queued work executes.
+An interrupted review is not replayed after restart. Installed CLI adapters
+remain response-only; these modes govern Hiroshi-owned tools rather than
+changing an installed CLI's global permissions.
 
 Deny records a tool result and lets the model continue within its permissions.
 Repeating the same denied request in that turn cannot create another question.

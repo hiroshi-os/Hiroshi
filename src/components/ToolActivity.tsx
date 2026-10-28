@@ -1,15 +1,16 @@
 import React, { useState } from 'react'
 import { Button } from '@gpuix/react'
-import type { Permission, ToolCall } from '../../engine/src/protocol'
+import type { AccessReview, Permission, ToolCall } from '../../engine/src/protocol'
 
 interface Props {
+  reviews?: AccessReview[]
   permissions: Permission[]
   calls: ToolCall[]
   onAnswer: (id: string, decision: 'allow' | 'deny', remember: boolean) => Promise<void>
   onOutput: (id: string) => Promise<{ path: string; text: string }>
 }
 
-function PermissionCard({ permission, call, onAnswer }: { permission: Permission; call?: ToolCall; onAnswer: Props['onAnswer'] }) {
+function PermissionCard({ permission, call, review, onAnswer }: { permission: Permission; call?: ToolCall; review?: AccessReview; onAnswer: Props['onAnswer'] }) {
   const [remember, setRemember] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -25,6 +26,7 @@ function PermissionCard({ permission, call, onAnswer }: { permission: Permission
       padding: 12, gap: 8, borderWidth: 1, borderColor: '#ffffff18', borderRadius: 9, backgroundColor: '#242424' }}>
       <text style={{ fontSize: 13, fontWeight: 600, color: '#eeeeee', whiteSpace: 'nowrap' }}>{`Allow ${permission.tool}?`}</text>
       {call?.definition && <text style={{ fontSize: 12, color: '#a3a3a3' }}>{call.definition.description}</text>}
+      {review && <text testId={`review-reason-${permission.toolCallID}`} style={{ fontSize: 12, color: '#bba17e' }}>{review.reason}</text>}
       <text style={{ fontSize: 11, color: '#a3a3a3' }}>{`Workspace: ${permission.cwd}`}</text>
       <div style={{ maxHeight: 100, overflow: 'scroll', flexShrink: 0 }}>
         <text style={{ fontSize: 12, color: '#dddddd' }}>{permission.input}</text>
@@ -49,17 +51,21 @@ function PermissionCard({ permission, call, onAnswer }: { permission: Permission
   )
 }
 
-export function ToolActivity({ permissions, calls, onAnswer, onOutput }: Props) {
+export function ToolActivity({ permissions, calls, reviews = [], onAnswer, onOutput }: Props) {
   const [opened, setOpened] = useState<{ path: string; text: string } | null>(null)
   const [error, setError] = useState('')
   const pending = permissions.filter((p) => p.state === 'pending')
   const outputs = calls.filter((call) => call.truncated && call.outputPath)
-  if (!pending.length && !outputs.length && !opened) return null
+  const callsByID = new Map(calls.map((call) => [call.id, call]))
+  const reviewsByCall = new Map(reviews.map((review) => [review.toolCallID, review]))
+  const reviewing = reviews.filter((review) => review.status === 'running' && callsByID.has(review.toolCallID) && !callsByID.get(review.toolCallID)!.resultMessageID)
+  if (!pending.length && !outputs.length && !opened && !reviewing.length) return null
   return (
     <div testId="tool-activity" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, padding: 12,
       maxHeight: 340, overflow: 'scroll', gap: 8 }}>
-      {pending.map((permission) => <PermissionCard key={permission.id} permission={permission}
-        call={calls.find((call) => call.id === permission.toolCallID)} onAnswer={onAnswer} />)}
+      {reviewing.map((review) => <text key={review.toolCallID} testId={`review-pending-${review.toolCallID}`} style={{ fontSize: 12, color: '#bba17e' }}>{'AI reviewer is checking a routine file action…'}</text>)}
+      {pending.map((permission) => <PermissionCard key={permission.id} permission={permission} review={reviewsByCall.get(permission.toolCallID)}
+        call={callsByID.get(permission.toolCallID)} onAnswer={onAnswer} />)}
       {outputs.map((call) => (
         <Button key={call.id} testId={`tool-output-${call.id}`} onClick={() => {
           setError('')

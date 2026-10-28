@@ -9,6 +9,7 @@
  */
 
 import type {
+  AccessSettings, AccessReview,
   CliConversation,
   Execution,
   TranscriptEntry,
@@ -48,6 +49,8 @@ export interface OutputState {
 }
 
 export interface Snapshot {
+  access: AccessSettings
+  accessReviews: AccessReview[]
   cliConversation: CliConversation | null
   executions: Execution[]
   transcript: TranscriptEntry[]
@@ -85,6 +88,7 @@ const MEMORY_OUTPUT_LIMIT = 256 * 1024
 
 export function initialSnapshot(): Snapshot {
   return {
+    access: { mode: 'ask', revision: 0 }, accessReviews: [],
     cliConversation: null,
     executions: [],
     transcript: [],
@@ -159,6 +163,7 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   return {
     ...snapshot,
     sessionID: detail.session.id,
+    access: detail.access ?? { mode: 'ask', revision: 0 }, accessReviews: detail.accessReviews ?? [],
     cliConversation: detail.cliConversation ?? null,
     executions: detail.executions ?? [],
     transcript: detail.transcript ?? [],
@@ -207,6 +212,8 @@ export function apply(snapshot: Snapshot, event: EngineEvent): Snapshot {
 
 function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
   switch (event.type) {
+    case 'access.updated': return { ...snapshot, access: event.data.access }
+    case 'access.reviewed': return { ...snapshot, accessReviews: [...snapshot.accessReviews.filter((review) => review.toolCallID !== event.data.review.toolCallID), event.data.review] }
     case 'cli.updated': return { ...snapshot, cliConversation: event.data.conversation }
     case 'providers.updated':
       if (snapshot.providers && event.data.providers.revision < snapshot.providers.revision) return snapshot
