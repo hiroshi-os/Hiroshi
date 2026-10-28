@@ -36,8 +36,10 @@ import type { ModelToolRequest, Step, StepError } from './protocol'
 import type { Store } from './store'
 import type { Tools } from './tools/tools'
 import { ExecutionBudget, ExecutionError } from './execution'
+import type { CliConversations } from './cli-conversations'
 
 export interface StepsOptions {
+  cliConversations?: CliConversations
   budget?: ExecutionBudget
   provider: Provider
   context?: ContextOptions
@@ -62,6 +64,7 @@ interface ActiveStep {
 }
 
 export class Steps {
+  readonly #cli?: CliConversations
   readonly #blocked?: (sessionID: string) => boolean
   readonly #budget?: ExecutionBudget
   readonly #tools?: Tools
@@ -78,6 +81,7 @@ export class Steps {
 
   constructor(store: Store, log: Logger, options: StepsOptions) {
     this.#store = store
+    this.#cli = options.cliConversations
     this.#budget = options.budget
     this.#blocked = options.blocked
     this.#tools = options.tools
@@ -194,6 +198,15 @@ export class Steps {
       if (this.#blocked?.(step.sessionID)) continue
       const current = this.#store.step(step.id)
       if (!current || current.status !== 'running') continue
+
+      const binding = this.#store.cliConversation(current.sessionID)
+      if (this.#cli && binding?.stepID === current.id && binding.status === 'running' &&
+        this.#store.stepParts(current.sessionID).some((part) => part.stepID === current.id && part.kind === 'cli' && part.version === 2 && part.phase === 'completed')) {
+        // The CLI exited successfully before the crash. Commit the already
+        // durable answer once; this performs no provider or process I/O.
+        this.#complete(current)
+        continue
+      }
 
       if (current.output.length > 0 || this.#store.stepParts(current.sessionID).some((part) => part.stepID === current.id)) {
         this.#fail(current, {
@@ -326,10 +339,12 @@ export class Steps {
           signal.throwIfAborted()
           provider.check?.()
           const request = new Context(this.#store, provider, { ...this.#contextOptions, tools: this.#tools?.registry.definitions() ?? this.#contextOptions.tools }).prepare(step, overflow)
+          const continuation = this.#cli?.begin(step, provider, { ...request, signal })
+          const messages = continuation?.resume ? this.#store.activeMessages(step.sessionID).filter((message) => message.seq > continuation.throughSeq && message.role === 'user') : request.messages
           overflow = false
           callingProvider = true
           return provider.stream(
-            { ...request, signal },
+            { ...request, messages, continuation, signal },
             (text) => {
               if (!text || signal.aborted) return
               produced = true
@@ -337,6 +352,7 @@ export class Steps {
             },
             (value: ProviderPart) => {
               if (signal.aborted) return
+              this.#cli?.part(step, value)
               if (value.kind === 'reasoning' && !value.text) return
               if (value.kind !== 'usage') produced = true
               const size = JSON.stringify(value).length
@@ -487,6 +503,7 @@ export class Steps {
         for (const call of toolCalls) this.#store.insertToolCall(call)
       },
     })
+    this.#cli?.complete(done)
     this.#log.info(`step ${done.id} succeeded in ${done.attempt} attempt(s)`)
     if (toolCalls.length) this.#tools?.kick(current.sessionID)
   }
@@ -524,6 +541,7 @@ export class Steps {
       data: { step: done },
       project: () => this.#store.updateStep(done),
     })
+    this.#cli?.block(current.sessionID, `The CLI submission failed (${error.code}). Its vendor context may have changed; it was not replayed. Start a fresh CLI conversation deliberately.`, current.id)
     this.#log.warn(`step ${done.id} failed: ${error.code} — ${error.message}`)
   }
 
@@ -544,6 +562,7 @@ export class Steps {
       data: { step: done },
       project: () => this.#store.updateStep(done),
     })
+    this.#cli?.block(current.sessionID, 'The CLI submission was cancelled. Its vendor context may have changed; it was not replayed.', current.id)
     this.#log.info(`step ${done.id} cancelled: ${reason}`)
   }
 

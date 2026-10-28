@@ -32,9 +32,12 @@ import { ExecutionError, type ExecutionBudget } from './execution'
 import { randomUUID } from 'node:crypto'
 import { NetworkAccess } from './network-access'
 import { UsageService } from './usage'
+import type { CliConversations } from './cli-conversations'
 import { homedir } from 'node:os'
 
 export interface ServerOptions {
+  cliConversations?: CliConversations
+  onCliFresh?: (sessionID: string) => void
   home?: string
   budget?: ExecutionBudget
   store: Store
@@ -274,6 +277,17 @@ export function startServer(
       case 'session':
         return json(sessions.detail(params.id), status)
 
+      case 'freshCliConversation': {
+        if (!options.cliConversations) throw notFound('CLI conversation service')
+        if (steps.busy(params.id!)) throw conflict('cli_busy', 'Wait for the current task to settle before replacing its CLI conversation.')
+        const input = await body<OperationRequest<'freshCliConversation'>>(request)
+        const conversation = options.cliConversations.fresh(params.id!, input)
+        // Explicit recovery can release previously admitted follow-ups, but it
+        // never starts the interrupted step or resubmits its original prompt.
+        queueMicrotask(() => options.onCliFresh?.(params.id!))
+        return json({ conversation }, status)
+      }
+
       case 'prompt': {
         const input = await body<PromptRequest>(request)
         const existing = typeof input.key === 'string' ? store.inboxByKey(params.id, input.key.trim()) : null
@@ -281,6 +295,7 @@ export function startServer(
           throw invalid('unknown_model', 'model must name a model in the engine catalog')
         }
         input.model ??= options.catalog?.defaultModel
+        if (!existing && options.catalog) options.cliConversations?.validate(params.id!, options.catalog.resolve(input.model), input.model ?? options.catalog.defaultModel)
         return json(sessions.prompt(params.id, input), status)
       }
 

@@ -6,7 +6,7 @@ if (process.env.HIROSHI_PROBE_LOG) appendFileSync(process.env.HIROSHI_PROBE_LOG,
 if (args.includes('--help')) {
   if (state.hang) { await Bun.sleep(20000); process.exit(0) }
   if (state.noise) { console.log('x'.repeat(128 * 1024 + 1)); await Bun.sleep(20000); process.exit(0) }
-  const help = state.unsupported ? 'Unsupported old CLI' : '--input-format --output-format --disable-slash-commands --print --stream-partial-output --mode ask --no-extensions --no-mcp --no-tools --no-session --no-approve --tools --deny --no-subagents --prompt-file'
+  const help = state.unsupported ? 'Unsupported old CLI' : '--input-format --output-format --disable-slash-commands --print --stream-partial-output --mode ask --no-extensions --no-mcp --no-tools --no-session --session --no-approve --tools --deny --no-subagents --prompt-file --conversation --resume --session-id'
   if (id === 'agy') console.error(help); else console.log(help)
   process.exit(0)
 }
@@ -17,9 +17,10 @@ if (state.auth === false) { console.error('authentication required private-fixtu
 if (state.hangResponse) { await Bun.sleep(20000); process.exit(0) }
 const emit = (value: object) => console.log(JSON.stringify(value))
 if (id === 'pi') {
-  if (!['--no-extensions', '--no-mcp', '--no-tools', '--no-session', '--no-approve', '--no-context-files'].every((flag) => args.includes(flag))) process.exit(23)
+  if (!['--no-extensions', '--no-mcp', '--no-tools', '--no-approve', '--no-context-files'].every((flag) => args.includes(flag)) || (!args.includes('--no-session') && !args.includes('--session'))) process.exit(23)
   const input = await Bun.stdin.text(); if (!input.includes('conversation')) process.exit(24)
-  emit({ type: 'session', version: 3, id: 'pi-session', cwd: process.cwd() })
+  const session = args.includes('--session') ? JSON.parse(readFileSync(args[args.indexOf('--session') + 1]!, 'utf8').split('\n')[0]!).id : 'pi-session'
+  emit({ type: 'session', version: 3, id: session, cwd: process.cwd() })
   emit({ type: 'agent_start' }); emit({ type: 'turn_start' })
   emit({ type: 'message_start', message: { role: 'assistant', content: [] } })
   emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Pi 漢🙂' } })
@@ -35,7 +36,8 @@ if (id === 'pi') {
   emit({ type: 'available_commands', tools: [], commands: ['private-fixture-secret'] })
   emit({ type: 'text', data: '🙂' })
   emit({ type: 'usage', usage: { input_tokens: 10, output_tokens: 3 }, signature: 'private-fixture-secret' })
-  if (!state.truncated) emit({ type: 'end', stopReason: state.length ? 'max_tokens' : 'end_turn', sessionId: 'grok-session', usage: { input_tokens: 10, output_tokens: 3 } })
+  const session = args.includes('--resume') ? args[args.indexOf('--resume') + 1] : args.includes('--session-id') ? args[args.indexOf('--session-id') + 1] : 'grok-session'
+  if (!state.truncated) emit({ type: 'end', stopReason: state.length ? 'max_tokens' : 'end_turn', sessionId: session, usage: { input_tokens: 10, output_tokens: 3 } })
 } else {
   process.env.HIROSHI_CLI_FIXTURE = id
   await import('./cli-response')

@@ -17,6 +17,7 @@ import { mkdirSync } from 'node:fs'
 import { replayTranscript } from './cockpit'
 
 import type {
+  CliConversation,
   Execution,
   Compaction,
   Checkpoint,
@@ -258,6 +259,13 @@ const MIGRATIONS: Migration[] = [
   },
   { id: 9, name: 'workspace-identity', sql: 'alter table session add column workspace_identity text;' },
   { id: 10, name: 'scratch-tasks', sql: 'alter table session add column projectless integer not null default 0;' },
+  { id: 11, name: 'cli-conversations', sql: `
+    create table cli_conversation (id text primary key, session_id text not null references session(id), adapter text not null,
+      vendor_id text, active integer not null, reset_key text, data text not null);
+    create unique index cli_current on cli_conversation(session_id) where active = 1;
+    create unique index cli_vendor_owner on cli_conversation(adapter, vendor_id) where vendor_id is not null;
+    create unique index cli_reset on cli_conversation(session_id, reset_key) where reset_key is not null;
+  ` },
 ]
 
 type Row = Record<string, any>
@@ -623,6 +631,25 @@ export class Store {
   stepParts(sessionID: string): StepPart[] {
     return (this.#db.query('select data from step_part where session_id = ? order by ordinal').all(sessionID) as Row[])
       .map((row) => JSON.parse(row.data) as StepPart)
+  }
+
+  cliConversation(sessionID: string): CliConversation | null {
+    const row = this.#db.query('select data from cli_conversation where session_id = ? and active = 1').get(sessionID) as Row | null
+    return row ? JSON.parse(row.data) : null
+  }
+  cliConversationHistory(sessionID: string): CliConversation[] {
+    return (this.#db.query('select data from cli_conversation where session_id = ? order by rowid').all(sessionID) as Row[]).map((row) => JSON.parse(row.data))
+  }
+  cliVendorOwner(adapter: string, vendorID: string): string | null {
+    return (this.#db.query('select id from cli_conversation where adapter = ? and vendor_id = ?').get(adapter, vendorID) as Row | null)?.id ?? null
+  }
+  cliReset(sessionID: string, key: string): string | null {
+    return (this.#db.query('select id from cli_conversation where session_id = ? and reset_key = ?').get(sessionID, key) as Row | null)?.id ?? null
+  }
+  putCliConversation(value: CliConversation, resetKey?: string) {
+    this.#db.run(`insert into cli_conversation (id, session_id, adapter, vendor_id, active, reset_key, data) values (?, ?, ?, ?, ?, ?, ?)
+      on conflict(id) do update set vendor_id = excluded.vendor_id, active = excluded.active, reset_key = coalesce(excluded.reset_key, cli_conversation.reset_key), data = excluded.data`,
+    [value.id, value.sessionID, value.adapter, value.vendorSessionID, value.status === 'archived' ? 0 : 1, resetKey ?? null, JSON.stringify(value)])
   }
 
   /** Usage-only projection: never read assistant text, reasoning or tool data. */
@@ -1058,6 +1085,7 @@ export class Store {
       const session = this.session(sessionID)
       if (!session) return null
       return {
+        cliConversation: this.cliConversation(sessionID),
         executions: this.executions(sessionID),
         session,
         transcript: replayTranscript((this.#db.query('select * from event where session_id = ? order by seq').all(sessionID) as Row[]).map(toEvent)),

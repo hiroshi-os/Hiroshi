@@ -19,7 +19,19 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.20.0] - Unreleased
+## [0.21.0] - Unreleased
+
+### Added
+
+- Task-owned native conversations for the four response CLI adapters, with
+  durable executable/model/profile/workspace bindings and explicit resume IDs.
+- Deliberate fresh-conversation recovery for interrupted submissions, changed
+  bindings, rewinds, expired sessions and legacy stateless history. Queued work
+  waits for recovery; a reconnect never replays an uncertain CLI request.
+- Crash-boundary integration coverage, including finalizing a recorded successful
+  answer exactly once after a database failure without invoking the CLI again.
+
+## [0.20.0]
 
 ### Added
 

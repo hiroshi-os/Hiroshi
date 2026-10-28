@@ -24,13 +24,14 @@ export interface RemoteModelOptions {
 }
 
 export type ProviderPart =
-  | { kind: 'cli'; version: 1; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
+  | { kind: 'cli'; version: 1 | 2; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | ({ kind: 'usage' } & UsageCounters)
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
 
 export interface ProviderRequest {
+  continuation?: { id: string; fingerprint: string; vendorSessionID: string | null; resume: boolean; throughSeq: number; sessionFile?: string }
   /** The admitted session's workspace; never the daemon's incidental cwd. */
   cwd?: string
   sessionID: string
@@ -46,6 +47,7 @@ export interface ProviderRequest {
 }
 
 export interface Provider {
+  cliIdentity?: () => { adapter: AgentID; contractVersion: number; fingerprint: string; cliVersion: string | null; vendorModel: string; profileRef: string }
   /** CLI submissions may have effects before the first stdout byte. */
   readonly replayAfterRestart?: boolean
   readonly name: string

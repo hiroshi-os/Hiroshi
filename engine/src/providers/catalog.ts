@@ -24,6 +24,7 @@ export interface ProviderConfig {
   /** Explicit executable, optionally followed by an absolute JS entry point. No shell wrappers. */
   command?: string[]
   trustWorkspace?: boolean
+  cliVersion?: string | null
   enabled?: boolean
   unavailable?: boolean
   models: ModelConfig[]
@@ -83,6 +84,7 @@ export class ProviderCatalog {
       this.#models.set(info.id, { info, provider: {
         check,
         replayAfterRestart: provider.replayAfterRestart,
+        cliIdentity: provider.cliIdentity,
         name: info.provider, model: info.id, context: { window: info.contextWindow, reservedOutput: info.reservedOutput },
         stream: async (request, onText, onPart) => {
           check()
@@ -109,6 +111,9 @@ export class ProviderCatalog {
       if (cli && !validCommand(entry.command)) {
         throw new ProviderError('provider_configuration', 'CLI command needs an absolute executable, optionally followed by an absolute JavaScript entry point; shell wrappers and extra flags are unsupported')
       }
+      if (cli && entry.cliVersion !== undefined && entry.cliVersion !== null && (typeof entry.cliVersion !== 'string' || !/^\d{1,4}\.\d{1,3}\.\d{1,3}(?:-[a-zA-Z0-9.-]{1,64})?$/.test(entry.cliVersion))) {
+        throw new ProviderError('provider_configuration', 'cliVersion must be an observed bounded version string')
+      }
       const credential = entry.apiKeyEnv ?? adapter?.credential ?? 'UNUSED'
       if (!cli && (typeof credential !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(credential))) {
         throw new ProviderError('provider_configuration', 'apiKeyEnv must name an environment variable')
@@ -134,7 +139,7 @@ export class ProviderCatalog {
         const context = { window: model.contextWindow, reservedOutput: model.reservedOutput }
         add({ id, provider: entry.id, label: cli ? `${model.label} · response only${reason === 'cli_policy_required' ? ' · policy required' : ''}` : model.label,
           contextWindow: model.contextWindow, reservedOutput: model.reservedOutput, reason },
-          cli ? new CliProvider({ name: entry.id, model: id, providerModel: model.model, adapter: cli, command: entry.command!, context, env, limits, trustWorkspace: entry.trustWorkspace })
+          cli ? new CliProvider({ name: entry.id, model: id, providerModel: model.model, adapter: cli, command: entry.command!, context, env, limits, trustWorkspace: entry.trustWorkspace, cliVersion: entry.cliVersion })
             : adapter!.create({ name: entry.id, model: id, providerModel: model.model, apiKey,
               baseURL: endpoint.href.replace(/\/$/, ''), context }))
       }

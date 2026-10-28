@@ -36,8 +36,9 @@ configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain
 demonstrations. Providers settings discover Agy, Cursor Agent, Pi and Grok CLIs
 with bounded metadata checks and manual path fallback. These CLIs can provide streamed,
-response-only answers using their own sign-in; coding approvals and native CLI
-session continuation are still separate work. See [provider configuration](docs/providers.mdx) and
+response-only answers using their own sign-in, with task-owned native history
+and deliberate recovery after an interruption. Coding approvals remain separate
+work. See [provider configuration](docs/providers.mdx) and
 [tools and permissions](docs/tools.mdx), and [checkpoints](docs/checkpoints.mdx).
 
 Follow progress in [Usable agents and bounded orchestration](https://github.com/hiroshi-os/Hiroshi/milestone/2).

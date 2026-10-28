@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 13
+export const PROTOCOL_VERSION = 14
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.20.0'
+export const ENGINE_VERSION = '0.21.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -53,7 +53,7 @@ export interface AgentInfo {
   status: 'unchecked' | 'missing' | 'unsupported' | 'disabled' | 'installed' | 'signed_out' | 'blocked' | 'ready'
   detail: string
   models: { id: string; label: string; catalogID: string }[]
-  capabilities: { responses: boolean; coding: false; nativeContinuation: false; approvals: false; cancellation: boolean; instructions: 'native-and-supplied' | 'supplied-only' | 'unknown' }
+  capabilities: { responses: boolean; coding: false; nativeContinuation: boolean; approvals: false; cancellation: boolean; instructions: 'native-and-supplied' | 'supplied-only' | 'unknown' }
 }
 export interface ProviderState {
   revision: number
@@ -80,7 +80,7 @@ export type StepPart = {
   at: number
   attempt?: number
 } & (
-  | { kind: 'cli'; version: 1; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
+  | { kind: 'cli'; version: 1 | 2; adapter: AgentID; phase: 'started' | 'session' | 'completed'; vendorSessionID?: string; text: string }
   | ({ kind: 'usage' } & UsageCounters)
   | { kind: 'reasoning'; text: string }
   | { kind: 'state'; provider: 'openai' | 'anthropic'; text: string }
@@ -181,6 +181,18 @@ export interface ProjectInfo {
   status: 'ready' | 'missing' | 'changed' | 'inaccessible'
   detail: string | null
 }
+
+export interface CliConversation {
+  id: string; sessionID: string; revision: number
+  adapter: AgentID; contractVersion: number; cliVersion: string | null; fingerprint: string
+  provider: string; model: string; vendorModel: string; profileRef: string
+  cwd: string; workspaceIdentity: string; vendorSessionID: string | null
+  status: 'running' | 'ready' | 'blocked' | 'archived'; reason: string | null
+  stepID: string; throughSeq: number; historyHash: string
+  createdAt: number; updatedAt: number
+}
+
+export interface FreshCliConversation { conversationID: string; revision: number; key: string }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
@@ -475,6 +487,7 @@ export interface ToolCall {
  * here; nothing else in the protocol has to learn about it.
  */
 export interface EventPayloads {
+  'cli.updated': { conversation: CliConversation | null }
   'providers.updated': { providers: ProviderState }
   'execution.updated': { execution: Execution }
   'session.created': { session: Session }
@@ -527,6 +540,7 @@ export type EngineEvent = {
 
 /** A session and everything the engine has committed about it. */
 export interface SessionDetail {
+  cliConversation?: CliConversation | null
   executions?: Execution[]
   /** Ordered from the durable event log, including retries and boundaries. */
   transcript?: TranscriptEntry[]
@@ -633,6 +647,7 @@ export interface OperationShapes {
   updateNetwork: { request: NetworkUpdate; response: NetworkSettings }
   networkToken: { request: NoInput; response: { token: string } }
   rotateNetworkToken: { request: { revision: number }; response: NetworkSettings }
+  freshCliConversation: { request: SessionRef & FreshCliConversation; response: { conversation: CliConversation | null } }
   projects: { request: NoInput; response: { projects: ProjectInfo[] } }
   openProject: { request: { cwd: string }; response: { session: Session } }
   providers: { request: NoInput; response: ProviderState }
@@ -689,6 +704,7 @@ export const operations: readonly Operation[] = [
   { name: 'updateNetwork', method: 'POST', path: '/v1/network/settings' },
   { name: 'networkToken', method: 'POST', path: '/v1/network/token' },
   { name: 'rotateNetworkToken', method: 'POST', path: '/v1/network/rotate' },
+  { name: 'freshCliConversation', method: 'POST', path: '/v1/sessions/:id/cli/fresh' },
   { name: 'projects', method: 'GET', path: '/v1/projects' },
   { name: 'openProject', method: 'POST', path: '/v1/projects/open' },
   { name: 'providers', method: 'GET', path: '/v1/providers' },
