@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import { startDaemon, tempHome, until } from './harness'
 import { workspaceGit } from '../src/workspace-git'
+import { directory } from '../src/projects'
 
 function repository(home: string) {
   const cwd = join(home, 'repo'); mkdirSync(cwd)
@@ -61,7 +62,7 @@ test('real worktree isolates committed files and task cwd, survives daemon resta
     writeFileSync(join(isolated.cwd, 'file.txt'), 'isolated changes\n')
     expect(readFileSync(join(cwd, 'file.txt'), 'utf8')).toBe('local uncommitted\n')
     const view = await daemon.client.workspaceGit({ id: isolated.id })
-    expect(view.local).toBe(cwd); expect(view.current).toBe('feature/isolated'); expect(view.worktrees.length).toBe(2)
+    expect(directory(view.local).identity).toBe(directory(cwd).identity); expect(view.current).toBe('feature/isolated'); expect(view.worktrees.length).toBe(2)
     git('restore', 'file.txt')
     const local = await daemon.client.workspaceGit({ id: session.id })
     await expect(daemon.client.changeWorkspaceGit({ id: session.id, action: 'checkout', name: 'feature/isolated', revision: local.revision })).rejects.toMatchObject({ code: 'workspace_branch_busy' })
@@ -70,7 +71,7 @@ test('real worktree isolates committed files and task cwd, survives daemon resta
     await daemon.crash(); daemon = await startDaemon({ home })
     expect((await daemon.client.session({ id: isolated.id })).session.cwd).toBe(isolated.cwd)
     expect((await daemon.client.openProject({ cwd: isolated.cwd })).session.id).toBe(isolated.id)
-    expect((await daemon.client.workspaceGit({ id: session.id })).worktrees.some((w) => w.cwd === isolated.cwd)).toBe(true)
+    expect((await daemon.client.workspaceGit({ id: session.id })).worktrees.some((w) => directory(w.cwd).identity === isolated.workspaceIdentity)).toBe(true)
   } finally { await daemon.stop() }
 }, 45000)
 
