@@ -45,7 +45,8 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
   const change = (action: 'checkout' | 'create' | 'worktree', name: string) => {
     if (state) void run(() => engine.changeWorkspaceGit({ action, name, revision: state.revision }))
   }
-  const branches = state?.branches.filter((b) => b.name.toLowerCase().includes(query.trim().toLowerCase())) ?? []
+  const matches = state?.branches.filter((b) => b.name.toLowerCase().includes(query.trim().toLowerCase())) ?? []
+  const branches = matches.slice(0, 200)
   const local = state?.local === cwd || state?.local.replaceAll('\\', '/').toLowerCase() === cwd.replaceAll('\\', '/').toLowerCase()
   const close = () => { if (!pending.current) { setMenu(null); setForm(null); if (trigger.current) renderer?.focusElement?.(trigger.current.id) } }
   const key = (event: any) => {
@@ -62,7 +63,7 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
     <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>{busy ? 'Creating workspace…' : form === 'worktree' ? 'Starts from the current commit in a separate folder.' : 'Press Return to create · Esc to cancel'}</text>
   </>
   const footer = <>
-    {loading && <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>Reading Git workspace…</text>}
+    {loading && <text testId="git-loading" style={{ fontSize: 11, color: '#999999', padding: 4 }}>Reading Git workspace…</text>}
     {!loading && !state?.available && <text style={{ fontSize: 12, color: '#999999', padding: 4 }}>{state?.reason ?? 'Git workspace unavailable.'}</text>}
     {error && <text testId="git-menu-error" style={{ fontSize: 12, color: '#f87171', padding: 4 }}>{error}</text>}
   </>
@@ -90,6 +91,7 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
             </Button>)}
             {!branches.length && !loading && <text style={{ fontSize: 12, color: '#999999', padding: 8 }}>No matching branches</text>}
           </div>
+          {matches.length > branches.length && <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>Showing 200 matches. Refine your search for more branches.</text>}
           <div style={{ height: 1, backgroundColor: '#363636' }} />
           <Button testId="git-create-branch" disabled={disabled || !state?.available} onClick={() => { setForm('create'); setName('') }} style={row}><Symbol kind="plus" /><text style={text}>Create and checkout new branch…</text></Button>
           {state?.dirty && <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>Commit or stash changes before switching branches.</text>}

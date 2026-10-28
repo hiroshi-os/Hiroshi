@@ -31,7 +31,7 @@ export async function workspaceGit(cwd: string): Promise<WorkspaceGit> {
   return { ...empty, available: true, reason: null, local: worktrees[0]?.cwd ?? cwd, current, head, revision, dirty: !!status, branches, worktrees }
 }
 export async function changeWorkspaceGit(cwd: string, home: string, input: { action: 'checkout' | 'create' | 'worktree'; name: string; revision: string }, assertIdle: () => void) {
-  if (!['checkout', 'create', 'worktree'].includes(input.action) || typeof input.name !== 'string' || !input.name || input.name.length > 200 || input.name !== input.name.trim() || input.name.startsWith('-') || typeof input.revision !== 'string') throw invalid('workspace_git_input', 'Choose a valid branch name and refresh the branch list.')
+  if (!input || typeof input !== 'object' || !['checkout', 'create', 'worktree'].includes(input.action) || typeof input.name !== 'string' || !input.name || input.name.length > 200 || input.name !== input.name.trim() || input.name.startsWith('-') || typeof input.revision !== 'string') throw invalid('workspace_git_input', 'Choose a valid branch name and refresh the branch list.')
   if ((await checked(cwd, ['check-ref-format', '--branch', input.name])).trim() !== input.name) throw invalid('workspace_branch', 'Use a literal branch name rather than a checkout shorthand.')
   const state = await workspaceGit(cwd)
   if (!state.available) throw invalid('workspace_git', state.reason!)
