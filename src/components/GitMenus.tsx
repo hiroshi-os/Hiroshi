@@ -13,7 +13,9 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
   const [form, setForm] = useState<'create' | 'worktree' | null>(null), [query, setQuery] = useState(''), [name, setName] = useState('')
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false), [active, setActive] = useState(-1)
   const pending = useRef(false), epoch = useRef(0), trigger = useRef<PublicInstance | null>(null)
+  const content = useRef<PublicInstance | null>(null), rows = useRef(new Map<number, PublicInstance>())
   const { renderer } = useGpuix()
+  useEffect(() => { const item = rows.current.get(active); if (item) renderer?.scrollIntoView?.(item.id) }, [active, renderer])
   const id = engine.snapshot.sessionID, ready = engine.snapshot.status === 'ready'
   const load = async (clearError = true) => {
     const token = ++epoch.current
@@ -46,7 +48,11 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
   const branches = state?.branches.filter((b) => b.name.toLowerCase().includes(query.trim().toLowerCase())) ?? []
   const local = state?.local === cwd || state?.local.replaceAll('\\', '/').toLowerCase() === cwd.replaceAll('\\', '/').toLowerCase()
   const close = () => { if (!pending.current) { setMenu(null); setForm(null); if (trigger.current) renderer?.focusElement?.(trigger.current.id) } }
-  const key = (event: any) => { event.stopPropagation(); if (event.key === 'escape') { event.preventDefault(); if (form) setForm(null); else close() } }
+  const key = (event: any) => {
+    event.stopPropagation()
+    if (event.key === 'escape') { event.preventDefault(); if (form) setForm(null); else close() }
+    if (event.key === 'tab' && content.current) { event.preventDefault(); if (event.modifiers?.shift) renderer?.focusPreviousWithin?.(content.current.id); else renderer?.focusNextWithin?.(content.current.id) }
+  }
   const disabled = busy || loading || !ready
   const creation = <>
     <div style={{ ...row, padding: 4 }}><Symbol kind="plus" /><text style={{ ...text, fontWeight: 600 }}>{form === 'worktree' ? 'Create a new worktree' : 'Create and checkout new branch'}</text></div>
@@ -66,7 +72,7 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
         <Symbol kind={kind === 'workspace' ? 'laptop' : 'branch'} />
         <text style={text}>{kind === 'workspace' ? state?.available && !local ? 'Worktree' : 'Local' : state?.current || (state?.available ? state.head ? `Detached ${state.head.slice(0, 7)}` : 'No commits' : 'Branch')}</text>
       </SelectTrigger>
-      <SelectContent testId={`git-${kind}-menu`} side="top" sideOffset={8} onKeyDown={key} style={{ width: form || kind === 'branch' ? 360 : 230, maxWidth: 380, padding: 10, borderRadius: 13, backgroundColor: '#222222', borderWidth: 1, borderColor: '#3a3a3a', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <SelectContent ref={content} testId={`git-${kind}-menu`} side="top" sideOffset={8} onKeyDown={key} style={{ width: form || kind === 'branch' ? 360 : 230, maxWidth: 380, padding: 10, borderRadius: 13, backgroundColor: '#222222', borderWidth: 1, borderColor: '#3a3a3a', display: 'flex', flexDirection: 'column', gap: 5 }}>
         {form ? creation : kind === 'workspace' ? <>
           <text style={{ fontSize: 11, color: '#999999', padding: 3 }}>Work in</text>
           <Button testId="git-local" disabled={disabled || !state?.available || local} onClick={() => state && void run(() => engine.openProject(state.local))} style={row}><Symbol kind="laptop" /><text style={{ ...text, flexGrow: 1 }}>Local</text>{local && <Symbol kind="check" />}</Button>
@@ -79,7 +85,7 @@ export function GitMenus({ engine, cwd }: { engine: EngineHandle; cwd: string })
             style={{ height: 32, padding: 9, backgroundColor: '#191919', borderRadius: 9, color: '#dddddd', fontSize: 12 }} />
           <text style={{ fontSize: 11, color: '#999999', padding: 4 }}>Branches</text>
           <div style={{ maxHeight: 220, overflowY: 'scroll', display: 'flex', flexDirection: 'column' }}>
-            {branches.map((b, at) => <Button key={b.name} testId={`git-branch-${at}`} disabled={disabled || !!b.checkedOut} onMouseEnter={() => setActive(at)} onClick={() => change('checkout', b.name)} style={{ ...row, backgroundColor: active === at ? '#303030' : '#00000000' }}>
+            {branches.map((b, at) => <Button key={b.name} ref={(item) => { if (item) rows.current.set(at, item); else rows.current.delete(at) }} testId={`git-branch-${at}`} disabled={disabled || !!b.checkedOut} onMouseEnter={() => setActive(at)} onClick={() => change('checkout', b.name)} style={{ ...row, backgroundColor: active === at ? '#303030' : '#00000000' }}>
               <Symbol kind="branch" /><text style={{ ...text, flexGrow: 1, color: b.checkedOut && b.name !== state?.current ? '#777777' : '#dddddd' }}>{b.name}</text>{b.name === state?.current && <Symbol kind="check" />}
             </Button>)}
             {!branches.length && !loading && <text style={{ fontSize: 12, color: '#999999', padding: 8 }}>No matching branches</text>}

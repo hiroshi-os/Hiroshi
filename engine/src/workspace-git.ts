@@ -21,7 +21,7 @@ export async function workspaceGit(cwd: string): Promise<WorkspaceGit> {
     const fields = record.split('\0')
     const directory = fields.find((f) => f.startsWith('worktree '))?.slice(9) ?? ''
     return { cwd: directory ? await realpath(directory).catch(() => directory) : '', branch: fields.find((f) => f.startsWith('branch refs/heads/'))?.slice(18) ?? '', locked: fields.some((f) => f.startsWith('locked')), prunable: fields.some((f) => f.startsWith('prunable')) }
-  }))).then((items) => items.filter((item) => item.cwd))
+  })).then((items) => items.filter((item) => item.cwd))
   const current = (await git(cwd, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.toString().trim()
   const head = (await git(cwd, ['rev-parse', '--verify', 'HEAD'])).stdout.toString().trim()
   const refs = await checked(cwd, ['for-each-ref', '--format=%(refname:strip=2)', 'refs/heads/'])
@@ -32,7 +32,7 @@ export async function workspaceGit(cwd: string): Promise<WorkspaceGit> {
 }
 export async function changeWorkspaceGit(cwd: string, home: string, input: { action: 'checkout' | 'create' | 'worktree'; name: string; revision: string }, assertIdle: () => void) {
   if (!['checkout', 'create', 'worktree'].includes(input.action) || typeof input.name !== 'string' || !input.name || input.name.length > 200 || input.name !== input.name.trim() || input.name.startsWith('-') || typeof input.revision !== 'string') throw invalid('workspace_git_input', 'Choose a valid branch name and refresh the branch list.')
-  await checked(cwd, ['check-ref-format', '--branch', input.name])
+  if ((await checked(cwd, ['check-ref-format', '--branch', input.name])).trim() !== input.name) throw invalid('workspace_branch', 'Use a literal branch name rather than a checkout shorthand.')
   const state = await workspaceGit(cwd)
   if (!state.available) throw invalid('workspace_git', state.reason!)
   if (input.revision !== state.revision) throw conflict('workspace_changed', 'The repository changed. Refresh before trying again.')
