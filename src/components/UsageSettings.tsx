@@ -8,7 +8,7 @@ const number = (value: number) => Intl.NumberFormat('en-US', { notation: value >
 const observed = (value: number | undefined) => value === undefined ? '—' : number(value)
 const dollars = (value: number | null) => value === null ? '—' : `$${value.toFixed(2)}`
 const percent = (value: number, total: number) => total ? `${(100 * value / total).toFixed(1)}%` : '—'
-const buttonStyle = { padding: 7, borderRadius: 6, borderWidth: 1, borderColor: '#3a3a3a', hover: { backgroundColor: '#303030' } }
+const buttonStyle = { padding: 7, borderRadius: 6, borderWidth: 1, borderColor: '#3a3a3a', pointerEvents: 'auto' as const, hover: { backgroundColor: '#303030' } }
 
 export function UsageSettings({ engine }: { engine: EngineHandle }) {
   const size = useWindowSize(), wide = size.width >= 1080, chartWidth = wide ? Math.min(480, size.width - 660) : Math.max(280, size.width - 380)
@@ -109,7 +109,7 @@ export function UsageSettings({ engine }: { engine: EngineHandle }) {
         <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}><text style={{ fontSize: 13, fontWeight: 600, color: text }}>Breakdown</text>{segments('breakdown', [['models', 'Model'], ['days', 'Day']], breakdown, setBreakdown)}</div>
         <div style={{ display: 'flex', flexDirection: 'row', paddingBottom: 6 }}><text style={{ flexGrow: 1, fontSize: 12, color: muted }}>{breakdown === 'models' ? 'Model' : 'Day'}</text><text style={{ width: 80, fontSize: 12, color: muted }}>Cost</text><text style={{ width: 65, fontSize: 12, color: muted }}>Share</text><text style={{ width: 75, fontSize: 12, color: muted }}>Tokens</text></div>
         <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 260, overflowY: 'scroll' }}>
-          {report?.[breakdown].slice(0, 100).map((row) => <Button key={row.id} testId={`usage-row-${row.id}`} disabled={breakdown !== 'models' || busy} onClick={() => openRates(row.id)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderColor: border }}>
+          {report?.[breakdown].slice(0, 100).map((row) => <Button key={row.id} testId={`usage-row-${row.id}`} disabled={breakdown !== 'models' || busy} onClick={() => openRates(row.id)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderColor: border, pointerEvents: 'auto', hover: { backgroundColor: '#252525' } }}>
             <text style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: text, textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.label}</text><text style={{ width: 80, fontSize: 12, color: text }}>{dollars(row.costUSD)}</text><text style={{ width: 65, fontSize: 12, color: muted }}>{percent(row.tokens, totals?.tokens ?? 0)}</text><text style={{ width: 75, fontSize: 12, color: muted }}>{number(row.tokens)}</text>
           </Button>)}
         </div>

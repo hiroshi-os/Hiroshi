@@ -1,5 +1,6 @@
 import React from 'react'
 import { describe, expect, it } from 'vitest'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { connectTest } from '@gpuix/react/automation'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
 import type { EngineHandle } from '../engine/use-engine'
@@ -48,7 +49,12 @@ import { UsageSettings } from './UsageSettings'
       expect((requests.at(-1) as any).to - (requests.at(-1) as any).from).toBe(7 * 86400000)
       await click('usage-history-toggle')
       await expect.poll(() => (requests.at(-1) as any).includeHistory).toBe(false)
-    } catch (error) { throw new Error(`Usage controls failed at ${stage}`, { cause: error }) }
+    } catch (error) {
+      mkdirSync('screenshots', { recursive: true })
+      await app.screenshot({ path: 'screenshots/native-usage-controls.png' })
+      writeFileSync('screenshots/native-usage-controls.json', JSON.stringify({ stage, tree: await app.call('getTree', {}), viewport: renderer.getWindowSize() }, null, 2))
+      throw new Error(`Usage controls failed at ${stage}`, { cause: error })
+    }
     finally { await app.close() }
   }, 10000)
   it('shows an unavailable report as an error instead of a fabricated zero', async () => {

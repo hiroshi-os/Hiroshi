@@ -103,6 +103,15 @@ jobs:
       - name: Run the native integration tests
         run: bun run test
 
+      - name: Keep native control failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-controls-${{ runner.os }}
+          path: screenshots/native-usage-controls.*
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Test the native macOS window drag bridge
         if: runner.os == 'macOS'
         timeout-minutes: 2
