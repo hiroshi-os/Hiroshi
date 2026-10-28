@@ -556,10 +556,13 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
       await sleep(250)
     }
     await surface('files')
-    await app.getByTestId('files-open-approved.txt').waitFor()
-    await app.getByTestId('files-changed-approved.txt').waitFor()
+    // Files loads a directory plus a real Git review through the shared
+    // execution budget. Use the same bounded I/O deadline as other engine
+    // operations, rather than the automation client's five-second default.
+    await app.getByTestId('files-open-approved.txt').waitFor({ timeoutMs: STEP_DEADLINE_MS })
+    await app.getByTestId('files-changed-approved.txt').waitFor({ timeoutMs: STEP_DEADLINE_MS })
     await app.getByTestId('files-open-approved.txt').click()
-    await app.getByTestId('workspace-file-content').waitFor()
+    await app.getByTestId('workspace-file-content').waitFor({ timeoutMs: STEP_DEADLINE_MS })
     const fileBounds = await app.getByTestId('workspace-file-content').bounds()
     check(fileBounds.width > 0 && fileBounds.height > 0, 'the native file viewer has no painted area')
     const currentSession = (await client.listSessions()).sessions[0]!
