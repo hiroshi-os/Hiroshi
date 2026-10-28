@@ -60,6 +60,7 @@ test('history import handles repeated cumulative snapshots, forks, partial lines
   const totals = aggregateUsage(result.records, {}).totals
   expect(totals).toMatchObject({ tokens: 170, input: 150, output: 20, cachedInput: 100 })
   expect(result.sources.find((source) => source.name === 'Codex')?.skipped).toBeGreaterThan(2)
+    expect(result.sources.find((source) => source.name === 'Codex')?.status).toBe('partial')
   expect(result.sources.find((source) => source.name === 'Grok')?.status).toBe('unsupported')
   expect(result.sources.find((source) => source.name === 'Cursor Agent')?.status).toBe('missing')
   expect(JSON.stringify(result)).not.toContain('private-text-never-imported')

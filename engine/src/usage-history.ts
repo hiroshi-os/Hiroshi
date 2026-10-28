@@ -35,6 +35,7 @@ export async function importUsageHistory(from: number, to: number, owned: Set<st
     }
     let recognized = 0
     source.status = 'unsupported'; source.detail = 'History exists, but no supported usage records were found.'
+    const skippedIncomplete = () => { source.skipped++; source.status = 'partial'; source.detail = 'Malformed, oversized or incomplete history records were skipped. Totals include only complete supported records.' }
     if (definition.format === 'unsupported') { source.detail = 'This history format does not yet expose supported usage metadata. Hiroshi-recorded usage is included.'; continue }
     const visit = async (directory: string, depth: number): Promise<void> => {
       if (depth > 8 || files >= 512 || bytes >= 256 * 1024 * 1024 || Date.now() > deadline) { source.status = 'partial'; source.detail = 'Import limit reached. Totals include only the records read.'; return }
@@ -57,7 +58,7 @@ export async function importUsageHistory(from: number, to: number, owned: Set<st
         let pending = '', dropping = false
         const accept = (line: string) => {
           let event: any
-          try { event = JSON.parse(line) } catch { source.skipped++; return }
+          try { event = JSON.parse(line) } catch { skippedIncomplete(); return }
           if (!event || typeof event !== 'object') { source.skipped++; return }
           if (event.type === 'session_meta') { sessionID = typeof event.payload?.id === 'string' ? event.payload.id : ''; project = typeof event.payload?.cwd === 'string' ? event.payload.cwd : project; return }
           if (event.type === 'session') { sessionID = typeof event.id === 'string' ? event.id : sessionID; project = typeof event.cwd === 'string' ? event.cwd : project; return }
@@ -122,11 +123,11 @@ export async function importUsageHistory(from: number, to: number, owned: Set<st
               const piece = pieces[index]!
               if (!dropping) pending += piece
               if (pending.length > 128 * 1024) { pending = ''; dropping = true }
-              if (index < pieces.length - 1) { if (!dropping && pending.trim()) accept(pending); else if (dropping) source.skipped++; pending = ''; dropping = false }
+              if (index < pieces.length - 1) { if (!dropping && pending.trim()) accept(pending); else if (dropping) skippedIncomplete(); pending = ''; dropping = false }
             }
           }
           // A currently written, incomplete final line is never imported.
-          if (pending.trim()) source.skipped++
+          if (pending.trim() || dropping) skippedIncomplete()
         } finally { stream.destroy() }
       }
     }
