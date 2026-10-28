@@ -30,6 +30,7 @@ try {
     const open = async (kind: 'branch' | 'workspace') => {
       await app.getByTestId(`git-${kind}`).click(); await app.getByTestId(`git-${kind}-menu`).waitFor()
       await waitUntil(async () => !(await treeText(app)).includes('Reading Git workspace'), 'the menu Git refresh to settle')
+      await settle()
     }
     stage = 'branch search and checkout'
     await open('branch'); await app.screenshot({ path: path.resolve('screenshots/windowed-git-branches.png') })
