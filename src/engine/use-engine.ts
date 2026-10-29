@@ -18,6 +18,10 @@ import { createPromptStore } from '../shell/prompt-store'
 import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
+  pairingState: () => Promise<import('../../engine/src/protocol').PairingState>
+  createPairing: (address?: string) => Promise<import('../../engine/src/protocol').PairingInvitation>
+  cancelPairing: (grantID: string) => Promise<import('../../engine/src/protocol').PairingState>
+  revokePairedDevice: (deviceID: string, revision: number) => Promise<import('../../engine/src/protocol').PairingState>
   skills: () => Promise<import('../../engine/src/protocol').SkillInventory>
   skillDocument: (input: import('../../engine/src/protocol').SkillSelection) => Promise<import('../../engine/src/protocol').SkillDocument>
   updateSkill: (input: Omit<OperationRequest<'updateSkill'>, 'id'>) => Promise<import('../../engine/src/protocol').SkillInventory>
@@ -351,6 +355,22 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || !session.current) throw new Error('Connect the Hiroshi daemon to remove this skill.')
     return client.current.removeSkill({ id: session.current, ...input })
   }, [])
+  const pairingState = useCallback(async () => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to manage pairing.')
+    return client.current.pairingState()
+  }, [])
+  const createPairing = useCallback(async (address?: string) => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to pair a device.')
+    return client.current.createPairing(address ? { address } : {})
+  }, [])
+  const cancelPairing = useCallback(async (grantID: string) => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to cancel pairing.')
+    return client.current.cancelPairing({ grantID })
+  }, [])
+  const revokePairedDevice = useCallback(async (deviceID: string, revision: number) => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to revoke device access.')
+    return client.current.revokePairedDevice({ deviceID, revision })
+  }, [])
   const browse = useCallback(async (url: string) => {
     if (!client.current || !session.current) throw new Error('the engine is not connected')
     return client.current.browse({ id: session.current, url })
@@ -407,7 +427,7 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || session.current !== conversation.sessionID) throw new Error('The selected task changed. Return to the original task before recovering its CLI conversation.')
     await client.current.freshCliConversation({ id: conversation.sessionID, conversationID: conversation.id, revision: conversation.revision, key })
   }, [])
-  return { skills, skillDocument, updateSkill, removeSkill, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { pairingState, createPairing, cancelPairing, revokePairedDevice, skills, skillDocument, updateSkill, removeSkill, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }

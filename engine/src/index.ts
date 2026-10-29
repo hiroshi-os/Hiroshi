@@ -34,6 +34,8 @@ import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { ProviderRegistry } from './providers/registry'
 import { CliConversations } from './cli-conversations'
 import { Skills } from './skills'
+import { renderUnicodeCompact } from 'uqr'
+import { engineClient } from '../../src/engine/client'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import { daemonFetch } from './local-transport'
@@ -344,6 +346,23 @@ async function status(flags: Flags): Promise<number> {
   return discovery.state === 'running' ? 0 : 1
 }
 
+async function pair(flags: Flags): Promise<number> {
+  const discovery = await discover(resolvePaths(flags).registry)
+  if (discovery.state !== 'running') { process.stderr.write('Hiroshi daemon is not running. Start it before pairing.\n'); return 1 }
+  if (discovery.health.protocol !== PROTOCOL_VERSION) { process.stderr.write('Restart the Hiroshi daemon to use this pairing protocol.\n'); return 1 }
+  const client = engineClient(discovery.record)
+  try {
+    if (flags.expose === true) {
+      const network = await client.networkSettings()
+      await client.updateNetwork({ ...network, enabled: true, port: numberFlag(flags, 'port') ?? network.port })
+    }
+    const invitation = await client.createPairing(stringFlag(flags, 'url') ? { address: stringFlag(flags, 'url') } : {})
+    if (flags.json === true) process.stdout.write(JSON.stringify(invitation) + '\n')
+    else process.stdout.write(['Hiroshi device pairing', `Single use. Expires ${new Date(invitation.expiresAt).toISOString()}.`, '', ...invitation.links, '', renderUnicodeCompact(invitation.payload, { border: 4, ecc: 'M' }), '', 'Only pair trusted devices. Network access must be reachable from the device; no internet tunnel is created.', ''].join('\n'))
+    return 0
+  } catch (e) { process.stderr.write(`Hiroshi pairing: ${e instanceof Error ? e.message : 'Could not create an invitation.'}\n`); return 1 }
+}
+
 async function stop(flags: Flags): Promise<number> {
   const paths = resolvePaths(flags)
   const discovery = await discover(paths.registry)
@@ -402,6 +421,7 @@ async function main(): Promise<number> {
         '',
         '  serve     run the daemon in the foreground (default)',
         '  status    report the daemon the registry points at',
+        '  pair      print a single-use device pairing link and QR code',
         '  stop      ask the running daemon to shut down',
         '  version   print the version and the protocol version',
         '',
@@ -412,6 +432,9 @@ async function main(): Promise<number> {
         '  --port <number>    bind port, an ephemeral one by default',
         '  --provider-delay <ms>  hold the local provider between stream chunks',
         '  --json             machine readable `status`',
+        '  pair --expose      explicitly enable the LAN network listener',
+        '  pair --url <https-origin>  use an existing HTTPS endpoint',
+        '  pair --json        print the invitation payload and SVG QR code',
         '',
       ].join('\n'),
     )
@@ -425,6 +448,7 @@ async function main(): Promise<number> {
 
   if (command === 'serve') return serve(flags)
   if (command === 'status') return status(flags)
+  if (command === 'pair') return pair(flags)
   if (command === 'stop') return stop(flags)
 
   process.stderr.write(`hiroshi-engine: unknown command "${command}"\n`)

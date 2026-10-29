@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 16
+export const PROTOCOL_VERSION = 17
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.23.0'
+export const ENGINE_VERSION = '0.24.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -273,6 +273,12 @@ export interface SkillInfo { id: string; name: string; description: string; path
 export interface SkillInventory { revision: number; skills: SkillInfo[]; warnings: string[]; truncated: boolean; scannedAt: number }
 export interface SkillSelection { skillID: string; hash: string }
 export interface SkillDocument { skill: SkillInfo; raw: string; markdown: string }
+export interface PairedDevice { id: string; name: string; createdAt: number; expiresAt: number }
+export interface PairingGrant { id: string; expiresAt: number; state: 'pending' | 'expired' | 'canceled' | 'redeemed' }
+export interface PairingState { revision: number; devices: PairedDevice[]; grants: PairingGrant[] }
+export interface PairingTicket extends PairingGrant { payload: string; links: string[] }
+export interface PairingInvitation extends PairingTicket { qr: string }
+export interface PairingConnection { type: 'hiroshi.connection'; version: 1; server: { id: string; name: string; version: string; protocol: number; transport: 'http-sse'; capabilities: string[] }; token: string; device: PairedDevice }
 
 export interface ModelToolRequest { id: string; name: string; arguments: string }
 
@@ -657,6 +663,10 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  pairingState: { request: NoInput; response: PairingState }
+  createPairing: { request: { address?: string }; response: PairingInvitation }
+  cancelPairing: { request: { grantID: string }; response: PairingState }
+  revokePairedDevice: { request: { deviceID: string; revision: number }; response: PairingState }
   skills: { request: SessionRef; response: SkillInventory }
   skillDocument: { request: SessionRef & SkillSelection; response: SkillDocument }
   updateSkill: { request: SessionRef & SkillSelection & { revision: number; enabled: boolean }; response: SkillInventory }
@@ -719,6 +729,10 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'pairingState', method: 'GET', path: '/v1/network/pairing' },
+  { name: 'createPairing', method: 'POST', path: '/v1/network/pairing/create' },
+  { name: 'cancelPairing', method: 'POST', path: '/v1/network/pairing/cancel' },
+  { name: 'revokePairedDevice', method: 'POST', path: '/v1/network/devices/revoke' },
   { name: 'skills', method: 'POST', path: '/v1/sessions/:id/skills' },
   { name: 'skillDocument', method: 'POST', path: '/v1/sessions/:id/skills/document' },
   { name: 'updateSkill', method: 'POST', path: '/v1/sessions/:id/skills/update' },

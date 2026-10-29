@@ -174,6 +174,26 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'pairingState':
+        if (!network) throw notFound('network pairing')
+        return json(network.pairing.state(), status)
+      case 'createPairing': {
+        if (!network) throw notFound('network pairing')
+        const input = await body<OperationRequest<'createPairing'>>(request)
+        return json(network.invite(input?.address), status)
+      }
+      case 'cancelPairing': {
+        if (!network) throw notFound('network pairing')
+        const input = await body<OperationRequest<'cancelPairing'>>(request)
+        if (typeof input?.grantID !== 'string' || input.grantID.length > 64) throw invalid('pairing_grant', 'Choose the pairing invitation to cancel.')
+        network.pairing.cancel(input.grantID)
+        return json(network.pairing.state(), status)
+      }
+      case 'revokePairedDevice': {
+        if (!network) throw notFound('network pairing')
+        const input = await body<OperationRequest<'revokePairedDevice'>>(request)
+        return json(network.revokeDevice(input?.deviceID, input?.revision), status)
+      }
       case 'skills':
       case 'skillDocument':
       case 'updateSkill':
