@@ -19,6 +19,7 @@ import { DraftRecovery } from './src/components/DraftRecovery'
 import { CliConversationStatus, cliNeedsFresh } from './src/components/CliConversation'
 import { NetworkSettings } from './src/components/NetworkSettings'
 import { UsageSettings } from './src/components/UsageSettings'
+import { SkillsSettings } from './src/components/SkillsSettings'
 import { engineTranscript } from './src/engine/transcript'
 import { EngineUsage, ComposerDelivery } from './src/components/EngineCockpit'
 import { cockpit } from './src/engine/cockpit'
@@ -1670,10 +1671,6 @@ function SettingsView({
   const [uiFontSize, setUiFontSize] = useState('14px')
   const [codeFontSize, setCodeFontSize] = useState('13px')
 
-  // Skills state
-  const [selectedSkill, setSelectedSkill] = useState('find-skills')
-  const [findSkillsEnabled, setFindSkillsEnabled] = useState(true)
-
   // Usage state
   const [usagePeriod, setUsagePeriod] = useState<'daily' | 'monthly' | 'projects'>('daily')
   const [usageCostType, setUsageCostType] = useState<'cost' | 'tokens'>('cost')
@@ -1857,11 +1854,11 @@ function SettingsView({
             flexDirection: 'column',
             flexGrow: 1,
             minHeight: 0,
-            overflowY: 'scroll',
+            overflowY: activeSection === 'skills' ? 'hidden' : 'scroll',
             paddingTop: activeSection === 'providers' ? 16 : 8,
             paddingLeft: activeSection === 'skills' ? 0 : activeSection === 'providers' ? windowSize.width < 1050 ? 32 : 84 : 44,
             paddingRight: activeSection === 'skills' ? 0 : activeSection === 'providers' ? windowSize.width < 1050 ? 32 : 84 : 44,
-            paddingBottom: 40,
+            paddingBottom: activeSection === 'skills' ? 0 : 40,
           }}
         >
           {activeSection !== 'skills' && (
@@ -2500,299 +2497,7 @@ function SettingsView({
             </div>
           )}
 
-          {/* SECTION: SKILLS (2-column layout matching Screenshot 3) */}
-          {activeSection === 'skills' && (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                width: '100%',
-                height: '100%',
-              }}
-            >
-              {/* Middle Skills List Column */}
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  width: 250,
-                  flexShrink: 0,
-                  borderRightWidth: 1,
-                  borderColor: C.sidebarBorder,
-                  padding: 12,
-                  gap: 8,
-                }}
-              >
-                {/* Search skills input */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                    height: 30,
-                    paddingLeft: 8,
-                    paddingRight: 8,
-                    borderRadius: 7,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    backgroundColor: '#1E1E1E',
-                  }}
-                >
-                  <Icon name="search" size={12} color={C.ghost} />
-                  <input
-                    placeholder="Search skills..."
-                    theme={CHAT_THEME}
-                    style={{
-                      fontSize: 12.5,
-                      color: C.text,
-                      backgroundColor: '#00000000',
-                      borderWidth: 0,
-                      flexGrow: 1,
-                      minWidth: 0,
-                    }}
-                  />
-                </div>
-
-                {/* Filter chip */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    height: 28,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    backgroundColor: '#222222',
-                  }}
-                >
-                  <Icon name="cube" size={13} color={C.secondary} />
-                  <text style={{ fontSize: 12.5, color: C.text }}>All skills</text>
-                  <Icon name="chevronDown" size={10} color={C.ghost} />
-                </div>
-
-                <div style={{ marginTop: 6, marginBottom: 2 }}>
-                  <text style={{ fontSize: 11, fontWeight: 600, color: C.ghost }}>USER 3</text>
-                </div>
-
-                {/* Skill List items */}
-                {[
-                  { id: 'find-skills', name: 'find-skills', desc: 'Helps users discover and install a...', icon: 'cube' as const },
-                  { id: 'native-sdk', name: 'native-sdk', desc: 'Discovery skill for the Native SDK...', icon: 'arrowRight' as const },
-                  { id: 'opentui', name: 'opentui', desc: 'Build terminal UIs with OpenTUI...', icon: 'cube' as const },
-                ].map((skill) => {
-                  const isSel = selectedSkill === skill.id
-                  return (
-                    <Button
-                      key={skill.id}
-                      onClick={() => setSelectedSkill(skill.id)}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: 8,
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        backgroundColor: isSel ? '#262626' : '#00000000',
-                        hover: { backgroundColor: isSel ? '#262626' : C.item },
-                      }}
-                    >
-                      <Icon name={skill.icon} size={14} color={isSel ? C.text : C.secondary} />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
-                        <text style={{ fontSize: 13, fontWeight: isSel ? 600 : 500, color: C.text }}>
-                          {skill.name}
-                        </text>
-                        <text
-                          style={{
-                            fontSize: 11.5,
-                            color: C.secondary,
-                            whiteSpace: 'nowrap',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {skill.desc}
-                        </text>
-                      </div>
-                    </Button>
-                  )
-                })}
-
-                <div style={{ flexGrow: 1 }} />
-                <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 6 }}>
-                  <text style={{ fontSize: 11.5, color: C.ghost }}>3 skills</text>
-                </div>
-              </div>
-
-              {/* Right Skill Detail Pane */}
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  flexGrow: 1,
-                  padding: 24,
-                  gap: 16,
-                  overflowY: 'scroll',
-                }}
-              >
-                {/* Header */}
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 8,
-                        backgroundColor: '#262626',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name="cube" size={18} color={C.text} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <text style={{ fontSize: 16, fontWeight: 600, color: C.text }}>
-                        {selectedSkill}
-                      </text>
-                      <text style={{ fontSize: 12, color: C.tertiary }}>
-                        Shared · available in every project
-                      </text>
-                    </div>
-                  </div>
-
-                  <ToggleSwitch
-                    checked={findSkillsEnabled}
-                    onChange={setFindSkillsEnabled}
-                    testId="toggle-find-skills"
-                  />
-                </div>
-
-                {/* Description */}
-                <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
-                  Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
-                </text>
-
-                {/* Metadata Table */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { label: 'Invoke', value: `/${selectedSkill}` },
-                    { label: 'Location', value: `.../skills/${selectedSkill}` },
-                    { label: 'Contents', value: '5.4 KB' },
-                    { label: 'Updated', value: '90d ago' },
-                  ].map((row) => (
-                    <div key={row.label} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-                      <text style={{ fontSize: 12.5, color: C.tertiary, width: 80 }}>{row.label}</text>
-                      <text style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text }}>{row.value}</text>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
-                  <Button
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      height: 28,
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      borderRadius: 6,
-                      backgroundColor: '#262626',
-                      borderWidth: 1,
-                      borderColor: C.border,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Icon name="pencil" size={12} color={C.secondary} />
-                    <text style={{ fontSize: 12.5, color: C.text }}>Open SKILL.md</text>
-                  </Button>
-                  <Button
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      height: 28,
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      borderRadius: 6,
-                      backgroundColor: '#262626',
-                      borderWidth: 1,
-                      borderColor: C.border,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Icon name="folder" size={12} color={C.secondary} />
-                    <text style={{ fontSize: 12.5, color: C.text }}>Show in File Manager</text>
-                  </Button>
-                  <Button
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      height: 28,
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      borderRadius: 6,
-                      backgroundColor: '#262626',
-                      borderWidth: 1,
-                      borderColor: C.border,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Icon name="copy" size={12} color={C.secondary} />
-                    <text style={{ fontSize: 12.5, color: C.text }}>Copy Path</text>
-                  </Button>
-                  <Button
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      height: 28,
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      borderRadius: 6,
-                      backgroundColor: '#262626',
-                      borderWidth: 1,
-                      borderColor: C.border,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Icon name="trash" size={12} color={C.secondary} />
-                    <text style={{ fontSize: 12.5, color: C.text }}>Delete</text>
-                  </Button>
-                </div>
-
-                <div style={{ height: 1, backgroundColor: C.border, marginTop: 4, marginBottom: 4 }} />
-
-                {/* SKILL.md preview */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <text style={{ fontSize: 12, fontWeight: 500, color: C.ghost }}>SKILL.md</text>
-                  <text style={{ fontSize: 18, fontWeight: 700, color: C.text }}>Find Skills</text>
-                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
-                    This skill helps you discover and install skills from the open agent skills ecosystem.
-                  </text>
-                  <text style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 8 }}>
-                    When to Use This Skill
-                  </text>
-                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary }}>
-                    Use this skill when the user:
-                  </text>
-                  <text style={{ fontSize: 13, lineHeight: 20, color: C.secondary, paddingLeft: 12 }}>
-                    • Asks "how do I do X" where X might be a common task with an existing skill
-                  </text>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeSection === 'skills' && <SkillsSettings engine={providerEngine} renderMarkdown={(source) => <SafeMdxContent source={source} />} />}
         </div>
       </div>
     </div>

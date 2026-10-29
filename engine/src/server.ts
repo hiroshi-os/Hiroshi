@@ -35,6 +35,7 @@ import { UsageService } from './usage'
 import type { CliConversations } from './cli-conversations'
 import type { AccessControls } from './tools/access'
 import { homedir } from 'node:os'
+import { Skills } from './skills'
 
 export interface ServerOptions {
   access?: AccessControls
@@ -125,6 +126,7 @@ export function startServer(
   const hub = new Feed(store)
   let network: NetworkAccess | undefined
   const usage = options.home ? new UsageService(options.home, store, process.env.HIROSHI_USAGE_HOME || homedir()) : undefined
+  const skills = options.home ? new Skills(options.home) : undefined
 
   const maintenance = <T>(sessionID: string, signal: AbortSignal, effect: () => Promise<T>): Promise<T> => options.budget
     ? options.budget.execute({ id: `maintenance_${randomUUID()}`, sessionID, kind: 'maintenance' }, signal, effect) : effect()
@@ -172,6 +174,21 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'skills':
+      case 'skillDocument':
+      case 'updateSkill':
+      case 'removeSkill': {
+        if (!skills) throw notFound('installed skills')
+        const session = assertWorkspace(store, params.id!)
+        const input = await body<any>(request)
+        return json(await maintenance(session.id, request.signal, async () => {
+          assertWorkspace(store, session.id)
+          if (operation.name === 'skills') return skills.scan(session.cwd)
+          if (operation.name === 'skillDocument') return skills.read(session.cwd, input)
+          if (operation.name === 'updateSkill') return skills.update(session.cwd, input)
+          return skills.remove(session.cwd, input)
+        }), status)
+      }
       case 'usageReport': {
         if (!usage) throw notFound('usage reporting')
         if (!store.session(params.id!)) throw notFound('session')

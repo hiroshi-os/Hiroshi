@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 15
+export const PROTOCOL_VERSION = 16
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.22.0'
+export const ENGINE_VERSION = '0.23.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -268,6 +268,11 @@ export interface WorkspaceReview {
   revision: string; files: FileChange[]; patch: string; stagedPatch: string; workingPatch: string; truncated: boolean
 }
 export interface BrowserPage { url: string; title: string; text: string; links: { label: string; url: string }[]; truncated: boolean; scripted: boolean }
+export interface SkillOrigin { source: string; scope: 'user' | 'project'; path: string; managed: boolean; linked: boolean }
+export interface SkillInfo { id: string; name: string; description: string; path: string; bytes: number; updatedAt: number; hash: string; enabled: boolean; invoke: string; origins: SkillOrigin[] }
+export interface SkillInventory { revision: number; skills: SkillInfo[]; warnings: string[]; truncated: boolean; scannedAt: number }
+export interface SkillSelection { skillID: string; hash: string }
+export interface SkillDocument { skill: SkillInfo; raw: string; markdown: string }
 
 export interface ModelToolRequest { id: string; name: string; arguments: string }
 
@@ -652,6 +657,10 @@ export type StartRunInput = SessionRef & StartRunRequest
  * without a shape and a client method cannot take the wrong body.
  */
 export interface OperationShapes {
+  skills: { request: SessionRef; response: SkillInventory }
+  skillDocument: { request: SessionRef & SkillSelection; response: SkillDocument }
+  updateSkill: { request: SessionRef & SkillSelection & { revision: number; enabled: boolean }; response: SkillInventory }
+  removeSkill: { request: SessionRef & SkillSelection & { revision: number; origin: string }; response: { inventory: SkillInventory; removedTo: string } }
   updateAccess: { request: SessionRef & AccessSettings; response: AccessSettings }
   usageReport: { request: SessionRef & UsageQuery; response: UsageReport }
   updateUsagePricing: { request: UsagePricingUpdate; response: { revision: number } }
@@ -710,6 +719,10 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'skills', method: 'POST', path: '/v1/sessions/:id/skills' },
+  { name: 'skillDocument', method: 'POST', path: '/v1/sessions/:id/skills/document' },
+  { name: 'updateSkill', method: 'POST', path: '/v1/sessions/:id/skills/update' },
+  { name: 'removeSkill', method: 'POST', path: '/v1/sessions/:id/skills/remove' },
   { name: 'updateAccess', method: 'POST', path: '/v1/sessions/:id/access' },
   { name: 'usageReport', method: 'POST', path: '/v1/sessions/:id/usage' },
   { name: 'updateUsagePricing', method: 'POST', path: '/v1/usage/pricing' },

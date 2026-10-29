@@ -12,6 +12,7 @@ export interface ContextOptions {
   tools?: unknown[]
   /** Re-read before each attempt, so edits and removals are observable. */
   instructions?: (sessionID: string) => InstructionSource[]
+  skillInstructions?: (sessionID: string) => InstructionSource[]
 }
 
 /** Conservative fallback: one UTF-8 byte per token, plus message framing. */
@@ -37,6 +38,7 @@ export class Context {
     }
     const tools = this.options.tools ?? this.provider.tools ?? []
     const instructions = [...(this.options.instructions?.(step.sessionID) ?? this.#workspaceInstructions(step.sessionID))]
+    instructions.push(...(this.options.skillInstructions?.(step.sessionID) ?? []))
     if (this.options.tools?.length) instructions.push({ source: 'engine/tool-permissions', text: 'Tool permission decisions are authoritative. A denial is an operator or policy decision, not a tool failure to work around. Continue within granted permissions.' })
     const names = new Set(instructions.map((source) => source.source))
     if (names.size !== instructions.length) {

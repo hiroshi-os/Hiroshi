@@ -24,6 +24,7 @@ const bundle = await Bun.build({
   naming: 'app.js',
   plugins: [{ name: 'hiroshi-browser-platform', setup(build) {
     build.onResolve({ filter: /[\\/]shell[\\/]clipboard$/ }, () => ({ path: path.join(ROOT, 'src/shell/clipboard-browser.ts') }))
+    build.onResolve({ filter: /[\\/]shell[\\/]open-path$/ }, () => ({ path: path.join(ROOT, 'src/shell/open-path-browser.ts') }))
     build.onResolve({ filter: /[\\/]shell[\\/]prompt-store$/ }, () => ({ path: path.join(ROOT, 'src/shell/prompt-store-browser.ts') }))
     build.onResolve({ filter: /[\\/]shell[\\/]geometry$/ }, () => ({ path: path.join(ROOT, 'src/shell/geometry-browser.ts') }))
     build.onResolve({ filter: /[\\/]window-drag$/ }, () => ({ path: path.join(ROOT, 'src/window-drag-browser.ts') }))

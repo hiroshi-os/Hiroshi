@@ -19,7 +19,16 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.22.0] - Unreleased
+## [0.23.0] - Unreleased
+
+### Added
+
+- Installed-skill discovery with searchable source filters, scope and file
+  metadata, Markdown details, persistent enablement and real desktop file actions.
+- Explicit skill invocation through task instructions, linked-installation
+  deduplication and confirmed reversible removal without deleting link targets.
+
+## [0.22.0]
 
 ### Added
 

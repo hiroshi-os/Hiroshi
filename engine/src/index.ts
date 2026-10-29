@@ -33,6 +33,7 @@ import { AccessControls } from './tools/access'
 import { ProviderCatalog, readProvidersConfig } from './providers/catalog'
 import { ProviderRegistry } from './providers/registry'
 import { CliConversations } from './cli-conversations'
+import { Skills } from './skills'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import { daemonFetch } from './local-transport'
@@ -173,13 +174,15 @@ async function serve(flags: Flags): Promise<number> {
   access.recover()
   const tools = new Tools(store, registry, paths.home, budget, access)
   const cliConversations = new CliConversations(store, paths.home, (model) => catalog.resolve(model))
+  const skills = new Skills(paths.home)
   const steps = new Steps(store, log, {
     cliConversations,
     budget,
     tools,
     blocked: (id) => checkpoints.blocked(id) || cliConversations.blocked(id),
     selectProvider: (model) => catalog.resolve(model),
-    context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off' },
+    context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off',
+      skillInstructions: (id) => skills.instructions(store.session(id)!.cwd, store.activeMessages(id).filter((message) => message.role === 'user').map((message) => message.text)) },
     provider: catalog.resolve(),
   })
 
