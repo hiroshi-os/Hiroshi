@@ -26,8 +26,8 @@ function document(file: string) {
   try {
     const info = fstatSync(handle, { bigint: true })
     if (!info.isFile() || info.size > BigInt(FILE_LIMIT)) throw new Error('SKILL.md must be a regular file of at most 256 KiB.')
-    const buffer = Buffer.alloc(FILE_LIMIT + 1), bytes = readSync(handle, buffer, 0, buffer.length, 0)
-    if (bytes > FILE_LIMIT) throw new Error('SKILL.md changed beyond the 256 KiB limit.')
+    const buffer = Buffer.alloc(Number(info.size) + 1), bytes = readSync(handle, buffer, 0, buffer.length, 0)
+    if (bytes > Number(info.size)) throw new Error('SKILL.md grew while it was being read. Refresh the inventory.')
     const raw = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytes)).replace(/^\uFEFF/, '')
     const header = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)
     if (!header) throw new Error('SKILL.md needs YAML name and description frontmatter.')
