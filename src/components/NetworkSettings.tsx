@@ -3,6 +3,7 @@ import { Button } from '@gpuix/react'
 import type { EngineHandle } from '../engine/use-engine'
 import type { NetworkSettings as Settings } from '../../engine/src/protocol'
 import { clipboardAvailable, copyText } from '../shell/clipboard'
+import { DevicePairing } from './DevicePairing'
 
 const card = { display: 'flex' as const, flexDirection: 'column' as const, gap: 12, padding: 20, borderRadius: 13, backgroundColor: '#222222' }
 const field = { height: 32, padding: 8, borderRadius: 7, borderWidth: 1, borderColor: '#373737', backgroundColor: '#141414', color: '#dddddd', fontSize: 12 }
@@ -74,6 +75,7 @@ export function NetworkSettings({ engine }: { engine?: EngineHandle }) {
       <text style={{ fontSize: 12, lineHeight: 18, color: '#d0aa79', padding: 10, backgroundColor: '#171717', borderRadius: 8 }}>This token grants access to tasks, files, Git and agents on this machine. Use a trusted HTTPS proxy outside a private network. Existing network connections close when settings or the token change.</text>
       {copied && <text testId="network-copied" style={{ fontSize: 12, color: '#a5c8a1' }}>{copied}</text>}
     </div>
+    <DevicePairing engine={engine} active={state?.active ?? false} networkRevision={state?.revision ?? -1} />
     {(error || state?.error) && <text testId="network-error" style={{ fontSize: 12, color: '#F87171' }}>{error || state?.error}</text>}
   </div>
 }

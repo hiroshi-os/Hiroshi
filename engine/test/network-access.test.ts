@@ -42,7 +42,7 @@ test('opt-in network access preserves the local listener, enforces origins/auth,
     const replacement = (await daemon.client.networkToken()).token
     expect(replacement).not.toBe(initialToken)
     await expect(remote.health()).rejects.toMatchObject({ status: 401 })
-    const occupied = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() })
+    const occupied = Bun.serve({ port: 0, hostname: '0.0.0.0', fetch: () => new Response() })
     try {
       await expect(daemon.client.updateNetwork({ ...state, port: occupied.port! })).rejects.toMatchObject({ code: 'network_apply' })
       expect((await daemon.client.networkSettings()).port).toBe(listening)

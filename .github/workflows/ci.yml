@@ -101,6 +101,9 @@ jobs:
       - name: Verify installed skill discovery and daemon integration
         run: bun test engine/test/skills.test.ts
 
+      - name: Verify device pairing and network credentials
+        run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts
+
       - name: Run the integration tests
         # The native suite uses an in-process renderer. These additional tests
         # exercise actual daemon/IPC/process-group and Windows Job behavior.

@@ -19,7 +19,16 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.23.0] - Unreleased
+## [0.24.0] - Unreleased
+
+### Added
+
+- Single-use daemon invitations with desktop QR codes, copyable links and an
+  engine CLI pairing command, plus independently revocable device credentials.
+- Versioned remote connection metadata and a documented HTTP/SSE client contract,
+  with integration coverage for restart, replay, revocation and desktop pairing.
+
+## [0.23.0]
 
 ### Added
 
