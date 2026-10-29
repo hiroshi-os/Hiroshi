@@ -31,6 +31,7 @@ import type { Store } from './store'
 import { ExecutionError, type ExecutionBudget } from './execution'
 import { randomUUID } from 'node:crypto'
 import { NetworkAccess } from './network-access'
+import { InternetAccess } from './internet-access'
 import { UsageService } from './usage'
 import type { CliConversations } from './cli-conversations'
 import type { AccessControls } from './tools/access'
@@ -125,6 +126,7 @@ export function startServer(
   // One subscription to the store, one encoding per event, one queue per client.
   const hub = new Feed(store)
   let network: NetworkAccess | undefined
+  let internet: InternetAccess | undefined
   const usage = options.home ? new UsageService(options.home, store, process.env.HIROSHI_USAGE_HOME || homedir()) : undefined
   const skills = options.home ? new Skills(options.home) : undefined
 
@@ -177,9 +179,20 @@ export function startServer(
       case 'pairingState':
         if (!network) throw notFound('network pairing')
         return json(network.pairing.state(), status)
+      case 'internetSettings':
+        if (!internet) throw notFound('internet access')
+        return json(internet.snapshot(), status)
+      case 'updateInternet':
+        if (!internet) throw notFound('internet access')
+        return json(await internet.update(await body<OperationRequest<'updateInternet'>>(request)), status)
       case 'createPairing': {
         if (!network) throw notFound('network pairing')
         const input = await body<OperationRequest<'createPairing'>>(request)
+        if (input?.remote) {
+          if (input.address !== undefined) throw invalid('pairing_address', 'Choose either internet pairing or an explicit address.')
+          if (!internet) throw notFound('internet access')
+          return json(internet.invite(), status)
+        }
         return json(network.invite(input?.address), status)
       }
       case 'cancelPairing': {
@@ -392,7 +405,7 @@ export function startServer(
       }
   }
   const server = Bun.serve({ hostname: listen.hostname, port: listen.port, development: false, fetch: dispatch })
-  if (options.home) network = new NetworkAccess(options.home, dispatch, options.token)
+  if (options.home) { network = new NetworkAccess(options.home, dispatch, options.token); internet = new InternetAccess(options.home, network) }
 
   const host = listen.hostname === '0.0.0.0' || listen.hostname === '::' ? '127.0.0.1' : listen.hostname
   const port = server.port ?? listen.port
@@ -401,9 +414,11 @@ export function startServer(
     url: `http://${host}:${port}`,
     port,
     stop: () => {
+      const closing = internet?.close().catch(() => {})
       network?.close()
       hub.close()
       server.stop(true)
+      return closing
     },
   }
 }

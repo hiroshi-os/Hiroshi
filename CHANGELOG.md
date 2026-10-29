@@ -19,7 +19,20 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.24.0] - Unreleased
+## [0.25.0] - Unreleased
+
+### Added
+
+- Opt-in daemon-managed OpenTunnel lifecycle and private internet management API,
+  with a dedicated authenticated gateway and internet-ready pairing invitations.
+- Isolated persistent tunnel identity, cancellation, reconnect status, explicit
+  retry and a bounded hosted-service verification probe.
+
+### Changed
+
+- Pin Bun 1.4.2 for the tunnel SDK's supported runtime and compiled sidecars.
+
+## [0.24.0]
 
 ### Added
 

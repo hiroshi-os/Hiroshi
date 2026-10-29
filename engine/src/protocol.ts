@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 17
+export const PROTOCOL_VERSION = 18
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.24.0'
+export const ENGINE_VERSION = '0.25.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -137,6 +137,7 @@ export interface Health {
 
 export interface NetworkUpdate { revision: number; enabled: boolean; port: number; origins: string[] }
 export interface NetworkSettings extends NetworkUpdate { active: boolean; urls: string[]; error: string | null; transport: string }
+export interface InternetSettings { revision: number; enabled: boolean; state: 'disabled' | 'starting' | 'connected' | 'reconnecting' | 'failed'; url: string | null; error: string | null }
 
 export interface UsageCounters {
   inputTokens?: number; outputTokens?: number; cachedInputTokens?: number
@@ -664,7 +665,9 @@ export type StartRunInput = SessionRef & StartRunRequest
  */
 export interface OperationShapes {
   pairingState: { request: NoInput; response: PairingState }
-  createPairing: { request: { address?: string }; response: PairingInvitation }
+  createPairing: { request: { address?: string; remote?: boolean }; response: PairingInvitation }
+  internetSettings: { request: NoInput; response: InternetSettings }
+  updateInternet: { request: { revision: number; enabled: boolean }; response: InternetSettings }
   cancelPairing: { request: { grantID: string }; response: PairingState }
   revokePairedDevice: { request: { deviceID: string; revision: number }; response: PairingState }
   skills: { request: SessionRef; response: SkillInventory }
@@ -729,6 +732,8 @@ export interface Operation<Name extends OperationName = OperationName> {
 }
 
 export const operations: readonly Operation[] = [
+  { name: 'internetSettings', method: 'GET', path: '/v1/internet' },
+  { name: 'updateInternet', method: 'POST', path: '/v1/internet' },
   { name: 'pairingState', method: 'GET', path: '/v1/network/pairing' },
   { name: 'createPairing', method: 'POST', path: '/v1/network/pairing/create' },
   { name: 'cancelPairing', method: 'POST', path: '/v1/network/pairing/cancel' },

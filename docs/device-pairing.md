@@ -34,8 +34,10 @@ loopback. A hostname or one of several interface addresses may not resolve from
 the other device; clients should try the advertised addresses before asking for
 a manual address. HTTPS overrides must be exact origins, without credentials,
 paths, queries or fragments. The listener binds IPv4 network interfaces.
-This release does not create a tunnel, open firewall ports, or install a mobile
-client. Pairing alone does not make a daemon reachable across the internet.
+Ordinary pairing does not create a tunnel, open firewall ports, or install a
+mobile client. The separate [managed internet API](internet-access.md) can create
+an opt-in tunnel; its desktop and CLI controls are tracked in milestone 5.
+Pairing alone does not make a daemon reachable across the internet.
 
 Paired devices have access to sessions, files, commands, agents and approvals.
 Only pair devices you trust. Use a private network, VPN or trusted HTTPS proxy;
