@@ -27,7 +27,7 @@ import {
  * here, which is what keeps the assertions below exhaustive.
  */
 const everyOperation: { [Name in OperationName]: Name } = {
-  pairingState: 'pairingState', createPairing: 'createPairing', cancelPairing: 'cancelPairing', revokePairedDevice: 'revokePairedDevice',
+  pairingState: 'pairingState', createPairing: 'createPairing', cancelPairing: 'cancelPairing', revokePairedDevice: 'revokePairedDevice', internetSettings: 'internetSettings', updateInternet: 'updateInternet',
   updateAccess: 'updateAccess',
   freshCliConversation: 'freshCliConversation',
   usageReport: 'usageReport', updateUsagePricing: 'updateUsagePricing', networkSettings: 'networkSettings',

@@ -49,13 +49,13 @@ export function tempHome(): string {
   return mkdtempSync(path.join(os.tmpdir(), 'hiroshi-engine-'))
 }
 
-export async function startDaemon(options: { home?: string; workspace?: string; env?: Record<string, string> } = {}): Promise<Daemon> {
+export async function startDaemon(options: { home?: string; workspace?: string; env?: Record<string, string>; executable?: string } = {}): Promise<Daemon> {
   const home = options.home ?? tempHome()
   const paths = enginePaths(home)
   const workspace = options.workspace ?? home
 
   const proc = Bun.spawn({
-    cmd: [process.execPath, ENTRY, 'serve', '--data-dir', home, '--workspace', workspace],
+    cmd: [...(options.executable ? [options.executable] : [process.execPath, ENTRY]), 'serve', '--data-dir', home, '--workspace', workspace],
     stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, ...options.env, HIROSHI_HOME: home },
     windowsHide: true,

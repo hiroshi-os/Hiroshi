@@ -1,9 +1,10 @@
 {
   "name": "hiroshi",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "Multi-Agent Orchestration Cockpit rendered on the GPU with GPUIX",
   "private": true,
   "type": "module",
+  "engines": { "bun": ">=1.4.2" },
   "scripts": {
     "predev": "bun scripts/build-window-macos.ts",
     "dev": "bun --hot app.tsx",
@@ -28,8 +29,10 @@
   },
   "dependencies": {
     "@gpuix/react": "^0.11.0",
+    "@opentunnel/client": "0.6.1",
     "@types/mdast": "^4.0.4",
     "ajv": "^8.20.0",
+    "effect": "4.0.0",
     "htmlparser2": "^12.0.0",
     "react": "^19.2.4",
     "safe-mdx": "1.14.0",

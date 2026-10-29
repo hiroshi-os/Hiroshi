@@ -6,8 +6,10 @@
       "name": "hiroshi",
       "dependencies": {
         "@gpuix/react": "^0.11.0",
+        "@opentunnel/client": "0.6.1",
         "@types/mdast": "^4.0.4",
         "ajv": "^8.20.0",
+        "effect": "4.0.0",
         "htmlparser2": "^12.0.0",
         "react": "^19.2.4",
         "safe-mdx": "1.14.0",
@@ -46,6 +48,10 @@
     "@gpuix/react": ["@gpuix/react@0.11.0", "", { "dependencies": { "@gpuix/native": "^0.11.0", "react-reconciler": "^0.33.0" }, "peerDependencies": { "react": "^19.2.0" } }, "sha512-jFbpCT2B1wSUajbItZGPr0bLhx5DDvljQL9l19tOg5ZoJlizZfv5lCnzQoi6ApQOM6//8zl5sQxVnG60CAYLuQ=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.6.0", "", {}, "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw=="],
+
+    "@opentunnel/client": ["@opentunnel/client@0.6.1", "", { "dependencies": { "@opentunnel/protocol": "0.6.1" }, "peerDependencies": { "effect": "^4.0.0", "undici": ">=7.0.0" }, "optionalPeers": ["undici"] }, "sha512-OuVNlWywQebIXCtkixjVHebOsR3KFRxJ0DSZry6Dzj4hHaHIf3eTVmQ7VwLCjuVmw+ctU2qHIP6RxuAPr07WDw=="],
+
+    "@opentunnel/protocol": ["@opentunnel/protocol@0.6.1", "", { "peerDependencies": { "effect": "^4.0.0" } }, "sha512-fdckKvQ4TEJSQ2Ia/M/GKmDbCTCw148Wc1zo6HcpUBjSwsFeKs6Tbql4Uih1oIVR8NVqtGrcPZukVVvWFyOEHA=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.152.0", "", {}, "sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw=="],
 
@@ -178,6 +184,8 @@
     "domhandler": ["domhandler@6.0.1", "", { "dependencies": { "domelementtype": "^3.0.0" } }, "sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg=="],
 
     "domutils": ["domutils@4.0.2", "", { "dependencies": { "dom-serializer": "^3.0.0", "domelementtype": "^3.0.0", "domhandler": "^6.0.0" } }, "sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA=="],
+
+    "effect": ["effect@4.0.0", "", {}, "sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ=="],
 
     "entities": ["entities@8.1.0", "", {}, "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA=="],
 

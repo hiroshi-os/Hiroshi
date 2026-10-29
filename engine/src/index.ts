@@ -254,7 +254,7 @@ async function serve(flags: Flags): Promise<number> {
     shuttingDown = true
     log.info('shutting down', { reason })
     try {
-      server.stop()
+      await server.stop()
     } catch {
       // Already stopped.
     }
