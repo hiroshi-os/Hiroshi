@@ -18,6 +18,8 @@ import { createPromptStore } from '../shell/prompt-store'
 import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
+  workspaceGit: () => Promise<import('../../engine/src/protocol').WorkspaceGit>
+  changeWorkspaceGit: (input: Omit<OperationRequest<'changeWorkspaceGit'>, 'id'>) => Promise<void>
   updateAccess: (id: string, mode: import('../../engine/src/protocol').AccessMode, revision: number) => Promise<void>
   freshCliConversation: (conversation: CliConversation, key: string) => Promise<void>
   usageReport: (input: UsageQuery) => Promise<UsageReport>
@@ -229,6 +231,16 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (epoch === generation.current) selectSession(created.id, created.cwd)
   }, [workspace, selectSession])
 
+  const workspaceGit = useCallback(async () => {
+    if (!client.current || !session.current) throw new Error('The engine is not connected')
+    return client.current.workspaceGit({ id: session.current })
+  }, [])
+  const changeWorkspaceGit = useCallback(async (input: Omit<OperationRequest<'changeWorkspaceGit'>, 'id'>) => {
+    if (!client.current || !session.current) throw new Error('The engine is not connected')
+    const epoch = generation.current, origin = session.current
+    const { session: opened } = await client.current.changeWorkspaceGit({ id: origin, ...input })
+    if (epoch === generation.current && session.current === origin) selectSession(opened.id, opened.cwd)
+  }, [selectSession])
   const openProject = useCallback(async (cwd: string) => {
     if (!client.current) throw new Error('The engine is not connected')
     const epoch = generation.current, connection = client.current
@@ -387,7 +399,7 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || session.current !== conversation.sessionID) throw new Error('The selected task changed. Return to the original task before recovering its CLI conversation.')
     await client.current.freshCliConversation({ id: conversation.sessionID, conversationID: conversation.id, revision: conversation.revision, key })
   }, [])
-  return { updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { workspaceGit, changeWorkspaceGit, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }

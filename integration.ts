@@ -399,6 +399,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     // including reselecting the existing saved default.
     await app.getByTestId('settings').click()
     await app.getByTestId('settings-section-providers').click()
+    await app.getByTestId('provider-choose-default').waitFor()
     await app.getByTestId('provider-choose-default').click()
     await app.getByTestId('provider-default-local/echo').waitFor()
     await app.getByTestId('provider-default-local/echo').click()
@@ -435,6 +436,7 @@ async function driveTheWindow(home: string, browserURL: string): Promise<void> {
     } catch (error) { note(`provider screenshot unavailable: ${String(error)}`) }
     const providerState = await providerClient.providers()
     const discoveredModel = providerState.agents.find((agent) => agent.id === 'cursor')!.models[0]!.catalogID
+    await app.getByTestId('provider-choose-default').waitFor()
     await app.getByTestId('provider-choose-default').click()
     await app.getByTestId(`model-star-${discoveredModel}`).waitFor()
     await app.getByTestId(`model-star-${discoveredModel}`).click()

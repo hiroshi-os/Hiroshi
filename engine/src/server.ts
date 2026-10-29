@@ -9,6 +9,7 @@
  */
 
 import { WorkspaceFiles, reviewWorkspace } from './workspace'
+import { workspaceGit, changeWorkspaceGit } from './workspace-git'
 import path from 'node:path'
 import { assertWorkspace } from './projects'
 import { browsePage } from './browser'
@@ -123,6 +124,12 @@ export function startServer(
   const { store, runs, sessions, steps, log } = options
   // One subscription to the store, one encoding per event, one queue per client.
   const hub = new Feed(store)
+  let gitChanging = false
+  const assertNotChanging = () => { if (gitChanging) throw conflict('workspace_busy', 'Wait for the Git workspace change to finish.') }
+  const assertGitIdle = () => {
+    if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id) || store.inbox(candidate.id, 'pending').length > 0)) throw conflict('workspace_busy', 'Finish active and queued work before changing Git workspaces.')
+    for (const candidate of store.sessions()) options.checkpoints?.assertReady(candidate.id)
+  }
   let network: NetworkAccess | undefined
   const usage = options.home ? new UsageService(options.home, store, process.env.HIROSHI_USAGE_HOME || homedir()) : undefined
 
@@ -172,6 +179,32 @@ export function startServer(
     const status = operation.status ?? 200
 
     switch (operation.name) {
+      case 'workspaceGit': {
+        const session = assertWorkspace(store, params.id!)
+        return json(await maintenance(session.id, request.signal, () => workspaceGit(session.cwd)), status)
+      }
+      case 'changeWorkspaceGit': {
+        const input = await body<OperationRequest<'changeWorkspaceGit'>>(request)
+        assertNotChanging(); assertGitIdle()
+        const session = assertWorkspace(store, params.id!)
+        if (!options.home) throw notFound('managed workspaces')
+        gitChanging = true
+        try {
+          const cwd = await maintenance(session.id, request.signal, () => changeWorkspaceGit(session.cwd, options.home!, input, () => {
+            assertWorkspace(store, session.id); assertGitIdle()
+            // Invalidate before Git writes, so a daemon crash cannot resume a
+            // native conversation on the changed checkout. A failed switch
+            // deliberately leaves this conservative recovery boundary intact.
+            if (input.action !== 'worktree') for (const prior of store.sessions()) {
+              const relative = path.relative(session.cwd, prior.cwd)
+              if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) options.cliConversations?.block(prior.id, 'The Git branch was changed. Start a fresh CLI conversation before continuing this task.')
+            }
+          }))
+          // A new branch starts a new task; existing CLI histories are never
+          // silently carried into a different checkout.
+          return json({ session: sessions.create({ cwd }) }, status)
+        } finally { gitChanging = false }
+      }
       case 'usageReport': {
         if (!usage) throw notFound('usage reporting')
         if (!store.session(params.id!)) throw notFound('session')
@@ -225,6 +258,7 @@ export function startServer(
         if (operation.name === 'workspaceReview') return json(await maintenance(session.id, request.signal, () => { assertWorkspace(store, session.id); return reviewWorkspace(session.cwd, input.base) }), status)
         if (operation.name === 'browse') return json(await browsePage(input.url), status)
         const command = input as OperationRequest<'workspaceCommit'>
+        assertNotChanging()
         options.checkpoints?.assertReady(session.id)
         if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'finish active work before committing')
         if (typeof command.message !== 'string' || (!command.pushOnly && !command.message.trim()) || command.message.length > 4000 ||
@@ -233,6 +267,7 @@ export function startServer(
         if (!review.available || review.truncated || review.files.some((file) => file.status === 'U')) throw invalid('workspace_commit', review.reason ?? 'resolve conflicts or a truncated review before committing')
         if (review.revision !== command.revision) throw conflict('workspace_changed', 'the workspace changed; refresh the review before committing')
         // Recheck after asynchronous Git reads: a run or rewind may have begun.
+        assertNotChanging()
         options.checkpoints?.assertReady(session.id)
         if (store.runningRuns().length || store.sessions().some((candidate) => steps.busy(candidate.id))) throw conflict('workspace_busy', 'finish active work before committing')
         const commands: string[][] = []
@@ -248,6 +283,7 @@ export function startServer(
       case 'rewind': {
         if (!options.checkpoints) throw notFound('checkpoint service')
         const input = await body<{ checkpointID: string; key: string }>(request)
+        assertNotChanging()
         const restore = () => options.checkpoints!.restore(params.id!, input.checkpointID, input.key)
         return json({ rewind: options.budget ? options.budget.synchronous({ id: `rewind_${randomUUID()}`, sessionID: params.id!, kind: 'maintenance' }, restore) : restore() }, status)
       }
@@ -287,6 +323,7 @@ export function startServer(
         if (!options.cliConversations) throw notFound('CLI conversation service')
         if (steps.busy(params.id!)) throw conflict('cli_busy', 'Wait for the current task to settle before replacing its CLI conversation.')
         const input = await body<OperationRequest<'freshCliConversation'>>(request)
+        assertNotChanging()
         const conversation = options.cliConversations.fresh(params.id!, input)
         // Explicit recovery can release previously admitted follow-ups, but it
         // never starts the interrupted step or resubmits its original prompt.
@@ -296,6 +333,7 @@ export function startServer(
 
       case 'prompt': {
         const input = await body<PromptRequest>(request)
+        assertNotChanging()
         const existing = typeof input.key === 'string' ? store.inboxByKey(params.id, input.key.trim()) : null
         if (!existing && input.model !== undefined && (typeof input.model !== 'string' || !options.catalog?.has(input.model))) {
           throw invalid('unknown_model', 'model must name a model in the engine catalog')
@@ -316,6 +354,7 @@ export function startServer(
 
       case 'startRun': {
         const input = await body<StartRunRequest>(request)
+        assertNotChanging()
         options.checkpoints?.assertReady(params.id!, input.cwd)
         return json({ run: runs.start(params.id, input.command ?? '', input.cwd) }, status)
       }

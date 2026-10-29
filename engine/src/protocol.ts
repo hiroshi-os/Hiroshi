@@ -23,10 +23,10 @@ export const ENGINE_NAME = 'hiroshi-engine'
  * The version of the shapes below. Bump it when a field is renamed, removed or
  * reinterpreted. Adding an optional field does not need a bump.
  */
-export const PROTOCOL_VERSION = 15
+export const PROTOCOL_VERSION = 16
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.22.0'
+export const ENGINE_VERSION = '0.23.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -263,6 +263,11 @@ export interface WorkspaceEntry { path: string; name: string; kind: 'file' | 'di
 export interface WorkspaceDirectory { path: string; entries: WorkspaceEntry[]; truncated: boolean }
 export interface WorkspaceFile { path: string; text: string; bytes: number; binary: boolean; truncated: boolean; digest: string }
 export interface FileChange { path: string; previousPath?: string; status: string; staged: boolean; unstaged: boolean }
+export interface WorkspaceGit {
+  available: boolean; reason: string | null; root: string; local: string; current: string; head: string; revision: string; dirty: boolean
+  branches: { name: string; checkedOut: string | null }[]
+  worktrees: { cwd: string; branch: string; locked: boolean; prunable: boolean }[]
+}
 export interface WorkspaceReview {
   available: boolean; reason: string | null; root: string; branch: string; base: string; baseCommit: string
   revision: string; files: FileChange[]; patch: string; stagedPatch: string; workingPatch: string; truncated: boolean
@@ -668,6 +673,8 @@ export interface OperationShapes {
   updateProviders: { request: ProviderUpdate; response: ProviderState }
   workspaceList: { request: SessionRef & { path?: string }; response: WorkspaceDirectory }
   workspaceFile: { request: SessionRef & { path: string }; response: WorkspaceFile }
+  workspaceGit: { request: SessionRef; response: WorkspaceGit }
+  changeWorkspaceGit: { request: SessionRef & { action: 'checkout' | 'create' | 'worktree'; name: string; revision: string }; response: { session: Session } }
   workspaceReview: { request: SessionRef & { base?: string }; response: WorkspaceReview }
   workspaceCommit: { request: SessionRef & { revision: string; base?: string; message: string; includeUnstaged: boolean; push: boolean; pushOnly?: boolean }; response: { run: Run } }
   browse: { request: SessionRef & { url: string }; response: BrowserPage }
@@ -726,6 +733,8 @@ export const operations: readonly Operation[] = [
   { name: 'updateProviders', method: 'POST', path: '/v1/providers/settings' },
   { name: 'workspaceList', method: 'POST', path: '/v1/sessions/:id/workspace/list' },
   { name: 'workspaceFile', method: 'POST', path: '/v1/sessions/:id/workspace/file' },
+  { name: 'workspaceGit', method: 'POST', path: '/v1/sessions/:id/workspace/git' },
+  { name: 'changeWorkspaceGit', method: 'POST', path: '/v1/sessions/:id/workspace/git/change' },
   { name: 'workspaceReview', method: 'POST', path: '/v1/sessions/:id/workspace/review' },
   { name: 'workspaceCommit', method: 'POST', path: '/v1/sessions/:id/workspace/commit' },
   { name: 'browse', method: 'POST', path: '/v1/sessions/:id/browser' },

@@ -71,6 +71,14 @@ jobs:
       - name: Verify all permission modes in a source window
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:access") -MaxProcesses 10 -MemoryMB 2560 -TimeoutSeconds 150'
 
+      - name: Verify Git branch and worktree menus in a source window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:git") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 120'
+
+      - name: Verify Git branch and worktree menus in the packaged window
+        run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:git") -MaxProcesses 8 -MemoryMB 2048 -TimeoutSeconds 120'
+        env:
+          HIROSHI_TEST_PACKAGED: ${{ github.workspace }}/dist/hiroshi.exe
+
       - name: Verify all permission modes in the packaged window
         run: '& ./scripts/run-guarded.ps1 -Executable (Get-Command bun.exe).Source -Arguments @("run","test:access") -MaxProcesses 10 -MemoryMB 2560 -TimeoutSeconds 150'
         env:
