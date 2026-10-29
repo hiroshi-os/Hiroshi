@@ -18,6 +18,10 @@ import { createPromptStore } from '../shell/prompt-store'
 import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
+  skills: () => Promise<import('../../engine/src/protocol').SkillInventory>
+  skillDocument: (input: import('../../engine/src/protocol').SkillSelection) => Promise<import('../../engine/src/protocol').SkillDocument>
+  updateSkill: (input: Omit<OperationRequest<'updateSkill'>, 'id'>) => Promise<import('../../engine/src/protocol').SkillInventory>
+  removeSkill: (input: Omit<OperationRequest<'removeSkill'>, 'id'>) => Promise<import('../../engine/src/protocol').OperationResponse<'removeSkill'>>
   updateAccess: (id: string, mode: import('../../engine/src/protocol').AccessMode, revision: number) => Promise<void>
   freshCliConversation: (conversation: CliConversation, key: string) => Promise<void>
   usageReport: (input: UsageQuery) => Promise<UsageReport>
@@ -331,6 +335,22 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || !session.current) throw new Error('the engine is not connected')
     return (await client.current.workspaceCommit({ id: session.current, ...input })).run.id
   }, [])
+  const skills = useCallback(async () => {
+    if (!client.current || !session.current) throw new Error('Connect the Hiroshi daemon to discover skills.')
+    return client.current.skills({ id: session.current })
+  }, [])
+  const skillDocument = useCallback(async (input: import('../../engine/src/protocol').SkillSelection) => {
+    if (!client.current || !session.current) throw new Error('Connect the Hiroshi daemon to read this skill.')
+    return client.current.skillDocument({ id: session.current, ...input })
+  }, [])
+  const updateSkill = useCallback(async (input: Omit<OperationRequest<'updateSkill'>, 'id'>) => {
+    if (!client.current || !session.current) throw new Error('Connect the Hiroshi daemon to save skills.')
+    return client.current.updateSkill({ id: session.current, ...input })
+  }, [])
+  const removeSkill = useCallback(async (input: Omit<OperationRequest<'removeSkill'>, 'id'>) => {
+    if (!client.current || !session.current) throw new Error('Connect the Hiroshi daemon to remove this skill.')
+    return client.current.removeSkill({ id: session.current, ...input })
+  }, [])
   const browse = useCallback(async (url: string) => {
     if (!client.current || !session.current) throw new Error('the engine is not connected')
     return client.current.browse({ id: session.current, url })
@@ -387,7 +407,7 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || session.current !== conversation.sessionID) throw new Error('The selected task changed. Return to the original task before recovering its CLI conversation.')
     await client.current.freshCliConversation({ id: conversation.sessionID, conversationID: conversation.id, revision: conversation.revision, key })
   }, [])
-  return { updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { skills, skillDocument, updateSkill, removeSkill, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }
