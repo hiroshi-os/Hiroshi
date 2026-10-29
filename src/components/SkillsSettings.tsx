@@ -96,7 +96,7 @@ export function SkillsSettings({ engine, renderMarkdown, openPath = openLocalPat
         </div>
         <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' }}>
           <Action id="skill-open" label="Open SKILL.md" disabled={disabled} onClick={() => void run(async () => { const current = await engine!.skillDocument({ skillID: skill.id, hash: skill.hash }); await openPath(current.skill.path) })} />
-          <Action id="skill-folder" label="Show in File Manager" disabled={disabled} onClick={() => void run(async () => { await engine!.skillDocument({ skillID: skill.id, hash: skill.hash }); await openPath(origin!.path) })} />
+          <Action id="skill-folder" label="Show in File Manager" disabled={disabled} onClick={() => void run(async () => { const current = await engine!.skillDocument({ skillID: skill.id, hash: skill.hash }); const installation = current.skill.origins.find((item) => item.path === origin?.path); if (!installation) throw new Error('This installation changed. Refresh Skills before opening its folder.'); await openPath(installation.path) })} />
           <Action id="skill-copy" label="Copy Path" disabled={disabled || !clipboardAvailable()} onClick={() => void run(async () => { await copyText(skill.path); setNotice('Path copied') })} />
           <div style={{ flexGrow: 1 }} />
           <Action id="skill-delete" label="Delete" disabled={disabled || !origin || origin.managed} onClick={() => { if (origin) setConfirmation({ skill, origin }) }} />
