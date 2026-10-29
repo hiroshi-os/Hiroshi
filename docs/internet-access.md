@@ -7,10 +7,47 @@ internet connectivity in three ordered items:
 2. [Desktop and CLI controls](https://github.com/hiroshi-os/Hiroshi/issues/89).
 3. [Internet acceptance and operational documentation](https://github.com/hiroshi-os/Hiroshi/issues/90).
 
-The first item adds the daemon API and OpenTunnel SDK integration. Desktop
-enable/disable controls and a convenience remote pairing CLI remain the next
-item; generating a normal LAN invitation still does not enable internet access.
-The mobile application's source is unchanged.
+The daemon lifecycle and desktop/CLI controls are implemented. Expanded device
+and reconnect acceptance remains tracked in issue 90. Generating a normal LAN
+invitation does not enable internet access. The mobile application's source is unchanged.
+
+## Use internet pairing
+
+Open **Settings → Daemon → Internet access** and enable the toggle. Initial
+certificate setup can take a minute. The card shows setup, connected,
+reconnecting or failure state, with an HTTPS address and Copy action when ready.
+Use **Retry** after a failure, **Refresh** to check status, or disable the toggle
+to cancel setup or close internet access. LAN exposure can remain off.
+
+Under **Pair a device**, select **Internet** and choose **Pair device**. Internet
+is selected automatically when internet access is enabled. The QR and copyable
+link use the public HTTPS endpoint; the create action stays disabled while that
+endpoint is unavailable. A disconnected status hides the previous QR/link.
+**LAN / HTTPS** selects direct network or operator-configured HTTPS pairing.
+Each new invitation cancels the previous one, and device access can be revoked
+independently in the same card. A compatible client is still required.
+
+From the running daemon's engine CLI:
+
+```sh
+hiroshi-engine pair --remote
+hiroshi-engine pair --remote --json --timeout 120
+hiroshi-engine internet status --json
+hiroshi-engine internet enable
+hiroshi-engine internet retry
+hiroshi-engine internet disable
+# For source development, replace hiroshi-engine with:
+# bun engine/src/index.ts
+```
+
+`pair --remote` explicitly enables internet access if off, waits for a connected
+HTTPS route, then prints a single-use QR/link. Progress goes to stderr so JSON
+stdout remains machine readable. It never enables LAN exposure. `--remote`
+cannot be combined with `--url`, `--expose` or `--port`. Wait time defaults to
+300 seconds and can be set from 1 to 300 seconds. Timeout or CLI exit leaves
+daemon-owned setup/access enabled; use `internet disable` to stop it. A fatal
+connection error requires explicit retry, and no invitation is issued from an
+unavailable route. Status and enable commands return promptly during setup.
 
 ## Daemon contract
 
@@ -97,6 +134,10 @@ hosted registration. It checks lifecycle cancellation, stale callbacks, route
 persistence, restart, reconnect state, atomic intent updates, private owner
 boundaries, LAN independence, credential rotation and malformed configuration.
 Native/source/packaged regressions verify the supported runtime across platforms.
+Native controls also cover explicit enable, progress, failure/retry, disabling
+setup, internet pairing with LAN off and hiding stale QR codes. Ordinary source
+and packaged window CI checks verify default-off internet access without
+creating public registrations.
 
 The explicit hosted probe creates one isolated daemon and a temporary public
 tunnel, pairs a device over HTTPS, runs a real session, denies owner routes and
@@ -117,3 +158,16 @@ probe passed over the configured college-network proxy, using a 1536 MB process
 tree ceiling and a measured 679 MB peak. This proves a hosted HTTPS round trip
 from this computer; an independent mobile-network device check and the remaining
 acceptance scenarios are tracked in issue 90.
+
+The opt-in desktop probe additionally drives real controls and independently
+decodes the QR from a screenshot, pairs over public HTTPS, runs a session,
+revokes the device, invokes the remote CLI and disables access with LAN off:
+
+```sh
+bun internet.integration.ts --live
+# Set HIROSHI_TEST_PACKAGED to the compiled desktop path to check that build.
+```
+
+Each run owns one window and daemon, under explicit resource/time ceilings, and
+deletes its temporary hosted registration afterward. It is not run against the
+public service in ordinary CI.

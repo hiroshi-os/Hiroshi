@@ -19,7 +19,18 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.25.0] - Unreleased
+## [0.26.0] - Unreleased
+
+### Added
+
+- Desktop internet-access toggle, setup/reconnect status, HTTPS address copy,
+  explicit retry and internet/LAN pairing selection that hides unavailable codes.
+- `pair --remote` with bounded readiness waiting and machine-readable invitations,
+  plus internet status, enable, retry and disable CLI commands.
+- Native controls and opt-in real source/packaged window tests against the hosted
+  HTTPS service, including screenshot QR decoding, session access and revocation.
+
+## [0.25.0]
 
 ### Added
 

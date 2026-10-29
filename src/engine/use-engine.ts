@@ -19,7 +19,9 @@ import { PromptDraftController, type DraftView } from './prompt-draft'
 
 export interface EngineHandle {
   pairingState: () => Promise<import('../../engine/src/protocol').PairingState>
-  createPairing: (address?: string) => Promise<import('../../engine/src/protocol').PairingInvitation>
+  createPairing: (address?: string, remote?: boolean) => Promise<import('../../engine/src/protocol').PairingInvitation>
+  internetSettings: () => Promise<import('../../engine/src/protocol').InternetSettings>
+  updateInternet: (input: { revision: number; enabled: boolean }) => Promise<import('../../engine/src/protocol').InternetSettings>
   cancelPairing: (grantID: string) => Promise<import('../../engine/src/protocol').PairingState>
   revokePairedDevice: (deviceID: string, revision: number) => Promise<import('../../engine/src/protocol').PairingState>
   skills: () => Promise<import('../../engine/src/protocol').SkillInventory>
@@ -359,9 +361,17 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current) throw new Error('Connect the Hiroshi daemon to manage pairing.')
     return client.current.pairingState()
   }, [])
-  const createPairing = useCallback(async (address?: string) => {
+  const internetSettings = useCallback(async () => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to manage internet access.')
+    return client.current.internetSettings()
+  }, [])
+  const updateInternet = useCallback(async (input: { revision: number; enabled: boolean }) => {
+    if (!client.current) throw new Error('Connect the Hiroshi daemon to manage internet access.')
+    return client.current.updateInternet(input)
+  }, [])
+  const createPairing = useCallback(async (address?: string, remote?: boolean) => {
     if (!client.current) throw new Error('Connect the Hiroshi daemon to pair a device.')
-    return client.current.createPairing(address ? { address } : {})
+    return client.current.createPairing(remote ? { remote: true } : address ? { address } : {})
   }, [])
   const cancelPairing = useCallback(async (grantID: string) => {
     if (!client.current) throw new Error('Connect the Hiroshi daemon to cancel pairing.')
@@ -427,7 +437,7 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
     if (!client.current || session.current !== conversation.sessionID) throw new Error('The selected task changed. Return to the original task before recovering its CLI conversation.')
     await client.current.freshCliConversation({ id: conversation.sessionID, conversationID: conversation.id, revision: conversation.revision, key })
   }, [])
-  return { pairingState, createPairing, cancelPairing, revokePairedDevice, skills, skillDocument, updateSkill, removeSkill, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
+  return { internetSettings, updateInternet, pairingState, createPairing, cancelPairing, revokePairedDevice, skills, skillDocument, updateSkill, removeSkill, updateAccess, freshCliConversation, usageReport, updateUsagePricing, networkSettings, updateNetwork, networkToken, rotateNetworkToken, openProject, refreshProjects, refreshProviders, cancelProviderRefresh, updateProviders, selectSession, newSession, workspaceList, workspaceFile, workspaceReview, workspaceCommit, browse, rewind, snapshot, exec, prompt, draft, editDraft, retryPrompt, forgetPrompt, discardDraft, reloadDraft, interrupt, cancel, restart, answerPermission, toolOutput }
 }
 
 const blankDraft: DraftView = { revision: 0, draftRevision: 0, text: '', pending: null, busy: false, error: null, unsaved: false }
