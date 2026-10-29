@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startDaemon, tempHome, until } from './harness'
 import { workspaceGit } from '../src/workspace-git'
@@ -13,7 +13,9 @@ function repository(home: string) {
     if (result.exitCode) throw new Error(`git ${args.join(' ')}: ${result.stderr.toString()}`)
     return result.stdout.toString().trim()
   }
-  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@local'); git('config', 'commit.gpgsign', 'false')
+  const initialized = git('init', '-b', 'main')
+  if (!existsSync(join(cwd, '.git', 'HEAD'))) throw new Error(`Git init did not create HEAD: ${JSON.stringify({ cwd, initialized, files: readdirSync(cwd), git: Bun.which('git') })}`)
+  git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@local'); git('config', 'commit.gpgsign', 'false')
   git('config', 'core.autocrlf', 'false')
   writeFileSync(join(cwd, 'file.txt'), 'committed\n'); git('add', '.'); git('commit', '-m', 'initial')
   return { cwd: realpathSync(cwd), git }
