@@ -124,7 +124,12 @@ export class Skills {
     if (input.revision !== inventory.revision) throw conflict('skills_revision', 'Skills changed. Refresh before removing this installation.')
     const origin = skill.origins.find((origin) => origin.path === input.origin)
     if (!origin || origin.managed) throw invalid('skill_managed', 'This managed skill cannot be removed here.')
-    const target = path.join(path.dirname(origin.path), '.hiroshi-skill-trash', randomUUID(), path.basename(origin.path))
+    const trash = path.join(path.dirname(origin.path), '.hiroshi-skill-trash')
+    if (existsSync(trash) && (!lstatSync(trash).isDirectory() || lstatSync(trash).isSymbolicLink())) throw invalid('skill_trash', 'The recovery folder must be a normal directory, not a link.')
+    mkdirSync(trash, { recursive: true })
+    // Project recovery files must not become accidental Git additions.
+    try { writeFileSync(path.join(trash, '.gitignore'), '*\n', { flag: 'wx' }) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
+    const target = path.join(trash, randomUUID(), path.basename(origin.path))
     mkdirSync(path.dirname(target), { recursive: true })
     // Rename the installation entry, including a symlink itself. Never walk
     // or recursively delete its target, which may belong to another agent.
