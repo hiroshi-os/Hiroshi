@@ -4,6 +4,8 @@ import type { EngineHandle } from '../engine/use-engine'
 import type { NetworkSettings as Settings } from '../../engine/src/protocol'
 import { clipboardAvailable, copyText } from '../shell/clipboard'
 import { DevicePairing } from './DevicePairing'
+import { InternetSettings } from './InternetSettings'
+import type { InternetSettings as InternetState } from '../../engine/src/protocol'
 
 const card = { display: 'flex' as const, flexDirection: 'column' as const, gap: 12, padding: 20, borderRadius: 13, backgroundColor: '#222222' }
 const field = { height: 32, padding: 8, borderRadius: 7, borderWidth: 1, borderColor: '#373737', backgroundColor: '#141414', color: '#dddddd', fontSize: 12 }
@@ -12,6 +14,7 @@ export function NetworkSettings({ engine }: { engine?: EngineHandle }) {
   const [state, setState] = useState<Settings | null>(null), [port, setPort] = useState(''), [origins, setOrigins] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [token, setToken] = useState<string | null>(null), [copied, setCopied] = useState('')
   const pending = useRef(false)
+  const [internet, setInternet] = useState<InternetState | null>(null)
   const receive = (next: Settings) => { setState(next); setPort(String(next.port)); setOrigins(next.origins.join(', ')) }
   useEffect(() => {
     let stopped = false
@@ -57,11 +60,11 @@ export function NetworkSettings({ engine }: { engine?: EngineHandle }) {
       </div>
     </div>
     <div style={card}>
-      <text style={{ fontSize: 14, fontWeight: 600, color: '#dddddd' }}>Connection details</text>
+      <text style={{ fontSize: 14, fontWeight: 600, color: '#dddddd' }}>LAN connection details</text>
       <text style={{ fontSize: 13, color: '#999999' }}>{`Use these in a compatible Hiroshi client. Transport: ${state?.transport ?? 'HTTP / Server-Sent Events'}.`}</text>
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <text style={{ width: 80, fontSize: 12, color: '#999999' }}>API URL</text>
-        <text testId="network-url" style={{ flexGrow: 1, fontSize: 12, color: '#dddddd', whiteSpace: 'nowrap' }}>{state?.urls[0] ?? 'Enable exposure to connect'}</text>
+        <text style={{ width: 80, fontSize: 12, color: '#999999' }}>LAN URL</text>
+        <text testId="network-url" style={{ flexGrow: 1, fontSize: 12, color: '#dddddd', whiteSpace: 'nowrap' }}>{state?.urls[0] ?? 'LAN exposure is off'}</text>
         <Button testId="network-copy-url" disabled={busy || !state?.active || !clipboardAvailable()} onClick={() => void run(async () => { await copyText(state!.urls[0]!); setCopied('URL copied') })} style={action}><text style={{ fontSize: 12, color: '#bbbbbb' }}>Copy</text></Button>
       </div>
       <div style={{ height: 1, backgroundColor: '#333333' }} />
@@ -75,7 +78,8 @@ export function NetworkSettings({ engine }: { engine?: EngineHandle }) {
       <text style={{ fontSize: 12, lineHeight: 18, color: '#d0aa79', padding: 10, backgroundColor: '#171717', borderRadius: 8 }}>This token grants access to tasks, files, Git and agents on this machine. Use a trusted HTTPS proxy outside a private network. Existing network connections close when settings or the token change.</text>
       {copied && <text testId="network-copied" style={{ fontSize: 12, color: '#a5c8a1' }}>{copied}</text>}
     </div>
-    <DevicePairing engine={engine} active={state?.active ?? false} networkRevision={state?.revision ?? -1} />
+    <InternetSettings engine={engine} onChange={setInternet} />
+    <DevicePairing engine={engine} active={state?.active ?? false} networkRevision={state?.revision ?? -1} internet={internet} />
     {(error || state?.error) && <text testId="network-error" style={{ fontSize: 12, color: '#F87171' }}>{error || state?.error}</text>}
   </div>
 }

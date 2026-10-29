@@ -31,6 +31,12 @@ try {
       await waitUntil(async () => { const b = await app.getByTestId(id).bounds(); return b.y >= frame.y && b.y + b.height <= frame.y + frame.height }, `${id} inside the viewport`, 3000)
     }
     const click = async (id: string) => { await show(id); await app.getByTestId(id).click() }
+    await waitUntil(async () => (await app.getByTestId('internet-status').textContent()).includes('Off'), 'default internet status')
+    await click('pairing-route-internet')
+    await waitUntil(async () => (await app.getByTestId('pairing-unavailable').textContent()).includes('Enable internet access'), 'unavailable internet pairing hint')
+    await click('pairing-create')
+    check(!(await client.internetSettings()).enabled && !(await client.pairingState()).grants.length, 'Pairing implicitly enabled internet access')
+    await click('pairing-route-lan')
     const reservation = Bun.serve({ hostname: '0.0.0.0', port: 0, fetch: () => new Response() }), port = reservation.port!; reservation.stop(true)
     await show('network-port'); await app.getByTestId('network-port').fill(String(port)); await click('network-toggle')
     await waitUntil(async () => (await client.networkSettings()).active, 'network listener')

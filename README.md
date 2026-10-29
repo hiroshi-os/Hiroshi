@@ -33,8 +33,8 @@ Daemon settings offer opt-in network access with separate credentials and exact
 browser origins. See [settings and usage](docs/settings-delivery.md).
 The daemon supports [single-use QR/link pairing](docs/device-pairing.md) with
 separate, revocable device credentials over a reachable LAN/VPN or configured HTTPS endpoint.
-The [managed internet API](docs/internet-access.md) can establish an opt-in
-OpenTunnel endpoint; desktop and CLI convenience controls are tracked in milestone 5.
+[Internet access](docs/internet-access.md) in Daemon settings or `hiroshi-engine pair --remote`
+creates an opt-in OpenTunnel HTTPS endpoint for pairing across networks, independently of LAN exposure.
 OpenAI Responses and Anthropic Messages adapters use local
 configuration and credentials; the built-in local echo needs neither. The full
 multi-agent workflow is still being built, and parts of the cockpit remain

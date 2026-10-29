@@ -36,7 +36,7 @@ a manual address. HTTPS overrides must be exact origins, without credentials,
 paths, queries or fragments. The listener binds IPv4 network interfaces.
 Ordinary pairing does not create a tunnel, open firewall ports, or install a
 mobile client. The separate [managed internet API](internet-access.md) can create
-an opt-in tunnel; its desktop and CLI controls are tracked in milestone 5.
+an opt-in tunnel through Settings → Daemon → Internet access or `pair --remote`.
 Pairing alone does not make a daemon reachable across the internet.
 
 Paired devices have access to sessions, files, commands, agents and approvals.
@@ -62,7 +62,7 @@ The QR contains JSON, independently identified from any other backend:
   "type": "hiroshi.pairing",
   "version": 1,
   "serverID": "<stable UUID>",
-  "protocol": 17,
+  "protocol": 18,
   "code": "<43-character base64url invitation>",
   "urls": ["http://192.168.1.20:34123"],
   "expiresAt": 1790000300000
@@ -92,8 +92,8 @@ Successful response, HTTP 200:
   "server": {
     "id": "<stable UUID>",
     "name": "Hiroshi",
-    "version": "0.24.0",
-    "protocol": 17,
+    "version": "0.26.0",
+    "protocol": 18,
     "transport": "http-sse",
     "capabilities": ["sessions", "prompts", "events", "permissions", "device-revocation"]
   },
@@ -183,5 +183,5 @@ backend; scanning this QR is not supported by its current adapter.
    daemon restart. Prove existing backend connections still work. Test LAN/VPN
    and configured HTTPS on actual devices before claiming mobile support.
 
-Automatic internet tunneling is a separate follow-up decision, with its own
-tracked scope for lifecycle, authentication, address changes and shutdown.
+Managed internet tunneling is available through the daemon and desktop controls;
+expanded remote-device acceptance remains tracked in milestone 5.

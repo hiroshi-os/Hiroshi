@@ -36,6 +36,7 @@ import { CliConversations } from './cli-conversations'
 import { Skills } from './skills'
 import { renderUnicodeCompact } from 'uqr'
 import { engineClient } from '../../src/engine/client'
+import { internetCommand, remoteInvitation } from './remote-commands'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
 import { daemonFetch } from './local-transport'
@@ -352,15 +353,33 @@ async function pair(flags: Flags): Promise<number> {
   if (discovery.health.protocol !== PROTOCOL_VERSION) { process.stderr.write('Restart the Hiroshi daemon to use this pairing protocol.\n'); return 1 }
   const client = engineClient(discovery.record)
   try {
+    const remote = flags.remote === true
+    if (flags.remote !== undefined && !remote) throw new Error('--remote is a boolean flag.')
+    if (flags.timeout !== undefined && (!remote || typeof flags.timeout !== 'string')) throw new Error('--timeout requires a number of seconds and --remote.')
+    if (remote && (flags.url !== undefined || flags.expose !== undefined || flags.port !== undefined)) throw new Error('--remote cannot be combined with --url, --expose or --port.')
     if (flags.expose === true) {
       const network = await client.networkSettings()
       await client.updateNetwork({ ...network, enabled: true, port: numberFlag(flags, 'port') ?? network.port })
     }
-    const invitation = await client.createPairing(stringFlag(flags, 'url') ? { address: stringFlag(flags, 'url') } : {})
+    let previous = ''
+    const invitation = remote ? await remoteInvitation(client, { timeoutMs: flags.timeout === undefined ? undefined : Number(flags.timeout) * 1000, onStatus: (state) => {
+      if (state.state !== previous) { previous = state.state; process.stderr.write(`Hiroshi internet access: ${state.state}\n`) }
+    } }) : await client.createPairing(stringFlag(flags, 'url') ? { address: stringFlag(flags, 'url') } : {})
     if (flags.json === true) process.stdout.write(JSON.stringify(invitation) + '\n')
-    else process.stdout.write(['Hiroshi device pairing', `Single use. Expires ${new Date(invitation.expiresAt).toISOString()}.`, '', ...invitation.links, '', renderUnicodeCompact(invitation.payload, { border: 4, ecc: 'M' }), '', 'Only pair trusted devices. Network access must be reachable from the device; no internet tunnel is created.', ''].join('\n'))
+    else process.stdout.write(['Hiroshi device pairing', `Single use. Expires ${new Date(invitation.expiresAt).toISOString()}.`, '', ...invitation.links, '', renderUnicodeCompact(invitation.payload, { border: 4, ecc: 'M' }), '', remote ? 'Internet access stays enabled in the daemon. Run internet disable to close it. Only pair trusted devices.' : 'Only pair trusted devices. Network access must be reachable from the device; no internet tunnel is created.', ''].join('\n'))
     return 0
   } catch (e) { process.stderr.write(`Hiroshi pairing: ${e instanceof Error ? e.message : 'Could not create an invitation.'}\n`); return 1 }
+}
+
+async function internet(flags: Flags, command: string): Promise<number> {
+  const discovery = await discover(resolvePaths(flags).registry)
+  if (discovery.state !== 'running') { process.stderr.write('Start the Hiroshi daemon before managing internet access.\n'); return 1 }
+  if (discovery.health.protocol !== PROTOCOL_VERSION) { process.stderr.write('Restart the Hiroshi daemon to use this internet protocol.\n'); return 1 }
+  try {
+    const state = await internetCommand(engineClient(discovery.record), command)
+    process.stdout.write(flags.json === true ? JSON.stringify(state) + '\n' : [`Hiroshi internet access: ${state.state}`, ...(state.url ? [state.url] : []), ...(state.error ? [state.error] : []), ''].join('\n'))
+    return 0
+  } catch (e) { process.stderr.write(`Hiroshi internet access: ${e instanceof Error ? e.message : 'Request failed'}\n`); return 1 }
 }
 
 async function stop(flags: Flags): Promise<number> {
@@ -410,7 +429,7 @@ async function stop(flags: Flags): Promise<number> {
 }
 
 async function main(): Promise<number> {
-  const { command, flags } = parse(process.argv.slice(2))
+  const { command, flags, positionals } = parse(process.argv.slice(2))
 
   if (flags.help || command === 'help') {
     process.stdout.write(
@@ -422,6 +441,7 @@ async function main(): Promise<number> {
         '  serve     run the daemon in the foreground (default)',
         '  status    report the daemon the registry points at',
         '  pair      print a single-use device pairing link and QR code',
+        '  internet status|enable|disable|retry  manage the internet tunnel',
         '  stop      ask the running daemon to shut down',
         '  version   print the version and the protocol version',
         '',
@@ -433,6 +453,8 @@ async function main(): Promise<number> {
         '  --provider-delay <ms>  hold the local provider between stream chunks',
         '  --json             machine readable `status`',
         '  pair --expose      explicitly enable the LAN network listener',
+        '  pair --remote      enable/wait for internet access, then print its QR/link',
+        '  pair --remote --timeout <seconds>  wait at most 1–300 seconds',
         '  pair --url <https-origin>  use an existing HTTPS endpoint',
         '  pair --json        print the invitation payload and SVG QR code',
         '',
@@ -449,6 +471,10 @@ async function main(): Promise<number> {
   if (command === 'serve') return serve(flags)
   if (command === 'status') return status(flags)
   if (command === 'pair') return pair(flags)
+  if (command === 'internet') {
+    if (positionals.length > 1) { process.stderr.write('Use internet status, enable, disable or retry.\n'); return 2 }
+    return internet(flags, positionals[0] ?? 'status')
+  }
   if (command === 'stop') return stop(flags)
 
   process.stderr.write(`hiroshi-engine: unknown command "${command}"\n`)

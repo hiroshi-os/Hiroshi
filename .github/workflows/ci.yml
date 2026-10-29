@@ -102,7 +102,7 @@ jobs:
         run: bun test engine/test/skills.test.ts
 
       - name: Verify device pairing and network credentials
-        run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts engine/test/internet-access.test.ts engine/test/internet-daemon.test.ts
+        run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts engine/test/internet-access.test.ts engine/test/internet-daemon.test.ts engine/test/remote-commands.test.ts
 
       - name: Run the integration tests
         # The native suite uses an in-process renderer. These additional tests
