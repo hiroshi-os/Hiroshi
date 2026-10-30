@@ -3541,6 +3541,7 @@ function SurfacePanel({
           )}
 
           <ContextHistory
+            configuration={engine.snapshot.configuration}
             messages={engine.snapshot.messages}
             compactions={engine.snapshot.compactions}
             contexts={engine.snapshot.contexts}
@@ -5283,6 +5284,7 @@ export function ChatApp({
     icon: 'sparkle' as const,
   }))
   const [engineModel, setEngineModel] = useState<string | null>(null)
+  useEffect(() => setEngineModel(null), [engineView.snapshot.sessionID])
   const chosenModel = engineEnabled ? engineModel ?? engineView.snapshot.defaultModel : model
   const shownTurns = useMemo(() => engineEnabled ? engineTranscript(engineView.snapshot) : turns, [engineEnabled, engineView.snapshot, turns])
   const greetingPicker = useMemo(() => engineEnabled && !activeEngineSession?.projectless
@@ -5455,7 +5457,7 @@ export function ChatApp({
           focusTick={focusTick}
           onSend={(text) => {
             if (engineEnabled) {
-              void engineView.prompt(text, deliveryMode, chosenModel)
+              void engineView.prompt(text, deliveryMode, engineModel ?? undefined)
               setTailTick((value) => value + 1)
               return
             }
@@ -5481,7 +5483,7 @@ export function ChatApp({
           onModelChange={(next) => {
             if (!engineEnabled) { setModel(next); return }
             setEngineModel(next)
-            void engineView.updateProviders({ defaultModel: next }).then(() => setEngineModel((current) => current === next ? null : current)).catch(() => {})
+            void engineView.updateProviders({ defaultModel: next }).catch(() => {})
           }}
           reasoning={reasoning}
           onReasoningChange={setReasoning}

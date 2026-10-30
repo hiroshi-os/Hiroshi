@@ -14,8 +14,10 @@ for (const dir of [home, cwd, native]) mkdirSync(dir)
 const git = Bun.spawnSync(['git', '-C', cwd, 'init', '-b', 'main'])
 if (git.exitCode) throw new Error('Could not create the temporary project')
 writeFileSync(path.join(cwd, 'AGENTS.md'), 'Fixed response-only window fixture instructions')
+mkdirSync(path.join(cwd, '.hiroshi'))
+writeFileSync(path.join(cwd, '.hiroshi/config.json'), JSON.stringify({ version: 1, defaultModel: 'agent/chat', compaction: false }))
 writeFileSync(entry, `await import(${JSON.stringify(pathToFileURL(path.join(import.meta.dir, 'engine/test/fixtures/cli-continuation.ts')).href)})`)
-writeFileSync(path.join(home, 'providers.json'), JSON.stringify({ defaultModel: 'agent/chat', providers: [{ id: 'agent', adapter: 'cursor-cli', command: [process.execPath, entry],
+writeFileSync(path.join(home, 'providers.json'), JSON.stringify({ defaultModel: 'local/echo', providers: [{ id: 'agent', adapter: 'cursor-cli', command: [process.execPath, entry],
   models: [{ id: 'chat', model: 'fixture-model', label: 'Native fixture', contextWindow: 32768, reservedOutput: 1024 }] }] }))
 writeFileSync(path.join(home, 'execution.json'), JSON.stringify({ maxActive: 1, minFreeMemoryMB: 128, processMemoryMB: 512, maxProcesses: 4, timeoutMs: 30000 }))
 saveWindowState(cwd, { width: 1024, height: 642, x: 60, y: 60, surface: 'terminal', panelOpen: true }, home)
@@ -33,6 +35,14 @@ try {
     const send = async (text: string) => { await app.getByTestId('composer').fill(text); await app.getByTestId('composer').press('enter') }
     await send('remember window nonce')
     await waitUntil(async () => (await client.session({ id: task.id })).cliConversation?.status === 'ready', 'the first native response')
+    const prepared = (await client.session({ id: task.id })).contexts.at(-1)!
+    check(prepared.configuration?.admittedModel === 'agent/chat', 'workspace default did not override the provider default')
+    check(!JSON.stringify(calls()[0].input.instructions).includes('Fixed response-only window fixture instructions'), 'native workspace instructions were injected twice')
+    await app.getByTestId('session-context-toggle').click()
+    await app.getByTestId('configuration-provenance').waitFor()
+    const provenance = await treeText(app)
+    check(provenance.includes('workspace/.hiroshi/config.json') && provenance.includes('native scope unverified'), 'configuration provenance or native limitations are missing')
+    await app.getByTestId('session-context-toggle').click()
     await app.getByTestId('cli-conversation-status').waitFor()
     await send('follow up in native history')
     await waitUntil(async () => (await client.session({ id: task.id })).steps.filter((step) => step.status === 'succeeded').length === 2, 'native follow-up')

@@ -10,6 +10,7 @@ import { permissionPolicy } from './policy'
 import { ExecutionBudget } from '../execution'
 import { assertWorkspace } from '../projects'
 import type { AccessControls } from './access'
+import { Configuration } from '../configuration'
 
 const PREVIEW_BYTES = 16 * 1024
 
@@ -217,6 +218,7 @@ export class Tools {
             realpathSync(call.cwd!) !== call.cwd || (currentPolicy.action === 'ask' &&
               (source === 'policy' || source.startsWith('mode:') || source === 'reviewer' || (currentPolicy.alwaysAsk && source === 'saved')))) throw new Error('tool definition or permission policy changed while queued; it was not executed')
           this.#update(running) // Claim commits after admission, before the effect.
+          if (entry.accessKind === 'edit' || entry.accessKind === 'command') new Configuration(this.home).beforeEffect(this.store, call, entry.accessKind, input)
           return entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal })
         }
         const result = this.budget

@@ -37,6 +37,7 @@ import type { CliConversations } from './cli-conversations'
 import type { AccessControls } from './tools/access'
 import { homedir } from 'node:os'
 import { Skills } from './skills'
+import { Configuration } from './configuration'
 
 export interface ServerOptions {
   access?: AccessControls
@@ -326,8 +327,12 @@ export function startServer(
         return json({ session: sessions.create(input) }, status)
       }
 
-      case 'session':
-        return json(sessions.detail(params.id), status)
+      case 'session': {
+        const detail = sessions.detail(params.id)
+        try { detail.configuration = new Configuration(options.home).resolve(detail.session.cwd).report }
+        catch (error) { detail.configuration = { settings: {}, provenance: [], sources: [], warnings: [], error: error instanceof ProviderError ? error.message : 'Workspace configuration is unavailable. Existing history remains readable.' } }
+        return json(detail, status)
+      }
 
       case 'updateAccess': {
         if (!options.access) throw notFound('permission mode service')
@@ -347,6 +352,7 @@ export function startServer(
       case 'prompt': {
         const input = await body<PromptRequest>(request)
         const existing = typeof input.key === 'string' ? store.inboxByKey(params.id, input.key.trim()) : null
+        if (!existing && input.model === undefined) { const session = assertWorkspace(store, params.id!); input.model = new Configuration(options.home).resolve(session.cwd).report.settings.defaultModel ?? options.catalog?.defaultModel }
         if (!existing && input.model !== undefined && (typeof input.model !== 'string' || !options.catalog?.has(input.model))) {
           throw invalid('unknown_model', 'model must name a model in the engine catalog')
         }

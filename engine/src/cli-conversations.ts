@@ -64,7 +64,7 @@ export class CliConversations {
     if (!identity) return undefined
     const session = this.store.session(step.sessionID)!
     let current = this.store.cliConversation(step.sessionID)
-    const profileRef = `${identity.profileRef}:${hash(request.instructions)}`
+    const profileRef = `${identity.profileRef}:${hash(request.instructionIdentity ?? request.instructions)}`
     if (current && current.profileRef !== profileRef) {
       this.block(step.sessionID, 'Instructions changed. Start a fresh CLI conversation so the native context cannot silently retain obsolete instructions.')
       failure('cli_profile_changed', 'Instructions changed. Start a fresh CLI conversation before continuing.')

@@ -19,7 +19,18 @@ and the project uses [semantic versioning](https://semver.org/).
 The version lives in `package.json`. It is the only place that has to change
 for a release.
 
-## [0.26.0] - Unreleased
+## [0.27.0] - Unreleased
+
+### Added
+
+- Bounded user/workspace configuration, scoped repository instructions and
+  effective-setting provenance in the task's context history.
+- Write-time instruction checks, durable hashes across restart and explicit
+  native CLI scope limitations without duplicate workspace injection.
+- Provider, tool, daemon and native window coverage for configuration precedence,
+  scope changes, policy denial, malformed files and recovery.
+
+## [0.26.0]
 
 ### Added
 

@@ -12,7 +12,7 @@
  * plain exception is a bug or a failure that must not be replayed.
  */
 
-import type { Message, InstructionSource, AgentID, UsageCounters } from './protocol'
+import type { Message, InstructionSource, InstructionHash, AgentID, UsageCounters } from './protocol'
 
 export interface RemoteModelOptions {
   name: string
@@ -31,6 +31,7 @@ export type ProviderPart =
   | { kind: 'tool'; phase: 'start' | 'delta' | 'end'; callID: string; name?: string; text: string }
 
 export interface ProviderRequest {
+  instructionIdentity?: InstructionHash[]
   continuation?: { id: string; fingerprint: string; vendorSessionID: string | null; resume: boolean; throughSeq: number; sessionFile?: string }
   /** The admitted session's workspace; never the daemon's incidental cwd. */
   cwd?: string
@@ -47,6 +48,7 @@ export interface ProviderRequest {
 }
 
 export interface Provider {
+  readonly nativeInstructions?: boolean
   cliIdentity?: () => { adapter: AgentID; contractVersion: number; fingerprint: string; cliVersion: string | null; vendorModel: string; profileRef: string }
   /** CLI submissions may have effects before the first stdout byte. */
   readonly replayAfterRestart?: boolean

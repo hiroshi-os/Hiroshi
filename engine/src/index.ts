@@ -36,6 +36,7 @@ import { CliConversations } from './cli-conversations'
 import { Skills } from './skills'
 import { renderUnicodeCompact } from 'uqr'
 import { engineClient } from '../../src/engine/client'
+import { Configuration } from './configuration'
 import { internetCommand, remoteInvitation } from './remote-commands'
 import { LocalProvider } from './providers/local'
 import { startServer } from './server'
@@ -184,7 +185,7 @@ async function serve(flags: Flags): Promise<number> {
     tools,
     blocked: (id) => checkpoints.blocked(id) || cliConversations.blocked(id),
     selectProvider: (model) => catalog.resolve(model),
-    context: { enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off',
+    context: { configuration: new Configuration(paths.home), enabled: flags['no-compaction'] !== true && process.env.HIROSHI_COMPACTION !== 'off',
       skillInstructions: (id) => skills.instructions(store.session(id)!.cwd, store.activeMessages(id).filter((message) => message.role === 'user').map((message) => message.text)) },
     provider: catalog.resolve(),
   })

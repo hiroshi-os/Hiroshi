@@ -389,7 +389,7 @@ export function useEngine({ enabled, workspace, initialSessionID, initialWorkspa
   const revision = useRef(0)
   revision.current = snapshot.providers?.revision ?? 0
   const receiveProviders = useCallback((providers: ProviderState) => {
-    setSnapshot((current) => providers.revision < (current.providers?.revision ?? 0) ? current : { ...current, providers, models: providers.models, defaultModel: providers.defaultModel })
+    setSnapshot((current) => providers.revision < (current.providers?.revision ?? 0) ? current : { ...current, providers, models: providers.models, defaultModel: current.configuration?.settings.defaultModel ?? providers.defaultModel })
   }, [])
   const refreshProviders = useCallback(async () => {
     if (!client.current || !session.current) throw new Error('The engine is not connected')

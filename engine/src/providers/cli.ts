@@ -178,8 +178,10 @@ export class CliEvents {
 
 export class CliProvider implements Provider {
   readonly replayAfterRestart = false
+  readonly nativeInstructions: boolean
   readonly name: string; readonly model: string; readonly context: CliOptions['context']
   constructor(readonly options: CliOptions) {
+    this.nativeInstructions = options.adapter !== 'pi'
     this.name = options.name; this.model = options.model; this.context = options.context
   }
   cliIdentity = () => {

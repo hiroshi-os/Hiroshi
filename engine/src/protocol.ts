@@ -26,7 +26,7 @@ export const ENGINE_NAME = 'hiroshi-engine'
 export const PROTOCOL_VERSION = 18
 
 /** Kept in step with `package.json` by a test. */
-export const ENGINE_VERSION = '0.26.0'
+export const ENGINE_VERSION = '0.27.0'
 
 export interface ModelInfo {
   /** Stable catalog identity; the adapter owns the provider's model id. */
@@ -343,11 +343,23 @@ export interface Message {
 export interface InstructionSource {
   source: string
   text: string
+  scope?: string
+  hash?: string
 }
 
 export interface InstructionHash {
   source: string
   hash: string
+  scope?: string
+  delivery?: 'supplied' | 'native-unverified'
+}
+export interface ConfigurationReport {
+  error?: string
+  admittedModel?: string
+  settings: { defaultModel?: string; compaction?: boolean }
+  provenance: { setting: 'defaultModel' | 'compaction'; source: string }[]
+  sources: InstructionHash[]
+  warnings: string[]
 }
 
 export interface Compaction {
@@ -363,6 +375,7 @@ export interface Compaction {
 }
 
 export interface StepContext {
+  configuration?: ConfigurationReport
   id: string
   sessionID: string
   stepID: string
@@ -561,6 +574,7 @@ export type EngineEvent = {
 
 /** A session and everything the engine has committed about it. */
 export interface SessionDetail {
+  configuration?: ConfigurationReport
   access?: AccessSettings
   accessReviews?: AccessReview[]
   cliConversation?: CliConversation | null
