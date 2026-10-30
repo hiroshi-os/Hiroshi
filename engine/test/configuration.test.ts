@@ -171,6 +171,66 @@ test('model shell refuses unknown nested scope and bounded scans; scoped writes 
   } finally { store.close(); f.close() }
 })
 
+test('reading a nested target prepares its rules before an approved write and does not load siblings', async () => {
+  const f = fixture(), store = Store.open(':memory:'); store.migrate()
+  f.put('src/input.txt', 'before'); f.put('src/AGENTS.md', 'nested read-before-write rule')
+  f.put('unrelated/AGENTS.md', 'sibling secret')
+  writeFileSync(join(f.home, 'tools.json'), JSON.stringify({ rules: [{ tool: 'read_file', action: 'allow' }, { tool: '*', action: 'ask' }] }))
+  const registry = new ToolRegistry(); registerBuiltins(registry)
+  const tools = new Tools(store, registry, f.home), requests: ProviderRequest[] = []
+  const session = new Sessions(store, silentLogger(), { cwd: f.workspace }).create({})
+  const provider: Provider = { name: 'fixture', model: 'fixture/model', async stream(request, text, part) {
+    requests.push(request)
+    if (requests.length % 3 === 0) { text('Done'); return }
+    const name = requests.length % 3 === 1 ? 'read_file' : 'write_file', callID = `call-${requests.length}`
+    if (requests.length % 3 === 2) {
+      expect(request.instructions.some((source) => source.scope === 'src' && source.text.includes('nested read-before-write rule'))).toBe(true)
+      expect(JSON.stringify(request.instructions)).not.toContain('sibling secret')
+    }
+    part?.({ kind: 'tool', phase: 'start', callID, name, text: '' })
+    part?.({ kind: 'tool', phase: 'delta', callID, text: JSON.stringify({ path: 'src/input.txt', ...(name === 'write_file' ? { content: 'after' } : {}) }) })
+    part?.({ kind: 'tool', phase: 'end', callID, name, text: '' })
+  } }
+  const steps = new Steps(store, silentLogger(), { provider, tools, context: { configuration: f.configuration } })
+  tools.onIdle = (id) => { steps.start(id) }
+  try {
+    new Sessions(store, silentLogger(), { cwd: f.workspace }).prompt(session.id, { text: 'update the nested file' }); steps.start(session.id)
+    await until(() => store.permissions(session.id).length === 1)
+    tools.answer(store.permissions(session.id)[0]!.id, 'allow', true)
+    await until(() => requests.length === 3 && steps.running === 0)
+    expect(store.toolCalls(session.id).map((call) => call.status)).toEqual(['succeeded', 'succeeded'])
+    expect(new TextDecoder().decode(await Bun.file(join(f.workspace, 'src/input.txt')).arrayBuffer())).toBe('after')
+    f.put('src/AGENTS.md', 'nested read-before-write rule; changed environment')
+    new Sessions(store, silentLogger(), { cwd: f.workspace }).prompt(session.id, { text: 'repeat the exact same write' }); steps.start(session.id)
+    await until(() => store.permissions(session.id).length === 2)
+    expect(store.toolCalls(session.id).at(-1)?.status).toBe('waiting')
+    tools.answer(store.permissions(session.id)[1]!.id, 'deny')
+    await until(() => requests.length === 6 && steps.running === 0)
+    expect(store.toolCalls(session.id).at(-1)?.status).toBe('denied')
+  } finally { tools.stopAll(); steps.stopAll(); store.close(); f.close() }
+})
+
+test('workspace compaction cannot override an operator veto and disabled compaction never calls a provider', async () => {
+  const f = fixture(), store = Store.open(':memory:'); store.migrate()
+  try {
+    const sessions = new Sessions(store, silentLogger(), { cwd: f.workspace }), session = sessions.create({})
+    for (let i = 0; i < 6; i++) sessions.prompt(session.id, { text: `${i} ${'history '.repeat(100)}` })
+    let calls = 0
+    const provider: Provider = { name: 'fixture', model: 'fixture/model', context: { window: 2400, reservedOutput: 256 }, async stream() { calls++ } }
+    f.put('.hiroshi/config.json', '{"version":1,"compaction":true}')
+    const first = new Steps(store, silentLogger(), { provider, context: { configuration: f.configuration, enabled: false } })
+    const step = first.start(session.id)!; await until(() => first.running === 0)
+    expect(store.step(step.id)?.error?.message).toContain('disabled')
+    f.put('.hiroshi/config.json', '{"version":1,"compaction":false}')
+    sessions.prompt(session.id, { text: 'next attempt' })
+    const second = new Steps(store, silentLogger(), { provider, context: { configuration: f.configuration } })
+    const next = second.start(session.id)!; await until(() => second.running === 0)
+    expect(store.step(next.id)?.error?.message).toContain('disabled')
+    expect(calls).toBe(0)
+    expect(store.compactions(session.id)).toEqual([])
+  } finally { store.close(); f.close() }
+})
+
 test('the daemon resolves defaults at admission, preserves idempotent sends and reloads settings after restart', async () => {
   const f = fixture()
   writeFileSync(join(f.home, 'config.json'), '{"version":1,"defaultModel":"missing/user-model","compaction":false}')

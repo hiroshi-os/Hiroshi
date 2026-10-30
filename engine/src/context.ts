@@ -45,7 +45,7 @@ export class Context {
     managed.report.admittedModel = step.model
     const instructions = [...(this.options.instructions?.(step.sessionID) ?? managed.instructions)]
     instructions.push(...(this.options.skillInstructions?.(step.sessionID) ?? []))
-    if (this.options.tools?.length) instructions.push({ source: 'engine/tool-permissions', text: 'Tool permission decisions are authoritative. A denial is an operator or policy decision, not a tool failure to work around. Continue within granted permissions.' })
+    if (this.options.tools?.length) instructions.push({ source: 'engine/tool-permissions', text: 'Tool permission decisions are authoritative. A denial is an operator or policy decision, not a tool failure to work around. Continue within granted permissions. Read target files before proposing edits so their scoped repository instructions are available. Changed instructions stop writes until a fresh model step. Unrestricted shell commands are unavailable when nested instructions, links or a bounded scan prevent verifying scope; use scoped file tools.' })
     const names = new Set(instructions.map((source) => source.source))
     if (names.size !== instructions.length) {
       throw new ProviderError('context_configuration', 'instruction source names must be unique')

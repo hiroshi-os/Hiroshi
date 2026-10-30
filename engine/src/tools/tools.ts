@@ -129,7 +129,9 @@ export class Tools {
   #scope(call: ToolCall): string {
     let input: unknown
     try { input = JSON.parse(call.input) } catch { input = call.input }
-    return digest(canonical([call.cwd, this.store.session(call.sessionID)?.workspaceIdentity, call.tool, call.revision, input]))
+    const instructions = this.store.contexts(call.sessionID).filter((context) => context.stepID === call.stepID).at(-1)?.sources
+      .map(({ source, hash }) => ({ source, hash })) ?? []
+    return digest(canonical([call.cwd, this.store.session(call.sessionID)?.workspaceIdentity, call.tool, call.revision, input, instructions]))
   }
 
   async #drain(sessionID: string): Promise<void> {

@@ -5483,7 +5483,11 @@ export function ChatApp({
           onModelChange={(next) => {
             if (!engineEnabled) { setModel(next); return }
             setEngineModel(next)
-            void engineView.updateProviders({ defaultModel: next }).catch(() => {})
+            void engineView.updateProviders({ defaultModel: next }).then(() => {
+              // Without a workspace override, follow the shared provider default
+              // again after saving so selections from another window stay live.
+              if (!engineView.snapshot.configuration?.settings.defaultModel) setEngineModel((current) => current === next ? null : current)
+            }).catch(() => {})
           }}
           reasoning={reasoning}
           onReasoningChange={setReasoning}

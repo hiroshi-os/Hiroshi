@@ -8,6 +8,7 @@ import type { Store } from './store'
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const fail = (message: string): never => { throw new ProviderError('workspace_configuration', message) }
+const pathKey = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value
 const inside = (root: string, file: string) => { const relative = path.relative(root, file); return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) }
 function read(root: string, relative: string, limit: number): string | undefined {
   let fd: number | undefined
@@ -26,8 +27,8 @@ function read(root: string, relative: string, limit: number): string | undefined
     if (!opened.isFile() || opened.ino !== before.ino || opened.dev !== before.dev || opened.size > limit) fail(`${relative} changed while it was being read.`)
     const bytes = Buffer.alloc(limit + 1); let size = 0
     while (size <= limit) { const count = readSync(fd, bytes, size, bytes.length - size, null); if (!count) break; size += count }
-    const after = fstatSync(fd)
-    if (size > limit || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || !inside(base, realpathSync(file))) fail(`${relative} changed or exceeded its read limit.`)
+    const after = fstatSync(fd), named = lstatSync(file)
+    if (size > limit || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || named.isSymbolicLink() || named.ino !== opened.ino || named.dev !== opened.dev || !inside(base, realpathSync(file))) fail(`${relative} changed or exceeded its read limit.`)
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, size))
     if (text.includes('\0')) fail(`${relative} contains invalid instruction text.`)
     return text
@@ -46,7 +47,7 @@ export class Configuration {
     const add = (base: string, file: string, source: string, scope: string) => {
       const text = read(base, file, 32768)
       if (text === undefined) return
-      const identity = path.join(realpathSync(base), file), key = process.platform === 'win32' ? identity.toLowerCase() : identity
+      const key = pathKey(path.join(realpathSync(base), file))
       if (seen.has(key)) return
       seen.add(key)
       total += Buffer.byteLength(text)
@@ -74,7 +75,7 @@ export class Configuration {
       if (!inside(root, absolute)) fail('Instruction targets must remain inside the workspace.')
       const parts = path.relative(root, path.dirname(absolute)).split(path.sep).filter(Boolean)
       if (parts.length > 32) fail('Instruction scope exceeds the maximum directory depth.')
-      for (let i = 1; i <= parts.length; i++) directories.add(parts.slice(0, i).join('/'))
+      for (let i = 1; i <= parts.length; i++) directories.add(pathKey(parts.slice(0, i).join('/')))
     }
     for (const directory of [...directories].sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))) {
       const file = directory === '.' ? 'AGENTS.md' : `${directory}/AGENTS.md`
@@ -92,7 +93,7 @@ export class Configuration {
   beforeEffect(store: Store, call: ToolCall, kind: 'edit' | 'command', input: any) {
     const current = this.resolve(call.cwd!, kind === 'edit' && typeof input.path === 'string' ? [input.path] : []).report
     const prepared = store.contexts(call.sessionID).filter((item) => item.stepID === call.stepID).at(-1)?.sources ?? []
-    const target = kind === 'edit' && typeof input.path === 'string' ? path.relative(call.cwd!, path.resolve(call.cwd!, input.path)).split(path.sep).join('/') : ''
+    const target = kind === 'edit' && typeof input.path === 'string' ? pathKey(path.relative(call.cwd!, path.resolve(call.cwd!, input.path)).split(path.sep).join('/')) : ''
     if (current.sources.some((item) => prepared.find((prior) => prior.source === item.source)?.hash !== item.hash) || prepared.some((prior) => (prior.source.startsWith('workspace/') || prior.source.startsWith('user/')) && !current.sources.some((item) => item.source === prior.source) && (prior.scope === '.' || prior.scope === '*' || !!prior.scope && target.startsWith(prior.scope + '/')))) fail('Target instructions or configuration changed. Read the target and request this action again with fresh context.')
     if (kind === 'command') {
       const queue = [realpathSync(call.cwd!)]; let count = 0
