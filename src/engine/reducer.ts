@@ -49,6 +49,7 @@ export interface OutputState {
 }
 
 export interface Snapshot {
+  configuration?: import('../../engine/src/protocol').ConfigurationReport
   access: AccessSettings
   accessReviews: AccessReview[]
   cliConversation: CliConversation | null
@@ -163,6 +164,8 @@ export function hydrate(snapshot: Snapshot, detail: SessionDetail): Snapshot {
   return {
     ...snapshot,
     sessionID: detail.session.id,
+    configuration: detail.configuration,
+    defaultModel: detail.configuration?.settings.defaultModel ?? snapshot.providers?.defaultModel ?? snapshot.defaultModel,
     access: detail.access ?? { mode: 'ask', revision: 0 }, accessReviews: detail.accessReviews ?? [],
     cliConversation: detail.cliConversation ?? null,
     executions: detail.executions ?? [],
@@ -217,7 +220,7 @@ function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
     case 'cli.updated': return { ...snapshot, cliConversation: event.data.conversation }
     case 'providers.updated':
       if (snapshot.providers && event.data.providers.revision < snapshot.providers.revision) return snapshot
-      return { ...snapshot, providers: event.data.providers, models: event.data.providers.models, defaultModel: event.data.providers.defaultModel }
+      return { ...snapshot, providers: event.data.providers, models: event.data.providers.models, defaultModel: snapshot.configuration?.settings.defaultModel ?? event.data.providers.defaultModel }
     case 'execution.updated': {
       const execution = event.data.execution
       return { ...snapshot, executions: [...snapshot.executions.filter((item) => item.id !== execution.id), execution] }
@@ -255,7 +258,8 @@ function reduce(snapshot: Snapshot, event: EngineEvent): Snapshot {
     case 'context.prepared': {
       const { context } = event.data
       if (context.sessionID !== snapshot.sessionID || snapshot.contexts.some((c) => c.id === context.id)) return snapshot
-      return { ...snapshot, contexts: [...snapshot.contexts, context] }
+      return { ...snapshot, contexts: [...snapshot.contexts, context], configuration: context.configuration ?? snapshot.configuration,
+        defaultModel: context.configuration?.settings.defaultModel ?? snapshot.providers?.defaultModel ?? snapshot.defaultModel }
     }
 
     case 'checkpoint.created': {

@@ -84,6 +84,7 @@ export class ProviderCatalog {
       this.#models.set(info.id, { info, provider: {
         check,
         replayAfterRestart: provider.replayAfterRestart,
+        nativeInstructions: provider.nativeInstructions,
         cliIdentity: provider.cliIdentity,
         name: info.provider, model: info.id, context: { window: info.contextWindow, reservedOutput: info.reservedOutput },
         stream: async (request, onText, onPart) => {

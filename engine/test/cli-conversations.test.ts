@@ -33,6 +33,11 @@ for (const adapter of ['cursor', 'agy', 'pi', 'grok'] as const) test(`${adapter}
     await daemon.client.prompt(first); await daemon.client.prompt(first)
     await until(async () => (await daemon.client.session({ id: a.id })).cliConversation?.status === 'ready')
     const binding = (await daemon.client.session({ id: a.id })).cliConversation!
+    const prepared = (await daemon.client.session({ id: a.id })).contexts.at(-1)!
+    const supplied = f.calls()[0].input.instructions
+    expect(JSON.stringify(supplied).includes('Fixed response-only fixture instructions')).toBe(adapter === 'pi')
+    expect(prepared.sources.find((source) => source.source === 'workspace/AGENTS.md')?.delivery).toBe(adapter === 'pi' ? undefined : 'native-unverified')
+    expect(prepared.configuration?.warnings.length).toBe(adapter === 'pi' ? 0 : 1)
     expect(binding).toMatchObject({ adapter, contractVersion: 2, cliVersion: '1.0.0-fixture', cwd: f.workspace, model: 'agent/chat', vendorModel: 'fixture-model' })
     await daemon.client.prompt({ id: b.id, text: 'remember beta nonce' })
     await until(async () => (await daemon.client.session({ id: b.id })).cliConversation?.status === 'ready')

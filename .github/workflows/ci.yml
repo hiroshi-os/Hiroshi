@@ -125,6 +125,9 @@ jobs:
       - name: Verify installed skill discovery and daemon integration
         run: bun test engine/test/skills.test.ts
 
+      - name: Verify scoped configuration and write-time instruction checks
+        run: bun test engine/test/configuration.test.ts
+
       - name: Verify device pairing and network credentials
         run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts engine/test/internet-access.test.ts engine/test/internet-daemon.test.ts engine/test/remote-commands.test.ts engine/test/internet-recovery.test.ts engine/test/probe-home.test.ts
 

@@ -32,9 +32,15 @@ test('two real projects isolate CLI cwd, instructions, history, files and checkp
     const calls = readFileSync(marker, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
     for (const [cwd, name, other] of [[a, 'alpha', 'beta'], [b, 'beta', 'alpha']]) {
       const call = calls.find((value) => realpathSync(value.cwd) === cwd)
-      expect(call.input).toContain(`Instructions only for ${name}`)
+      // This CLI owns workspace loading. Its stdin must not duplicate AGENTS;
+      // the daemon records the bound file's identity without claiming native scope.
+      expect(call.input).not.toContain(`Instructions only for ${name}`)
       expect(call.input).not.toContain(`Instructions only for ${other}`)
       expect(call.input).not.toContain(`${other} task`)
+      const detail = await daemon.client.session({ id: name === 'alpha' ? sa.id : sb.id })
+      const source = detail.contexts[0]!.sources.find((item) => item.source === 'workspace/AGENTS.md')!
+      expect(source).toMatchObject({ scope: '.', delivery: 'native-unverified', hash: new Bun.CryptoHasher('sha256').update(`Instructions only for ${name}`).digest('hex') })
+      expect(detail.contexts[0]!.configuration?.warnings[0]).toContain('not verified')
     }
     expect((await daemon.client.workspaceFile({ id: sa.id, path: 'alpha.txt' })).text).toBe('alpha')
     await expect(daemon.client.workspaceFile({ id: sb.id, path: 'alpha.txt' })).rejects.toMatchObject({ code: 'not_found' })

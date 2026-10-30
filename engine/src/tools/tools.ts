@@ -10,6 +10,7 @@ import { permissionPolicy } from './policy'
 import { ExecutionBudget } from '../execution'
 import { assertWorkspace } from '../projects'
 import type { AccessControls } from './access'
+import { Configuration } from '../configuration'
 
 const PREVIEW_BYTES = 16 * 1024
 
@@ -128,7 +129,9 @@ export class Tools {
   #scope(call: ToolCall): string {
     let input: unknown
     try { input = JSON.parse(call.input) } catch { input = call.input }
-    return digest(canonical([call.cwd, this.store.session(call.sessionID)?.workspaceIdentity, call.tool, call.revision, input]))
+    const instructions = this.store.contexts(call.sessionID).filter((context) => context.stepID === call.stepID).at(-1)?.sources
+      .map(({ source, hash }) => ({ source, hash })) ?? []
+    return digest(canonical([call.cwd, this.store.session(call.sessionID)?.workspaceIdentity, call.tool, call.revision, input, instructions]))
   }
 
   async #drain(sessionID: string): Promise<void> {
@@ -217,6 +220,7 @@ export class Tools {
             realpathSync(call.cwd!) !== call.cwd || (currentPolicy.action === 'ask' &&
               (source === 'policy' || source.startsWith('mode:') || source === 'reviewer' || (currentPolicy.alwaysAsk && source === 'saved')))) throw new Error('tool definition or permission policy changed while queued; it was not executed')
           this.#update(running) // Claim commits after admission, before the effect.
+          if (entry.accessKind === 'edit' || entry.accessKind === 'command') new Configuration(this.home).beforeEffect(this.store, call, entry.accessKind, input)
           return entry.run(input, { cwd: call.cwd!, sessionID, callID: call.id, signal })
         }
         const result = this.budget

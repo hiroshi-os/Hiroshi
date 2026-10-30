@@ -305,8 +305,8 @@ keeps the step allowance and attempt number; ordinary transient retries still
 increment the attempt as before.
 
 Instructions are `{ source, text }` values, separate from transcript messages.
-The default loader rereads the workspace's `AGENTS.md` each attempt. Adapters can
-supply additional instruction sources through the context options. A
+The managed loader rereads bounded user and scoped workspace instructions each
+attempt (see configuration below). Adapters can supply additional sources. A
 `context.prepared` event records the request estimate, model budget, active
 boundary, SHA-256 source hashes and names of sources added, edited or removed.
 It does not store the rendered instruction prose in that ledger.
@@ -315,6 +315,69 @@ The Terminal's **Show context** control opens the full durable transcript,
 compaction summaries at their original boundaries, and changed source names.
 Both the session snapshot and the event reducer carry these records, so a
 reconnecting or second cockpit sees the same history.
+
+## Configuration and repository instructions
+
+Optional `config.json` in the Hiroshi data directory provides user defaults.
+Optional `.hiroshi/config.json` at the task workspace root overrides individual
+values. Both use this strict schema; omitted fields inherit their earlier value:
+
+```json
+{ "version": 1, "defaultModel": "local/echo", "compaction": true }
+```
+
+Precedence is built-in/provider defaults, user configuration, workspace
+configuration, then an explicit prompt model. The server resolves the model
+when admitting a new prompt and persists that choice with its idempotency key.
+Retries and queued prompts retain their admitted model. An unknown model fails
+before admission. Selecting a model in the composer explicitly overrides the
+workspace default for that task. `--no-compaction` and
+`HIROSHI_COMPACTION=off` remain operator vetoes even if workspace compaction is on.
+
+These files cannot configure executable commands, credentials, provider
+enablement, access modes or permission rules. Unknown fields and malformed files
+fail closed without logging their contents. Those capabilities remain in the
+user-owned provider, execution and permission settings. Instruction prose cannot
+override an operator or policy denial.
+
+Instructions load in this order: data-directory `AGENTS.md` (all task paths),
+workspace-root `AGENTS.md`, then ancestors of file-tool targets from shallowest
+to deepest. Equal-depth directories sort by name and each source loads once.
+Nested instructions carry an explicit directory scope; sibling directories are
+not searched. A new user turn begins with root/user instructions only. Scoped
+file reads or attempted writes make the relevant ancestors available to the
+next model step of that turn.
+
+Before a model write takes effect, the engine resolves that target's instructions
+again and compares them to the request's durable hashes. New, edited or removed
+rules stop the write, including after an approval wait. The model must inspect
+the target and request a new action with fresh context; an old approval does not
+authorize a changed instruction environment. Unrestricted model shell commands
+cannot establish per-path scope: they are refused when a bounded workspace scan
+finds nested rules, links or more than 2,048 entries. Scoped file tools remain
+available. Operator-started terminal commands retain their existing behavior.
+
+Config files are limited to 16 KiB, each instruction file to 32 KiB, total
+instruction text to 128 KiB, and a request to 64 sources/targets and 32 directory
+levels. Reads require regular UTF-8 files without NUL bytes and reject symbolic
+links/junctions in instruction and config paths. Sources stay inside the bound
+workspace or data directory. This does not sandbox an unrelated external CLI.
+
+Pi disables its native context-file loader and receives managed instructions
+once. Other response-only CLI adapters own native workspace loading: Hiroshi
+does not inject those workspace files again. Their known source hashes are
+recorded, but additional native files, per-path behavior and native token usage
+are explicitly **unverified**. Their coding tools remain unavailable. A known
+instruction/config change blocks native continuation until the operator starts
+a fresh conversation; upgraded older bindings may also require this recovery.
+
+The task's **Show context** view lists current effective settings and their
+sources, the last admitted model, last-request source scopes/hashes, changes and
+native limitations. Session snapshots and `context.prepared` events contain
+metadata, never instruction prose. Invalid current configuration leaves saved
+history readable and shows an error. Configuration is reread on every attempt
+and session refresh, so changes survive reconnect/restart without replaying a
+completed effect. Optional protocol fields preserve older stored contexts.
 
 ## The data directory
 
