@@ -155,7 +155,12 @@ test.each(['new', 'edited', 'removed', 'unchanged', 'denied'] as const)('a real 
     if (change !== 'denied') await until(() => store.permissions(session.id).length === 1)
     if (change === 'new') f.put('src/AGENTS.md', 'new nested rules')
     if (change === 'edited') f.put('AGENTS.md', 'changed root rules')
-    if (change === 'removed') unlinkSync(join(f.workspace, 'AGENTS.md'))
+    if (change === 'removed') {
+      // A pending pre-upgrade request has the original hash ledger, no scopes.
+      const prepared = store.contexts(session.id).at(-1)!
+      store.insertContext({ ...prepared, id: `legacy-${prepared.id}`, configuration: undefined, sources: prepared.sources.map(({ source, hash }) => ({ source, hash })) })
+      unlinkSync(join(f.workspace, 'AGENTS.md'))
+    }
     if (change !== 'denied') tools.answer(store.permissions(session.id)[0]!.id, 'allow')
     await until(() => requests.length === 2 && steps.running === 0)
     expect(store.toolCalls(session.id)[0]?.status).toBe(change === 'unchanged' ? 'succeeded' : change === 'denied' ? 'denied' : 'failed')

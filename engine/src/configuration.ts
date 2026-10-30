@@ -102,7 +102,9 @@ export class Configuration {
       if (!prior.source.startsWith('workspace/') && !prior.source.startsWith('user/')) return false
       if (current.sources.some((item) => item.source === prior.source)) return false
       // Shell commands have no declared file scope; any known removal matters.
-      return kind === 'command' || prior.scope === '.' || prior.scope === '*' || !!prior.scope && target.startsWith(prior.scope + '/')
+      // Older ledgers had no scope field. Treat unknown managed scope as global
+      // so a permission pending across an upgrade cannot miss a removed rule.
+      return kind === 'command' || prior.scope === undefined || prior.scope === '.' || prior.scope === '*' || target.startsWith(prior.scope + '/')
     })
     if (addedOrChanged || removed) fail('Target instructions or configuration changed. Read the target and request this action again with fresh context.')
     if (kind === 'command') {
