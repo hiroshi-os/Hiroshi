@@ -175,7 +175,7 @@ test('reading a nested target prepares its rules before an approved write and do
   const f = fixture(), store = Store.open(':memory:'); store.migrate()
   f.put('src/input.txt', 'before'); f.put('src/AGENTS.md', 'nested read-before-write rule')
   f.put('unrelated/AGENTS.md', 'sibling secret')
-  writeFileSync(join(f.home, 'tools.json'), JSON.stringify({ rules: [{ tool: 'read_file', action: 'allow' }, { tool: '*', action: 'ask' }] }))
+  writeFileSync(join(f.home, 'tools.json'), JSON.stringify({ rules: [{ tool: '*', action: 'ask' }, { tool: 'read_file', action: 'allow' }] }))
   const registry = new ToolRegistry(); registerBuiltins(registry)
   const tools = new Tools(store, registry, f.home), requests: ProviderRequest[] = []
   const session = new Sessions(store, silentLogger(), { cwd: f.workspace }).create({})

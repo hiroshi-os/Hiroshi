@@ -94,7 +94,14 @@ export class Configuration {
     const current = this.resolve(call.cwd!, kind === 'edit' && typeof input.path === 'string' ? [input.path] : []).report
     const prepared = store.contexts(call.sessionID).filter((item) => item.stepID === call.stepID).at(-1)?.sources ?? []
     const target = kind === 'edit' && typeof input.path === 'string' ? pathKey(path.relative(call.cwd!, path.resolve(call.cwd!, input.path)).split(path.sep).join('/')) : ''
-    if (current.sources.some((item) => prepared.find((prior) => prior.source === item.source)?.hash !== item.hash) || prepared.some((prior) => (prior.source.startsWith('workspace/') || prior.source.startsWith('user/')) && !current.sources.some((item) => item.source === prior.source) && (prior.scope === '.' || prior.scope === '*' || !!prior.scope && target.startsWith(prior.scope + '/')))) fail('Target instructions or configuration changed. Read the target and request this action again with fresh context.')
+    const addedOrChanged = current.sources.some((item) => prepared.find((prior) => prior.source === item.source)?.hash !== item.hash)
+    const removed = prepared.some((prior) => {
+      if (!prior.source.startsWith('workspace/') && !prior.source.startsWith('user/')) return false
+      if (current.sources.some((item) => item.source === prior.source)) return false
+      // Shell commands have no declared file scope; any known removal matters.
+      return kind === 'command' || prior.scope === '.' || prior.scope === '*' || !!prior.scope && target.startsWith(prior.scope + '/')
+    })
+    if (addedOrChanged || removed) fail('Target instructions or configuration changed. Read the target and request this action again with fresh context.')
     if (kind === 'command') {
       const queue = [realpathSync(call.cwd!)]; let count = 0
       while (queue.length) {
