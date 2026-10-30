@@ -42,6 +42,8 @@ try {
     await app.getByTestId('configuration-provenance').waitFor()
     const provenance = await treeText(app)
     check(provenance.includes('workspace/.hiroshi/config.json') && provenance.includes('native scope unverified'), 'configuration provenance or native limitations are missing')
+    mkdirSync('screenshots', { recursive: true })
+    await app.screenshot({ path: path.resolve('screenshots/windowed-configuration.png') })
     await app.getByTestId('session-context-toggle').click()
     await app.getByTestId('cli-conversation-status').waitFor()
     await send('follow up in native history')
