@@ -183,5 +183,6 @@ backend; scanning this QR is not supported by its current adapter.
    daemon restart. Prove existing backend connections still work. Test LAN/VPN
    and configured HTTPS on actual devices before claiming mobile support.
 
-Managed internet tunneling is available through the daemon and desktop controls;
-expanded remote-device acceptance remains tracked in milestone 5.
+Managed internet tunneling is available through the daemon and desktop controls.
+Server-side remote acceptance is covered by the [internet verification layers](internet-access.md).
+Physical mobile-client acceptance belongs to the adapter implementation above.

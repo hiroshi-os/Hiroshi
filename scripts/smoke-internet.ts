@@ -1,12 +1,15 @@
 /** Explicit hosted-service probe. Never runs as part of ordinary CI. */
 import { join } from 'node:path'
 import { create, OpenTunnelStorage } from '@opentunnel/client'
-import { startDaemon, tempHome, until } from '../engine/test/harness'
+import { startDaemon, until } from '../engine/test/harness'
+import { probeHome } from './probe-home'
 import type { PairingConnection } from '../engine/src/protocol'
 import { engineClient } from '../src/engine/client'
 
 if (!process.argv.includes('--live')) throw new Error('Pass --live to create a temporary public tunnel for verification.')
-const homeAt = process.argv.indexOf('--home'), home = homeAt >= 0 ? process.argv[homeAt + 1]! : tempHome()
+const homeAt = process.argv.indexOf('--home')
+if (homeAt >= 0 && (!process.argv[homeAt + 1] || process.argv[homeAt + 1]!.startsWith('--'))) throw new Error('Provide an isolated probe directory after --home.')
+const home = await probeHome(homeAt >= 0 ? process.argv[homeAt + 1] : undefined)
 const engineAt = process.argv.indexOf('--engine')
 const daemon = await startDaemon({ home, executable: engineAt >= 0 ? process.argv[engineAt + 1] : undefined })
 console.log(`Live tunnel probe uses isolated data: ${home}`)

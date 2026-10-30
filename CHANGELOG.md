@@ -29,6 +29,9 @@ for a release.
   plus internet status, enable, retry and disable CLI commands.
 - Native controls and opt-in real source/packaged window tests against the hosted
   HTTPS service, including screenshot QR decoding, session access and revocation.
+- Extended hosted acceptance for two device credentials, durable event recovery,
+  daemon crash/restart, token rotation and disable, plus an independent-network
+  read-only check and isolation guards for live probe data directories.
 
 ## [0.25.0]
 

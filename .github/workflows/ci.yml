@@ -1,19 +1,43 @@
 name: CI
+run-name: ${{ inputs.remote_url != '' && format('Remote reachability {0}', inputs.probe_id) || 'CI' }}
 
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      remote_url:
+        description: Optional public OpenTunnel origin for an unauthenticated reachability check
+        type: string
+        default: ''
+      probe_id:
+        description: Public correlation identifier for an explicit remote check
+        type: string
+        default: ''
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.remote_url != '' && 'remote-probe' || 'standard' }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  remote_reachability:
+    name: independent network reachability
+    if: github.event_name == 'workflow_dispatch' && inputs.remote_url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Verify the public gateway without credentials
+        run: bun scripts/remote-reachability.ts
+        env:
+          HIROSHI_PROBE_URL: ${{ inputs.remote_url }}
   typecheck:
     name: typecheck
     runs-on: ubuntu-latest
@@ -102,7 +126,7 @@ jobs:
         run: bun test engine/test/skills.test.ts
 
       - name: Verify device pairing and network credentials
-        run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts engine/test/internet-access.test.ts engine/test/internet-daemon.test.ts engine/test/remote-commands.test.ts
+        run: bun test engine/test/pairing.test.ts engine/test/pairing-daemon.test.ts engine/test/pairing-cli.test.ts engine/test/network-access.test.ts engine/test/internet-access.test.ts engine/test/internet-daemon.test.ts engine/test/remote-commands.test.ts engine/test/internet-recovery.test.ts engine/test/probe-home.test.ts
 
       - name: Run the integration tests
         # The native suite uses an in-process renderer. These additional tests
