@@ -7,9 +7,9 @@ internet connectivity in three ordered items:
 2. [Desktop and CLI controls](https://github.com/hiroshi-os/Hiroshi/issues/89).
 3. [Internet acceptance and operational documentation](https://github.com/hiroshi-os/Hiroshi/issues/90).
 
-The daemon lifecycle and desktop/CLI controls are implemented. Expanded device
-and reconnect acceptance remains tracked in issue 90. Generating a normal LAN
-invitation does not enable internet access. The mobile application's source is unchanged.
+The daemon lifecycle, desktop/CLI controls and server acceptance checks are
+implemented. Generating a normal LAN invitation does not enable internet access.
+The mobile application's source is unchanged; its adapter remains a separate follow-up.
 
 ## Use internet pairing
 
@@ -153,11 +153,45 @@ bun scripts/smoke-internet.ts --live --engine <path-to-hiroshi-engine>
 bun scripts/smoke-internet.ts --live --home <probe-directory>
 ```
 
-Run the probe under the repository RAM/process/time guard. The initial hosted
-probe passed over the configured college-network proxy, using a 1536 MB process
-tree ceiling and a measured 679 MB peak. This proves a hosted HTTPS round trip
-from this computer; an independent mobile-network device check and the remaining
-acceptance scenarios are tracked in issue 90.
+Run live probes under the repository RAM/process/time guard. They require a
+fresh marked probe directory, or an explicitly resumed directory from a prior
+probe with no daemon still running. Unmarked user directories and existing
+daemons are rejected before setup. Pending certificate state is preserved for
+resumption; ordinary user tunnel profiles are never used.
+
+The extended hosted acceptance exercises two independent credentials and streams,
+cursor replay after disconnection, independent revocation, a real process crash
+and restart on the same public hostname, persisted credentials/transcript,
+network-token rotation and closing the public endpoint. Exactly one daemon is
+active at a time, and complete hosted registrations are deleted in cleanup:
+
+```sh
+bun scripts/hosted-acceptance.ts --live
+bun scripts/hosted-acceptance.ts --live --engine <path-to-hiroshi-engine>
+# Also dispatch a read-only reachability check from another network:
+bun scripts/hosted-acceptance.ts --live --external-ref <trusted-repository-branch>
+```
+
+`--external-ref` uses the authenticated GitHub CLI to manually dispatch the CI
+workflow at a trusted branch. Its isolated Ubuntu job receives only the public
+OpenTunnel origin and a correlation ID. It verifies HTTPS reachability, required
+authentication and owner-route denial, with no device credential or pairing code.
+Normal CI jobs are skipped for that dispatch, and a separate concurrency group
+keeps it from canceling standard checks. GitHub commands and polling have explicit
+deadlines. No repository secret is created.
+
+| Verification layer | What it proves | Limit |
+| --- | --- | --- |
+| Controlled CI gateway and durable feed | Ordered replay after a simulated connection loss, independent stream revocation, disable, lifecycle and failure handling | Does not contact the hosted relay |
+| Hosted source/compiled daemon acceptance | TLS pairing, authenticated sessions/events, credential isolation, crash recovery, stable route, rotation and disable through the actual relay | The two authenticated clients are logical devices on the test PC |
+| Independent GitHub-hosted check | The public HTTPS gateway is reachable from outside the PC's college network and rejects unauthorized access | Intentionally receives no authenticated control credential |
+| Native and hosted desktop probes | Controls, source/packaged QR rendering/decoding, remote CLI and revocation | Does not implement a mobile client |
+
+The [independent-network acceptance run](https://github.com/hiroshi-os/Hiroshi/actions/runs/41001566575)
+passed against the temporary endpoint. The source hosted recovery probe also
+passed through the configured proxy, with a 658 MB measured peak under a 1536 MB
+process-tree ceiling. These checks establish server behavior; physical mobile
+client compatibility must be tested when its adapter is built.
 
 The opt-in desktop probe additionally drives real controls and independently
 decodes the QR from a screenshot, pairs over public HTTPS, runs a session,

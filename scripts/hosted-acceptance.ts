@@ -1,14 +1,15 @@
 /** Explicit hosted acceptance. Owns one daemon at a time; no desktop is launched. */
 import { join } from 'node:path'
 import { create, OpenTunnelStorage } from '@opentunnel/client'
-import { startDaemon, tempHome, until } from '../engine/test/harness'
+import { startDaemon, until } from '../engine/test/harness'
 import type { EngineEvent, PairingConnection } from '../engine/src/protocol'
 import { engineClient, type EngineClient } from '../src/engine/client'
 import { externalReachability } from './external-reachability'
+import { probeHome } from './probe-home'
 
 if (!process.argv.includes('--live')) throw new Error('Pass --live to create a temporary public tunnel for verification.')
-const flag = (name: string) => { const at = process.argv.indexOf(name); return at < 0 ? undefined : process.argv[at + 1] }
-const home = flag('--home') ?? tempHome(), executable = flag('--engine')
+const flag = (name: string) => { const at = process.argv.indexOf(name); if (at < 0) return undefined; const value = process.argv[at + 1]; if (!value || value.startsWith('--')) throw new Error(`Provide a value for ${name}.`); return value }
+const home = await probeHome(flag('--home')), executable = flag('--engine')
 let daemon = await startDaemon({ home, executable })
 console.log(`Live acceptance uses isolated data: ${home}`)
 const request = (url: string, init?: RequestInit) => fetch(url, { ...init, signal: AbortSignal.timeout(15000), redirect: 'error' })
@@ -39,7 +40,10 @@ try {
     check(payload.urls.length === 1 && payload.urls[0] === origin, 'The QR advertised a different endpoint')
     const response = await request(origin + '/v1/pairing/redeem', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: payload.code, name }) })
     check(response.status === 200, `Public pairing returned ${response.status}`)
-    return await response.json() as PairingConnection
+    const result = await response.json() as PairingConnection
+    const replay = await request(origin + '/v1/pairing/redeem', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: payload.code, name: 'Replay' }) })
+    check(replay.status === 400, 'A public invitation was redeemable more than once')
+    return result
   }
   const phone = await pair('Acceptance phone'), tablet = await pair('Acceptance tablet')
   const phoneClient = engineClient({ url: origin, token: phone.token }), tabletClient = engineClient({ url: origin, token: tablet.token })
@@ -49,27 +53,35 @@ try {
   const session = await phoneClient.createSession({})
   await phoneClient.prompt({ id: session.session.id, text: 'Hosted acceptance first prompt', model: 'local/echo', key: 'hosted-first' })
   await until(async () => (await daemon.client.session({ id: session.session.id })).steps[0]?.status === 'succeeded')
-  await until(() => first.events.some((event) => event.type === 'step.completed') && other.events.some((event) => event.type === 'step.completed'), 15000)
+  const firstID = (await daemon.client.session({ id: session.session.id })).steps[0]!.id
+  await until(() => first.events.some((event) => event.type === 'step.completed' && event.data.step.id === firstID) && other.events.some((event) => event.type === 'step.completed' && event.data.step.id === firstID), 15000)
   const cursor = first.events.at(-1)!.seq
   first.controller.abort(); await first.done
   await daemon.client.prompt({ id: session.session.id, text: 'Offline event recovery', model: 'local/echo', key: 'hosted-offline' })
   await until(async () => (await daemon.client.session({ id: session.session.id })).steps.at(-1)?.status === 'succeeded')
+  const missedID = (await daemon.client.session({ id: session.session.id })).steps.at(-1)!.id
   const resumed = listen(phoneClient, cursor)
-  await until(() => resumed.events.some((event) => event.type === 'step.completed'), 15000)
-  check(resumed.events.every((event, i) => event.seq > cursor && (!i || event.seq > resumed.events[i - 1]!.seq)), 'Event recovery repeated or reordered events')
+  await until(() => resumed.events.some((event) => event.type === 'step.completed' && event.data.step.id === missedID), 15000)
+  check(resumed.events.every((event, i) => event.seq === (i ? resumed.events[i - 1]!.seq : cursor) + 1), 'Event recovery repeated, skipped or reordered events')
   await daemon.client.revokePairedDevice({ deviceID: phone.device.id, revision: (await daemon.client.pairingState()).revision })
   await until(resumed.ended, 15000)
   check((await request(origin + '/v1/health', { headers: { authorization: `Bearer ${phone.token}` } })).status === 401, 'Revoked credential remained usable')
   check((await tabletClient.health()).pid === daemon.health.pid && !other.ended(), 'Revoking one device disconnected another')
   const restartCursor = other.events.at(-1)?.seq ?? 0
+  const beforeRestart = daemon.health.startedAt, pending = JSON.parse((await daemon.client.createPairing({ remote: true })).payload).code
   await daemon.crash(); await until(other.ended, 15000)
   daemon = await startDaemon({ home, executable })
   check(await connected(60000) === origin, 'Restart changed the public route/identity')
+  check(daemon.health.startedAt !== beforeRestart, 'The crash test did not start a new daemon')
   check((await tabletClient.health()).pid === daemon.health.pid, 'Saved device credential failed after restart')
-  check(phone.server.id === tablet.server.id, 'Paired devices disagree on daemon identity')
+  check(JSON.parse((await daemon.client.createPairing({ remote: true })).payload).serverID === phone.server.id && phone.server.id === tablet.server.id, 'Restart changed the stable daemon identity')
+  const lost = await request(origin + '/v1/pairing/redeem', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: pending, name: 'Lost invitation' }) })
+  check(lost.status === 400, 'Restart retained an in-memory invitation')
   const replay = listen(tabletClient, restartCursor); await until(replay.opened, 15000)
   await tabletClient.prompt({ id: session.session.id, text: 'After daemon restart', model: 'local/echo', key: 'hosted-restart' })
-  await until(() => replay.events.some((event) => event.type === 'step.completed'), 15000)
+  await until(async () => (await daemon.client.session({ id: session.session.id })).messages.some((message) => message.role === 'assistant' && message.text.includes('After daemon restart')))
+  const restartedID = (await daemon.client.session({ id: session.session.id })).steps.at(-1)!.id
+  await until(() => replay.events.some((event) => event.type === 'step.completed' && event.data.step.id === restartedID), 15000)
   check((await daemon.client.session({ id: session.session.id })).messages.some((message) => message.text.includes('Offline event recovery')), 'Restart lost the transcript')
   await daemon.client.rotateNetworkToken({ revision: (await daemon.client.networkSettings()).revision })
   await until(replay.ended, 15000)
