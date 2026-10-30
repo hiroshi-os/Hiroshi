@@ -66,7 +66,10 @@ export class Configuration {
       sources.push({ source: source!, scope: '.', hash: hash(text) })
       for (const key of ['defaultModel', 'compaction'] as const) if (value[key] !== undefined) { (settings as any)[key] = value[key]; const prior = provenance.findIndex((item) => item.setting === key); if (prior >= 0) provenance.splice(prior, 1); provenance.push({ setting: key, source: source! }) }
     }
-    if (this.home) add(this.home, 'AGENTS.md', 'user/AGENTS.md', '*')
+    // If the operator opens the data directory itself as a workspace, the same
+    // physical file belongs to the native workspace loader too. Keep workspace
+    // identity so response CLIs do not receive it a second time as user prose.
+    if (this.home && pathKey(realpathSync(this.home)) !== pathKey(root)) add(this.home, 'AGENTS.md', 'user/AGENTS.md', '*')
     const directories = new Set<string>(['.'])
     if (targets.length > 64) fail('Too many instruction target paths in one turn.')
     for (const target of targets) {

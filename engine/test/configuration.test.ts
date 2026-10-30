@@ -45,6 +45,7 @@ describe('bounded workspace configuration', () => {
       expect(JSON.stringify({ report, instructions })).not.toContain('unrelated private rules')
       expect(JSON.stringify(report)).not.toContain('private user instructions')
       expect(new Configuration(f.workspace).resolve(f.workspace).instructions.filter((s) => s.text === 'root rules')).toHaveLength(1)
+      expect(new Configuration(f.workspace).resolve(f.workspace).instructions[0]?.source).toBe('workspace/AGENTS.md')
       expect(() => f.configuration.resolve(f.workspace, ['../outside.txt'])).toThrow('inside the workspace')
     } finally { f.close() }
   })
@@ -80,6 +81,14 @@ describe('bounded workspace configuration', () => {
       expect(() => f.configuration.resolve(f.workspace, ['linked/file.ts'])).toThrow('symbolic-link')
       symlinkSync(outside, join(f.workspace, '.hiroshi'), process.platform === 'win32' ? 'junction' : 'dir')
       expect(() => f.configuration.resolve(f.workspace)).toThrow('symbolic-link')
+    } finally { f.close() }
+  })
+
+  test.skipIf(process.platform !== 'win32')('Windows target spelling keeps one instruction identity', () => {
+    const f = fixture()
+    try {
+      f.put('src/AGENTS.md', 'source rules')
+      expect(f.configuration.resolve(f.workspace, ['SRC/file.ts', 'src/file.ts']).report.sources).toEqual(f.configuration.resolve(f.workspace, ['src/file.ts']).report.sources)
     } finally { f.close() }
   })
 })
