@@ -19,9 +19,13 @@ export async function externalReachability(origin: string, ref: string): Promise
     const runs = JSON.parse(await gh(['run', 'list', '--repo', repo, '--workflow', 'ci.yml', '--branch', ref, '--event', 'workflow_dispatch', '--limit', '10', '--json', 'databaseId,displayTitle,status,conclusion'])) as { databaseId: number; displayTitle: string; status: string; conclusion: string }[]
     const run = runs.find((run) => run.displayTitle === `Remote reachability ${id}`)
     if (run) runID = run.databaseId
-    if (run?.status === 'completed') {
-      if (run.conclusion !== 'success') throw new Error(`Independent reachability failed: https://github.com/${repo}/actions/runs/${run.databaseId}`)
-      return `https://github.com/${repo}/actions/runs/${run.databaseId}`
+    if (run) {
+      const details = JSON.parse(await gh(['run', 'view', String(run.databaseId), '--repo', repo, '--json', 'jobs'])) as { jobs: { name: string; status: string; conclusion: string }[] }
+      const probe = details.jobs.find((job) => job.name === 'independent network reachability')
+      if (probe?.status === 'completed') {
+        if (probe.conclusion !== 'success') throw new Error(`Independent reachability failed: https://github.com/${repo}/actions/runs/${run.databaseId}`)
+        return `https://github.com/${repo}/actions/runs/${run.databaseId}`
+      }
     }
     await Bun.sleep(3000)
   }

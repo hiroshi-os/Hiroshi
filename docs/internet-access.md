@@ -176,9 +176,11 @@ bun scripts/hosted-acceptance.ts --live --external-ref <trusted-repository-branc
 workflow at a trusted branch. Its isolated Ubuntu job receives only the public
 OpenTunnel origin and a correlation ID. It verifies HTTPS reachability, required
 authentication and owner-route denial, with no device credential or pairing code.
-Normal CI jobs are skipped for that dispatch, and a separate concurrency group
-keeps it from canceling standard checks. GitHub commands and polling have explicit
-deadlines. No repository secret is created.
+Normal CI jobs still run for that dispatch, and a separate concurrency group
+keeps it from canceling standard checks. The local probe waits for the independent
+reachability job specifically; its result is not a replacement for the full CI
+result. GitHub commands and polling have explicit deadlines. No repository secret
+is created.
 
 | Verification layer | What it proves | Limit |
 | --- | --- | --- |

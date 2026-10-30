@@ -39,7 +39,6 @@ jobs:
         env:
           HIROSHI_PROBE_URL: ${{ inputs.remote_url }}
   typecheck:
-    if: github.event_name != 'workflow_dispatch' || inputs.remote_url == ''
     name: typecheck
     runs-on: ubuntu-latest
     steps:
@@ -65,7 +64,6 @@ jobs:
         run: bun run typecheck
 
   engine:
-    if: github.event_name != 'workflow_dispatch' || inputs.remote_url == ''
     name: engine
     runs-on: ubuntu-latest
     steps:
@@ -93,7 +91,6 @@ jobs:
         run: bun run test:engine
 
   test:
-    if: github.event_name != 'workflow_dispatch' || inputs.remote_url == ''
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
